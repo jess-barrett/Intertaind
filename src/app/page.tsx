@@ -1,65 +1,97 @@
-import Image from "next/image";
+import {
+  BookOpen,
+  Film,
+  Tv,
+  Gamepad2,
+  Layers,
+  Sparkles,
+  Users,
+} from "lucide-react";
+import HeroCta from "@/components/hero-cta";
+import BottomCta from "@/components/bottom-cta";
+
+const mediaTypes = [
+  { label: "Books", icon: BookOpen, color: "text-accent-book", bg: "bg-accent-book/10" },
+  { label: "Movies", icon: Film, color: "text-accent-movie", bg: "bg-accent-movie/10" },
+  { label: "TV Shows", icon: Tv, color: "text-accent-tv", bg: "bg-accent-tv/10" },
+  { label: "Video Games", icon: Gamepad2, color: "text-accent-game", bg: "bg-accent-game/10" },
+];
+
+const valueProps = [
+  {
+    icon: Layers,
+    title: "One shelf for everything",
+    description:
+      "Track movies, TV, books, and games in a single place. No more switching between five different apps.",
+  },
+  {
+    icon: Sparkles,
+    title: "Cross-media recommendations",
+    description:
+      'Loved a book? Discover the movie, game, and TV show that share its DNA. "If you liked X, try Y" — across all media.',
+  },
+  {
+    icon: Users,
+    title: "Curated lists & community",
+    description:
+      'Build and share cross-media lists like "Things that feel like Annihilation" — spanning books, films, and games.',
+  },
+];
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="flex flex-col">
+      {/* Hero */}
+      <section className="flex flex-col items-center px-4 pt-20 pb-16 text-center">
+        <h1 className="max-w-2xl text-4xl font-bold leading-tight tracking-tight text-text-primary sm:text-5xl lg:text-6xl">
+          All your entertainment.{" "}
+          <span className="text-brand">One shelf.</span>
+        </h1>
+        <p className="mt-6 max-w-lg text-lg text-text-secondary">
+          Track what you watch, read, and play. Get recommendations that cross
+          media boundaries. Discover your next favorite anything.
+        </p>
+
+        <HeroCta />
+
+        {/* Media type pills */}
+        <div className="mt-12 flex flex-wrap justify-center gap-3">
+          {mediaTypes.map((type) => (
+            <div
+              key={type.label}
+              className={`flex items-center gap-2 rounded-full ${type.bg} px-4 py-2`}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              <type.icon size={16} className={type.color} />
+              <span className={`text-sm font-medium ${type.color}`}>
+                {type.label}
+              </span>
+            </div>
+          ))}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      </section>
+
+      {/* Value props */}
+      <section className="mx-auto grid w-full max-w-5xl gap-6 px-4 py-16 sm:grid-cols-3">
+        {valueProps.map((prop) => (
+          <div
+            key={prop.title}
+            className="glass p-6"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-brand/10">
+              <prop.icon size={20} className="text-brand" />
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-text-primary">
+              {prop.title}
+            </h3>
+            <p className="text-sm leading-relaxed text-text-secondary">
+              {prop.description}
+            </p>
+          </div>
+        ))}
+      </section>
+
+      {/* CTA — hidden when signed in */}
+      <BottomCta />
     </div>
   );
 }
