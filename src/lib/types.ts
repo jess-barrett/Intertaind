@@ -99,6 +99,13 @@ export interface ShelfItem {
   media_items?: MediaItem;
 }
 
+export const TOP_5_SHELF_NAMES: Record<MediaType, string> = {
+  movie: "__top5_movie",
+  tv_show: "__top5_tv_show",
+  book: "__top5_book",
+  video_game: "__top5_video_game",
+};
+
 export const MEDIA_TYPE_CONFIG: Record<
   MediaType,
   { label: string; color: string; bg: string }

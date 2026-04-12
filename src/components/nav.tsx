@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
-import { LogOut, User as UserIcon, ChevronDown } from "lucide-react";
+import { LogOut, User as UserIcon, ChevronDown, Film, Tv, BookOpen, Gamepad2 } from "lucide-react";
 import SearchBar from "./search-bar";
 
 export default function Nav() {
@@ -73,7 +73,7 @@ export default function Nav() {
             </button>
 
             {menuOpen && (
-              <div className="glass absolute right-0 top-full mt-2 w-48 p-1">
+              <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-surface-border bg-surface-raised p-1 shadow-xl shadow-black/40">
                 <Link
                   href={`/u/${username}`}
                   onClick={() => setMenuOpen(false)}
@@ -82,6 +82,47 @@ export default function Nav() {
                   <UserIcon size={14} />
                   Profile
                 </Link>
+
+                <div className="my-1 border-t border-surface-border" />
+
+                <p className="px-3 py-1 text-xs font-medium text-text-muted">
+                  Shelves
+                </p>
+                <Link
+                  href={`/u/${username}/movies`}
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                >
+                  <Film size={14} className="text-accent-movie" />
+                  Movies
+                </Link>
+                <Link
+                  href={`/u/${username}/tv-shows`}
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                >
+                  <Tv size={14} className="text-accent-tv" />
+                  Shows
+                </Link>
+                <Link
+                  href={`/u/${username}/books`}
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                >
+                  <BookOpen size={14} className="text-accent-book" />
+                  Books
+                </Link>
+                <Link
+                  href={`/u/${username}/games`}
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                >
+                  <Gamepad2 size={14} className="text-accent-game" />
+                  Games
+                </Link>
+
+                <div className="my-1 border-t border-surface-border" />
+
                 <button
                   onClick={handleSignOut}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"

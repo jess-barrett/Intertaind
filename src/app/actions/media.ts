@@ -15,7 +15,7 @@ async function getAuthUser() {
 export async function upsertMediaItem(
   result: SearchResult
 ): Promise<string> {
-  const supabase = await createClient();
+  const { supabase } = await getAuthUser();
 
   // Check if media already exists by external_ids
   const externalKey = Object.keys(result.external_ids)[0];
