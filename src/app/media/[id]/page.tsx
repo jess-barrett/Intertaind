@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { BookOpen, Film, Tv, Gamepad2, Calendar, Star } from "lucide-react";
-import type { MediaItem, MediaType, UserMedia, Profile } from "@/lib/types";
+import { BookOpen, BookOpenCheck, Film, Tv, Gamepad2, Eye, Heart, List } from "lucide-react";
+import type { MediaItem, MediaType, UserMedia } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
 import MediaDetailClient from "./media-detail-client";
 
@@ -11,6 +11,54 @@ const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
   tv_show: Tv,
   video_game: Gamepad2,
 };
+
+function getAttribution(
+  mediaType: MediaType,
+  metadata: Record<string, unknown> | null
+): string | null {
+  if (!metadata) return null;
+  switch (mediaType) {
+    case "movie": {
+      const director = metadata.director as string | undefined;
+      return director ? `Directed by ${director}` : null;
+    }
+    case "tv_show": {
+      const creator = metadata.creator as string | undefined;
+      return creator ? `Created by ${creator}` : null;
+    }
+    case "book": {
+      const authors = metadata.authors as string[] | undefined;
+      return authors?.length ? `by ${authors.join(", ")}` : null;
+    }
+    case "video_game": {
+      const devs = metadata.developers as string[] | undefined;
+      return devs?.length ? `Developed by ${devs.join(", ")}` : null;
+    }
+  }
+}
+
+function getSecondaryDetails(
+  mediaType: MediaType,
+  metadata: Record<string, unknown> | null
+): string[] {
+  if (!metadata) return [];
+  const details: string[] = [];
+  if (mediaType === "movie" && metadata.runtime)
+    details.push(`${metadata.runtime} min`);
+  if (mediaType === "book" && metadata.page_count)
+    details.push(`${metadata.page_count} pages`);
+  if (mediaType === "book" && metadata.publisher)
+    details.push(String(metadata.publisher));
+  if (mediaType === "tv_show" && metadata.seasons)
+    details.push(`${metadata.seasons} seasons`);
+  if (mediaType === "video_game") {
+    const platforms = metadata.platforms as string[] | undefined;
+    if (platforms?.length) details.push(platforms.join(", "));
+  }
+  const genres = metadata.genres as string[] | undefined;
+  if (genres?.length) details.push(genres.join(", "));
+  return details;
+}
 
 export default async function MediaDetailPage({
   params,
@@ -33,7 +81,7 @@ export default async function MediaDetailPage({
   const Icon = MEDIA_ICONS[media.media_type];
   const metadata = media.metadata as Record<string, unknown> | null;
 
-  // Check if user is logged in and fetch their tracking
+  // Auth + user tracking
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -50,51 +98,58 @@ export default async function MediaDetailPage({
     userMedia = data as UserMedia | null;
   }
 
-  // Fetch community reviews
-  const { data: reviews } = await supabase
-    .from("user_media")
-    .select("*, profiles(*)")
-    .eq("media_id", id)
-    .not("review", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(20);
+  // For games: "played" means anyone tracking it except wishlisted (status != "want")
+  // For other types: "completed" = status="completed"
+  const isGame = media.media_type === "video_game";
 
-  const typedReviews =
-    (reviews as (UserMedia & { profiles: Profile })[]) ?? [];
+  const [completedCountRes, inProgressCountRes, favoriteCountRes, listCountRes] = await Promise.all([
+    isGame
+      ? supabase
+          .from("user_media")
+          .select("id", { count: "exact", head: true })
+          .eq("media_id", id)
+          .neq("status", "want")
+      : supabase
+          .from("user_media")
+          .select("id", { count: "exact", head: true })
+          .eq("media_id", id)
+          .eq("status", "completed"),
+    supabase
+      .from("user_media")
+      .select("id", { count: "exact", head: true })
+      .eq("media_id", id)
+      .eq("status", "in_progress"),
+    supabase
+      .from("user_media")
+      .select("id", { count: "exact", head: true })
+      .eq("media_id", id)
+      .eq("is_favorite", true),
+    supabase
+      .from("list_items")
+      .select("id", { count: "exact", head: true })
+      .eq("media_id", id),
+  ]);
 
-  // Extract type-specific info
-  const metaDetails: { label: string; value: string }[] = [];
-  if (metadata) {
-    if (media.media_type === "book") {
-      const authors = metadata.authors as string[] | undefined;
-      if (authors?.length) metaDetails.push({ label: "Author", value: authors.join(", ") });
-      if (metadata.page_count) metaDetails.push({ label: "Pages", value: String(metadata.page_count) });
-      if (metadata.publisher) metaDetails.push({ label: "Publisher", value: String(metadata.publisher) });
-    }
-    if (media.media_type === "movie") {
-      if (metadata.director) metaDetails.push({ label: "Director", value: String(metadata.director) });
-      if (metadata.runtime) metaDetails.push({ label: "Runtime", value: `${metadata.runtime} min` });
-    }
-    if (media.media_type === "tv_show") {
-      if (metadata.creator) metaDetails.push({ label: "Creator", value: String(metadata.creator) });
-      if (metadata.seasons) metaDetails.push({ label: "Seasons", value: String(metadata.seasons) });
-    }
-    if (media.media_type === "video_game") {
-      const devs = metadata.developers as string[] | undefined;
-      if (devs?.length) metaDetails.push({ label: "Developer", value: devs.join(", ") });
-      const platforms = metadata.platforms as string[] | undefined;
-      if (platforms?.length) metaDetails.push({ label: "Platforms", value: platforms.join(", ") });
-    }
-    const genres = metadata.genres as string[] | undefined;
-    if (genres?.length) metaDetails.push({ label: "Genres", value: genres.join(", ") });
-  }
+  const stats = {
+    completed: completedCountRes.count ?? 0,
+    inProgress: inProgressCountRes.count ?? 0,
+    favorites: favoriteCountRes.count ?? 0,
+    lists: listCountRes.count ?? 0,
+  };
+
+  const attribution = getAttribution(media.media_type, metadata);
+  const secondaryDetails = getSecondaryDetails(media.media_type, metadata);
+  const totalSeasons =
+    (metadata?.seasons as number) ?? (metadata?.number_of_seasons as number) ?? 1;
+  const seasonEpisodes =
+    (metadata?.season_episodes as Record<string, number> | undefined) ?? null;
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
       <div className="flex flex-col gap-8 md:flex-row">
-        {/* Cover */}
-        <div className="w-full shrink-0 md:w-64">
-          <div className="overflow-hidden rounded-xl border border-surface-border bg-surface-overlay aspect-2/3">
+        {/* Left: Cover + Stats */}
+        <div className="w-full shrink-0 md:w-56">
+          <div className="overflow-hidden rounded-lg border border-surface-border bg-surface-overlay aspect-2/3">
             {media.cover_image_url ? (
               <img
                 src={media.cover_image_url}
@@ -107,91 +162,111 @@ export default async function MediaDetailPage({
               </div>
             )}
           </div>
+
+          {/* Stats beneath cover — genre-specific icons */}
+          <div className="mt-3 flex flex-wrap items-center justify-around gap-y-1 text-xs text-text-muted">
+            {media.media_type === "movie" && (
+              <Stat icon={Eye} count={stats.completed} label="Watched" />
+            )}
+            {media.media_type === "tv_show" && (
+              <>
+                <Stat icon={Eye} count={stats.completed} label="Watched" />
+                <Stat
+                  icon={Tv}
+                  count={stats.inProgress}
+                  label="Currently watching"
+                  iconClassName="-translate-y-px"
+                />
+              </>
+            )}
+            {media.media_type === "book" && (
+              <>
+                <Stat icon={BookOpenCheck} count={stats.completed} label="Read" />
+                <Stat icon={BookOpen} count={stats.inProgress} label="Currently reading" />
+              </>
+            )}
+            {media.media_type === "video_game" && (
+              <Stat icon={Gamepad2} count={stats.completed} label="Played" />
+            )}
+            <Stat icon={List} count={stats.lists} label="In lists" />
+            <Stat icon={Heart} count={stats.favorites} label="Loved" />
+          </div>
         </div>
 
-        {/* Info */}
-        <div className="flex-1">
-          <div className={`mb-3 inline-flex items-center gap-1.5 rounded-md ${config.bg} px-2.5 py-1`}>
-            <Icon size={14} className={config.color} />
-            <span className={`text-sm font-medium ${config.color}`}>
-              {config.label}
-            </span>
-          </div>
-
-          <h1 className="text-3xl font-bold text-text-primary">
-            {media.title}
-          </h1>
-
-          <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-text-muted">
+        {/* Right of cover: Title block + content row */}
+        <div className="min-w-0 flex-1">
+          {/* Title + Year — full width */}
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-4xl font-bold text-text-primary">
+              {media.title}
+            </h1>
             {media.release_date && (
-              <span className="flex items-center gap-1">
-                <Calendar size={14} />
+              <span className="text-lg text-text-muted">
                 {new Date(media.release_date).getFullYear()}
               </span>
             )}
-            {media.avg_rating && (
-              <span className="flex items-center gap-1">
-                <Star size={14} className="fill-accent-game text-accent-game" />
-                {media.avg_rating.toFixed(1)} ({media.rating_count} ratings)
-              </span>
-            )}
           </div>
 
-          {/* Metadata details */}
-          {metaDetails.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-              {metaDetails.map((d) => (
-                <span key={d.label}>
-                  <span className="text-text-muted">{d.label}: </span>
-                  <span className="text-text-secondary">{d.value}</span>
-                </span>
-              ))}
+          {/* Attribution + details + description | Actions sidebar */}
+          <div className="mt-1 flex flex-col gap-6 md:flex-row">
+            <div className="min-w-0 flex-1">
+              {/* Attribution */}
+              {attribution && (
+                <p className="text-sm text-text-secondary">{attribution}</p>
+              )}
+
+              {/* Secondary details */}
+              {secondaryDetails.length > 0 && (
+                <p className="mt-2 text-xs text-text-muted">
+                  {secondaryDetails.join(" · ")}
+                </p>
+              )}
+
+              {/* Description */}
+              {media.description && (
+                <p className="mt-4 text-base leading-relaxed text-text-secondary">
+                  {media.description}
+                </p>
+              )}
             </div>
-          )}
 
-          {media.description && (
-            <p className="mt-5 leading-relaxed text-text-secondary">
-              {media.description}
-            </p>
-          )}
-
-          {/* Tracking controls — client component */}
-          <div className="mt-8">
-            <MediaDetailClient
-              mediaId={media.id}
-              userMedia={userMedia}
-              isLoggedIn={!!user}
-            />
+            {/* Actions sidebar */}
+            <div className="w-full shrink-0 md:w-48">
+              <MediaDetailClient
+                mediaId={media.id}
+                mediaType={media.media_type}
+                mediaTitle={media.title}
+                totalSeasons={totalSeasons}
+                seasonEpisodes={seasonEpisodes}
+                userMedia={userMedia}
+                isLoggedIn={!!user}
+              />
+            </div>
           </div>
         </div>
       </div>
-
-      {/* Community reviews */}
-      {typedReviews.length > 0 && (
-        <section className="mt-12">
-          <h2 className="mb-4 text-lg font-semibold text-text-primary">
-            Reviews
-          </h2>
-          <div className="space-y-4">
-            {typedReviews.map((r) => (
-              <div key={r.id} className="glass p-4">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-sm font-medium text-text-primary">
-                    {r.profiles?.display_name || r.profiles?.username}
-                  </span>
-                  {r.rating && (
-                    <span className="flex items-center gap-0.5 text-xs text-accent-game">
-                      <Star size={10} className="fill-accent-game" />
-                      {r.rating}/10
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-text-secondary">{r.review}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
+  );
+}
+
+function Stat({
+  icon: Icon,
+  count,
+  label,
+  iconClassName,
+}: {
+  icon: React.ElementType;
+  count: number;
+  label: string;
+  iconClassName?: string;
+}) {
+  return (
+    <span className="group relative flex items-center gap-1">
+      <Icon size={12} className={iconClassName} />
+      {count.toLocaleString()}
+      <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap text-[10px] text-text-muted opacity-0 transition-opacity group-hover:opacity-100">
+        {label}
+      </span>
+    </span>
   );
 }

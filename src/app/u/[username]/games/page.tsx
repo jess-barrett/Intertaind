@@ -5,13 +5,40 @@ import { Gamepad2, ArrowLeft } from "lucide-react";
 import type { MediaItem, UserMedia } from "@/lib/types";
 import MediaCard from "@/components/media-card";
 import ShelfSearch from "@/components/shelves/shelf-search";
+import ShelfTabs from "@/components/shelves/shelf-tabs";
+
+interface GameTab {
+  key: string;
+  label: string;
+  // status filter (used for "wishlist" tab) — exclusive with subStatus
+  status?: string;
+  // sub_status JSONB filter (within progress field)
+  subStatus?: string;
+  // for "Played" tab: include everything except the wishlist (status != "want")
+  excludeStatus?: string;
+}
+
+const TABS: GameTab[] = [
+  { key: "played", label: "Played", excludeStatus: "want" },
+  { key: "playing", label: "Playing", subStatus: "playing" },
+  { key: "completed", label: "Completed", subStatus: "completed" },
+  { key: "wishlist", label: "Wishlist", status: "want" },
+  { key: "shelved", label: "Shelved", subStatus: "shelved" },
+  { key: "retired", label: "Retired", subStatus: "retired" },
+  { key: "abandoned", label: "Abandoned", subStatus: "abandoned" },
+];
 
 export default async function GamesShelfPage({
   params,
+  searchParams,
 }: {
-  params: Promise<{ username: string }>
+  params: Promise<{ username: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const { username } = await params;
+  const { tab } = await searchParams;
+  const activeTab = TABS.find((t) => t.key === tab) ?? TABS[0];
+
   const supabase = await createClient();
 
   const { data: profile } = await supabase
@@ -27,17 +54,27 @@ export default async function GamesShelfPage({
   } = await supabase.auth.getUser();
   const isOwner = user?.id === profile.id;
 
-  const { data } = await supabase
+  let query = supabase
     .from("user_media")
     .select("*, media_items!inner(*)")
     .eq("user_id", profile.id)
-    .eq("media_items.media_type", "video_game")
-    .order("created_at", { ascending: false });
+    .eq("media_items.media_type", "video_game");
 
-  const items =
-    ((data as (UserMedia & { media_items: MediaItem })[]) ?? []).map(
-      (um) => um.media_items
-    );
+  if (activeTab.status) {
+    query = query.eq("status", activeTab.status);
+  }
+  if (activeTab.subStatus) {
+    // JSONB filter: progress->>sub_status equals the value
+    query = query.eq("progress->>sub_status", activeTab.subStatus);
+  }
+  if (activeTab.excludeStatus) {
+    query = query.neq("status", activeTab.excludeStatus);
+  }
+
+  const { data } = await query.order("created_at", { ascending: false });
+
+  const tracked =
+    (data as (UserMedia & { media_items: MediaItem })[]) ?? [];
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8">
@@ -56,7 +93,7 @@ export default async function GamesShelfPage({
           </h1>
         </div>
         <span className="ml-auto text-sm text-text-muted">
-          {items.length} games
+          {tracked.length} games
         </span>
       </div>
 
@@ -66,20 +103,29 @@ export default async function GamesShelfPage({
         </div>
       )}
 
-      {items.length > 0 ? (
+      <ShelfTabs tabs={TABS} activeTab={activeTab.key} />
+
+      {tracked.length > 0 ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-          {items.map((item) => (
-            <MediaCard key={item.id} item={item} />
+          {tracked.map((um) => (
+            <MediaCard
+              key={um.media_items.id}
+              item={um.media_items}
+              userRating={um.rating}
+              userFavorite={um.is_favorite}
+            />
           ))}
         </div>
       ) : (
         <div className="flex flex-col items-center py-20 text-center">
           <Gamepad2 size={32} className="mb-3 text-accent-game opacity-40" />
-          <p className="text-lg text-text-secondary">No games yet</p>
+          <p className="text-lg text-text-secondary">
+            No games in {activeTab.label.toLowerCase()}
+          </p>
           <p className="mt-1 text-sm text-text-muted">
             {isOwner
               ? "Search for games above to add them to your collection."
-              : "This user hasn\u0027t added any games yet."}
+              : "Nothing here yet."}
           </p>
         </div>
       )}

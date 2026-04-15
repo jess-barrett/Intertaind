@@ -37,6 +37,7 @@ export interface TMDBTVDetails extends TMDBTVShow {
   genres: { id: number; name: string }[];
   created_by: { name: string }[];
   status: string;
+  seasons: { season_number: number; name: string; episode_count: number }[];
 }
 
 export interface TMDBSearchResponse<T> {

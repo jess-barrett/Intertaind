@@ -45,7 +45,7 @@ export default function SignupPage() {
       return;
     }
 
-    router.push("/browse");
+    router.push("/");
     router.refresh();
   }
 

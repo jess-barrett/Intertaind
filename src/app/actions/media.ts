@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { SearchResult, TrackingStatus } from "@/lib/types";
+import { getMovieDetails, getTVDetails } from "@/lib/api/tmdb";
 
 async function getAuthUser() {
   const supabase = await createClient();
@@ -10,6 +11,60 @@ async function getAuthUser() {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
   return { supabase, user };
+}
+
+async function enrichTMDBMetadata(
+  mediaType: string,
+  externalIds: Record<string, string | number>,
+  existingMetadata: Record<string, unknown>
+): Promise<Record<string, unknown> | null> {
+  const tmdbId = externalIds.tmdb_id as number | undefined;
+  if (!tmdbId) return null;
+
+  if (mediaType === "movie") {
+    try {
+      const details = await getMovieDetails(tmdbId);
+      const director = details.credits?.crew.find((c) => c.job === "Director")?.name ?? null;
+      return {
+        ...existingMetadata,
+        director,
+        runtime: details.runtime,
+        genres: details.genres.map((g) => g.name),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  if (mediaType === "tv_show") {
+    try {
+      const details = await getTVDetails(tmdbId);
+      // Count only aired seasons (exclude specials and unaired seasons with 0 episodes)
+      const aired = details.seasons
+        ? details.seasons.filter((s) => s.season_number > 0 && s.episode_count > 0)
+        : [];
+      const realSeasons = aired.length || details.number_of_seasons;
+      // Per-season episode counts: { "1": 9, "2": 10 }
+      const seasonEpisodes: Record<string, number> = {};
+      for (const s of aired) {
+        seasonEpisodes[String(s.season_number)] = s.episode_count;
+      }
+      return {
+        ...existingMetadata,
+        creator: details.created_by.map((c) => c.name).join(", ") || null,
+        seasons: realSeasons,
+        number_of_seasons: realSeasons,
+        number_of_episodes: details.number_of_episodes,
+        season_episodes: seasonEpisodes,
+        genres: details.genres.map((g) => g.name),
+        status: details.status,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 export async function upsertMediaItem(
@@ -23,12 +78,36 @@ export async function upsertMediaItem(
 
   const { data: existing } = await supabase
     .from("media_items")
-    .select("id")
+    .select("id, metadata")
     .contains("external_ids", { [externalKey]: externalValue })
     .limit(1)
     .single();
 
-  if (existing) return existing.id;
+  if (existing) {
+    // Re-enrich if metadata is missing key fields (director, genres, etc.)
+    const meta = existing.metadata as Record<string, unknown> | null;
+    const needsEnrichment =
+      (result.media_type === "movie" && !meta?.director) ||
+      (result.media_type === "tv_show" && (!meta?.creator || !meta?.season_episodes));
+
+    if (needsEnrichment) {
+      const enriched = await enrichTMDBMetadata(result.media_type, result.external_ids, meta ?? {});
+      if (enriched) {
+        await supabase
+          .from("media_items")
+          .update({ metadata: enriched })
+          .eq("id", existing.id);
+      }
+    }
+
+    return existing.id;
+  }
+
+  // Enrich TMDB items with full details before inserting
+  const enrichedMetadata =
+    (await enrichTMDBMetadata(result.media_type, result.external_ids, result.metadata ?? {})) ??
+    result.metadata ??
+    {};
 
   // Insert new media item
   const { data: inserted, error } = await supabase
@@ -39,7 +118,7 @@ export async function upsertMediaItem(
       description: result.description,
       cover_image_url: result.cover_image_url,
       release_date: result.release_date,
-      metadata: result.metadata,
+      metadata: enrichedMetadata,
       external_ids: result.external_ids,
     })
     .select("id")
@@ -93,7 +172,15 @@ export async function quickAddMedia(
 
 export async function trackMedia(
   mediaId: string,
-  status: TrackingStatus
+  status: TrackingStatus,
+  options?: {
+    rating?: number | null;
+    review?: string;
+    is_favorite?: boolean;
+    progress?: Record<string, unknown>;
+    started_at?: string | null;
+    completed_at?: string | null;
+  }
 ): Promise<string> {
   const { supabase, user } = await getAuthUser();
 
@@ -104,8 +191,12 @@ export async function trackMedia(
         user_id: user.id,
         media_id: mediaId,
         status,
-        ...(status === "completed" ? { completed_at: new Date().toISOString() } : {}),
-        ...(status === "in_progress" ? { started_at: new Date().toISOString() } : {}),
+        ...(options?.rating !== undefined ? { rating: options.rating } : {}),
+        ...(options?.review !== undefined ? { review: options.review || null } : {}),
+        ...(options?.is_favorite !== undefined ? { is_favorite: options.is_favorite } : {}),
+        ...(options?.progress !== undefined ? { progress: options.progress } : {}),
+        started_at: options?.started_at ?? (status === "in_progress" ? new Date().toISOString() : null),
+        completed_at: options?.completed_at ?? (status === "completed" ? new Date().toISOString() : null),
       },
       { onConflict: "user_id,media_id" }
     )
@@ -154,9 +245,10 @@ export async function updateTrackingStatus(
 
 export async function rateMedia(
   userMediaId: string,
-  rating: number
+  rating: number | null
 ): Promise<void> {
-  if (rating < 1 || rating > 10) throw new Error("Rating must be 1-10");
+  if (rating !== null && (rating < 1 || rating > 10))
+    throw new Error("Rating must be 1-10");
 
   const { supabase, user } = await getAuthUser();
 

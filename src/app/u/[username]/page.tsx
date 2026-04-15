@@ -110,6 +110,12 @@ export default async function ProfilePage({
     }
   }
 
+  // Check if viewer is the profile owner
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const isOwner = user?.id === profile.id;
+
   // Followers/following — stubbed for now (no follows table yet)
   const followersCount = 0;
   const followingCount = 0;
@@ -198,7 +204,7 @@ export default async function ProfilePage({
 
       {/* Top 5 Grid */}
       <section className="mt-8">
-        <TopFiveGrid topFives={topFives} username={username} />
+        <TopFiveGrid topFives={topFives} username={username} isOwner={isOwner} />
       </section>
 
       {/* Divider */}

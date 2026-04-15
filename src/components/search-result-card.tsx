@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { BookOpen, Film, Tv, Gamepad2, Plus, Check, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { BookOpen, Film, Tv, Gamepad2 } from "lucide-react";
 import type { MediaType, SearchResult } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
-import { quickAddMedia } from "@/app/actions/media";
+import { upsertMediaItem } from "@/app/actions/media";
 
 const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
   book: BookOpen,
@@ -14,27 +15,28 @@ const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
 };
 
 export default function SearchResultCard({ result }: { result: SearchResult }) {
-  const [added, setAdded] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [navigating, setNavigating] = useState(false);
   const config = MEDIA_TYPE_CONFIG[result.media_type];
   const Icon = MEDIA_ICONS[result.media_type];
+  const router = useRouter();
 
-  function handleAdd(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    startTransition(async () => {
-      try {
-        await quickAddMedia(result);
-        setAdded(true);
-      } catch {
-        // Could show error toast in the future
-      }
-    });
+  async function handleClick() {
+    if (navigating) return;
+    setNavigating(true);
+    try {
+      const mediaId = await upsertMediaItem(result);
+      router.push(`/media/${mediaId}`);
+    } catch {
+      setNavigating(false);
+    }
   }
 
   return (
-    <div className="group shelf-item">
-      <div className="overflow-hidden rounded-xl border border-surface-border bg-surface-raised">
+    <div
+      className="group shelf-item cursor-pointer"
+      onClick={handleClick}
+    >
+      <div className="overflow-hidden rounded-md border border-surface-border bg-surface-raised">
         {/* Cover */}
         <div className="relative aspect-2/3 bg-surface-overlay">
           {result.cover_image_url ? (
@@ -49,34 +51,14 @@ export default function SearchResultCard({ result }: { result: SearchResult }) {
             </div>
           )}
 
-          {/* Type badge */}
+          {/* Media type icon tab — bottom-left with 45° corner cut */}
           <div
-            className={`absolute top-2 left-2 flex items-center gap-1 rounded-md ${config.bg} px-2 py-0.5`}
+            className="absolute bottom-0 left-0 flex h-8 w-8 items-center justify-center bg-surface-raised"
+            style={{ clipPath: "polygon(0 0, 0 100%, 100% 100%, 100% 35%, 65% 0)" }}
           >
-            <Icon size={12} className={config.color} />
-            <span className={`text-xs font-medium ${config.color}`}>
-              {config.label}
-            </span>
+            <Icon size={13} className={`${config.color} -translate-x-px translate-y-0.5`} />
           </div>
 
-          {/* Add button */}
-          <button
-            onClick={handleAdd}
-            disabled={added || isPending}
-            className={`absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full transition-all ${
-              added
-                ? "bg-accent-book text-white"
-                : "bg-brand text-white opacity-0 group-hover:opacity-100 hover:bg-brand-dark"
-            }`}
-          >
-            {isPending ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : added ? (
-              <Check size={14} />
-            ) : (
-              <Plus size={14} />
-            )}
-          </button>
         </div>
 
         {/* Info */}

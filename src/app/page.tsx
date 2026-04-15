@@ -1,97 +1,68 @@
-import {
-  BookOpen,
-  Film,
-  Tv,
-  Gamepad2,
-  Layers,
-  Sparkles,
-  Users,
-} from "lucide-react";
-import HeroCta from "@/components/hero-cta";
-import BottomCta from "@/components/bottom-cta";
+import { createClient } from "@/lib/supabase/server";
+import type { MediaItem, List, Profile } from "@/lib/types";
+import LandingPage from "@/components/landing-page";
+import DiscoveryFeed from "@/components/discovery-feed";
 
-const mediaTypes = [
-  { label: "Books", icon: BookOpen, color: "text-accent-book", bg: "bg-accent-book/10" },
-  { label: "Movies", icon: Film, color: "text-accent-movie", bg: "bg-accent-movie/10" },
-  { label: "TV Shows", icon: Tv, color: "text-accent-tv", bg: "bg-accent-tv/10" },
-  { label: "Video Games", icon: Gamepad2, color: "text-accent-game", bg: "bg-accent-game/10" },
-];
+export default async function Home() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-const valueProps = [
-  {
-    icon: Layers,
-    title: "One shelf for everything",
-    description:
-      "Track movies, TV, books, and games in a single place. No more switching between five different apps.",
-  },
-  {
-    icon: Sparkles,
-    title: "Cross-media recommendations",
-    description:
-      'Loved a book? Discover the movie, game, and TV show that share its DNA. "If you liked X, try Y" — across all media.',
-  },
-  {
-    icon: Users,
-    title: "Curated lists & community",
-    description:
-      'Build and share cross-media lists like "Things that feel like Annihilation" — spanning books, films, and games.',
-  },
-];
+  if (!user) {
+    return <LandingPage />;
+  }
 
-export default function Home() {
+  // Signed in — fetch discovery data
+  const displayName =
+    user.user_metadata?.display_name ||
+    user.user_metadata?.username ||
+    "friend";
+
+  const [moviesRes, showsRes, booksRes, gamesRes, listsRes] =
+    await Promise.all([
+      supabase
+        .from("media_items")
+        .select("*")
+        .eq("media_type", "movie")
+        .order("tracking_count", { ascending: false })
+        .limit(8),
+      supabase
+        .from("media_items")
+        .select("*")
+        .eq("media_type", "tv_show")
+        .order("tracking_count", { ascending: false })
+        .limit(8),
+      supabase
+        .from("media_items")
+        .select("*")
+        .eq("media_type", "book")
+        .order("tracking_count", { ascending: false })
+        .limit(8),
+      supabase
+        .from("media_items")
+        .select("*")
+        .eq("media_type", "video_game")
+        .order("tracking_count", { ascending: false })
+        .limit(8),
+      supabase
+        .from("lists")
+        .select("*, profiles(*)")
+        .eq("is_public", true)
+        .order("like_count", { ascending: false })
+        .limit(3),
+    ]);
+
   return (
-    <div className="flex flex-col">
-      {/* Hero */}
-      <section className="flex flex-col items-center px-4 pt-20 pb-16 text-center">
-        <h1 className="max-w-2xl text-4xl font-bold leading-tight tracking-tight text-text-primary sm:text-5xl lg:text-6xl">
-          All your entertainment.{" "}
-          <span className="text-brand">One shelf.</span>
-        </h1>
-        <p className="mt-6 max-w-lg text-lg text-text-secondary">
-          Track what you watch, read, and play. Get recommendations that cross
-          media boundaries. Discover your next favorite anything.
-        </p>
-
-        <HeroCta />
-
-        {/* Media type pills */}
-        <div className="mt-12 flex flex-wrap justify-center gap-3">
-          {mediaTypes.map((type) => (
-            <div
-              key={type.label}
-              className={`flex items-center gap-2 rounded-full ${type.bg} px-4 py-2`}
-            >
-              <type.icon size={16} className={type.color} />
-              <span className={`text-sm font-medium ${type.color}`}>
-                {type.label}
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Value props */}
-      <section className="mx-auto grid w-full max-w-5xl gap-6 px-4 py-16 sm:grid-cols-3">
-        {valueProps.map((prop) => (
-          <div
-            key={prop.title}
-            className="glass p-6"
-          >
-            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-brand/10">
-              <prop.icon size={20} className="text-brand" />
-            </div>
-            <h3 className="mb-2 text-lg font-semibold text-text-primary">
-              {prop.title}
-            </h3>
-            <p className="text-sm leading-relaxed text-text-secondary">
-              {prop.description}
-            </p>
-          </div>
-        ))}
-      </section>
-
-      {/* CTA — hidden when signed in */}
-      <BottomCta />
-    </div>
+    <DiscoveryFeed
+      displayName={displayName}
+      popularMovies={(moviesRes.data as MediaItem[]) ?? []}
+      popularShows={(showsRes.data as MediaItem[]) ?? []}
+      popularBooks={(booksRes.data as MediaItem[]) ?? []}
+      popularGames={(gamesRes.data as MediaItem[]) ?? []}
+      popularLists={
+        (listsRes.data as (List & { profiles: Profile })[]) ?? []
+      }
+    />
   );
 }

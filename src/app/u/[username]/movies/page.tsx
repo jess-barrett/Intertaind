@@ -2,16 +2,27 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Film, ArrowLeft } from "lucide-react";
-import type { MediaItem, UserMedia } from "@/lib/types";
+import type { MediaItem, TrackingStatus, UserMedia } from "@/lib/types";
 import MediaCard from "@/components/media-card";
 import ShelfSearch from "@/components/shelves/shelf-search";
+import ShelfTabs from "@/components/shelves/shelf-tabs";
+
+const TABS = [
+  { key: "watched", label: "Watched", status: "completed" as TrackingStatus },
+  { key: "watchlist", label: "Watchlist", status: "want" as TrackingStatus },
+];
 
 export default async function MoviesShelfPage({
   params,
+  searchParams,
 }: {
-  params: Promise<{ username: string }>
+  params: Promise<{ username: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const { username } = await params;
+  const { tab } = await searchParams;
+  const activeTab = TABS.find((t) => t.key === tab) ?? TABS[0];
+
   const supabase = await createClient();
 
   const { data: profile } = await supabase
@@ -32,12 +43,11 @@ export default async function MoviesShelfPage({
     .select("*, media_items!inner(*)")
     .eq("user_id", profile.id)
     .eq("media_items.media_type", "movie")
+    .eq("status", activeTab.status)
     .order("created_at", { ascending: false });
 
-  const items =
-    ((data as (UserMedia & { media_items: MediaItem })[]) ?? []).map(
-      (um) => um.media_items
-    );
+  const tracked =
+    (data as (UserMedia & { media_items: MediaItem })[]) ?? [];
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8">
@@ -56,7 +66,7 @@ export default async function MoviesShelfPage({
           </h1>
         </div>
         <span className="ml-auto text-sm text-text-muted">
-          {items.length} movies
+          {tracked.length} {activeTab.label.toLowerCase()}
         </span>
       </div>
 
@@ -66,20 +76,29 @@ export default async function MoviesShelfPage({
         </div>
       )}
 
-      {items.length > 0 ? (
+      <ShelfTabs tabs={TABS} activeTab={activeTab.key} />
+
+      {tracked.length > 0 ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-          {items.map((item) => (
-            <MediaCard key={item.id} item={item} />
+          {tracked.map((um) => (
+            <MediaCard
+              key={um.media_items.id}
+              item={um.media_items}
+              userRating={um.rating}
+              userFavorite={um.is_favorite}
+            />
           ))}
         </div>
       ) : (
         <div className="flex flex-col items-center py-20 text-center">
           <Film size={32} className="mb-3 text-accent-movie opacity-40" />
-          <p className="text-lg text-text-secondary">No movies yet</p>
+          <p className="text-lg text-text-secondary">
+            No movies in {activeTab.label.toLowerCase()}
+          </p>
           <p className="mt-1 text-sm text-text-muted">
             {isOwner
               ? "Search for movies above to add them to your collection."
-              : "This user hasn\u0027t added any movies yet."}
+              : "Nothing here yet."}
           </p>
         </div>
       )}

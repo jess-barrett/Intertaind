@@ -45,12 +45,6 @@ export default function Nav() {
 
         <div className="hidden items-center gap-6 sm:flex">
           <Link
-            href="/browse"
-            className="text-sm text-text-secondary transition-colors hover:text-text-primary"
-          >
-            Browse
-          </Link>
-          <Link
             href="/lists"
             className="text-sm text-text-secondary transition-colors hover:text-text-primary"
           >

@@ -34,12 +34,6 @@ export default function HeroCta() {
           <ArrowRight size={16} />
         </Link>
       )}
-      <Link
-        href="/browse"
-        className="rounded-lg border border-surface-border px-6 py-3 font-medium text-text-secondary transition-colors hover:bg-surface-raised hover:text-text-primary"
-      >
-        Browse
-      </Link>
     </div>
   );
 }
