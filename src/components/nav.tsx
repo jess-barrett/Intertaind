@@ -36,25 +36,32 @@ export default function Nav() {
   const username = user?.user_metadata?.username;
 
   return (
-    <nav className="glass fixed top-4 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-5xl -translate-x-1/2 items-center justify-between px-6 py-3">
-      <div className="flex items-center gap-8">
+    <nav className="w-full border-b border-surface-border bg-surface-raised/60 backdrop-blur-xl">
+      <div className="mx-auto flex w-full max-w-5xl items-center px-6 py-3">
+      {/* Left: Logo */}
+      <div className="flex flex-1 items-center">
         <Link href="/" className="text-lg font-bold tracking-tight">
           <span className="text-text-primary">inter</span>
           <span className="text-brand">taind</span>
         </Link>
-
-        <div className="hidden items-center gap-6 sm:flex">
-          <Link
-            href="/lists"
-            className="text-sm text-text-secondary transition-colors hover:text-text-primary"
-          >
-            Lists
-          </Link>
-        </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      {/* Center: Search */}
+      <div className="hidden flex-1 justify-center sm:flex">
         <SearchBar />
+      </div>
+
+      {/* Right: Browse Lists + auth */}
+      <div className="flex flex-1 items-center justify-end gap-3">
+        <Link
+          href="/lists"
+          className="hidden text-sm text-text-secondary transition-colors hover:text-text-primary sm:inline"
+        >
+          Browse Lists
+        </Link>
+        <div className="sm:hidden">
+          <SearchBar />
+        </div>
         {user ? (
           <div className="relative">
             <button
@@ -143,6 +150,7 @@ export default function Nav() {
             </Link>
           </>
         )}
+      </div>
       </div>
     </nav>
   );
