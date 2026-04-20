@@ -23,6 +23,8 @@ export interface MediaItem {
   avg_rating: number | null;
   rating_count: number;
   tracking_count: number;
+  favorites_count: number;
+  lists_count: number;
   created_at: string;
 }
 

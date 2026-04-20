@@ -39,6 +39,14 @@ export function normalizeTMDBTV(raw: TMDBTVShow): SearchResult {
   };
 }
 
+/** Pad partial dates ("1996", "1996-03") to full ISO "YYYY-MM-DD". */
+function toFullDate(date: string | null | undefined): string | null {
+  if (!date) return null;
+  if (/^\d{4}$/.test(date)) return `${date}-01-01`;
+  if (/^\d{4}-\d{2}$/.test(date)) return `${date}-01`;
+  return date;
+}
+
 export function normalizeGoogleBook(raw: GoogleBooksVolume): SearchResult {
   const info = raw.volumeInfo;
   return {
@@ -46,7 +54,7 @@ export function normalizeGoogleBook(raw: GoogleBooksVolume): SearchResult {
     title: info.title + (info.subtitle ? `: ${info.subtitle}` : ""),
     description: info.description || null,
     cover_image_url: bookCoverUrl(raw),
-    release_date: info.publishedDate || null,
+    release_date: toFullDate(info.publishedDate),
     metadata: {
       authors: info.authors ?? [],
       page_count: info.pageCount ?? null,

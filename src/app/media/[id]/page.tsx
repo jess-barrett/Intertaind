@@ -4,6 +4,7 @@ import { BookOpen, BookOpenCheck, Film, Tv, Gamepad2, Eye, Heart, List } from "l
 import type { MediaItem, MediaType, UserMedia } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
 import MediaDetailClient from "./media-detail-client";
+import CoverImage from "@/components/cover-image";
 
 const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
   book: BookOpen,
@@ -144,23 +145,33 @@ export default async function MediaDetailPage({
   const seasonEpisodes =
     (metadata?.season_episodes as Record<string, number> | undefined) ?? null;
 
+  // User-specific cover override (set via "Change cover")
+  const customCoverUrl =
+    (userMedia?.progress as Record<string, unknown> | null)?.custom_cover_url as
+      | string
+      | undefined;
+  const displayCoverUrl = customCoverUrl ?? media.cover_image_url;
+
+  // Extract author name from metadata for cover search (books only)
+  const authors = (metadata?.authors as string[] | undefined) ?? [];
+  const firstAuthor = authors[0];
+
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
       <div className="flex flex-col gap-8 md:flex-row">
         {/* Left: Cover + Stats */}
         <div className="w-full shrink-0 md:w-56">
           <div className="overflow-hidden rounded-lg border border-surface-border bg-surface-overlay aspect-2/3">
-            {media.cover_image_url ? (
-              <img
-                src={media.cover_image_url}
-                alt={media.title}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <Icon size={48} className={`${config.color} opacity-40`} />
-              </div>
-            )}
+            <CoverImage
+              src={displayCoverUrl}
+              alt={media.title}
+              className="h-full w-full object-cover"
+              fallback={
+                <div className="flex h-full items-center justify-center">
+                  <Icon size={48} className={`${config.color} opacity-40`} />
+                </div>
+              }
+            />
           </div>
 
           {/* Stats beneath cover — genre-specific icons */}
@@ -240,6 +251,9 @@ export default async function MediaDetailPage({
                 seasonEpisodes={seasonEpisodes}
                 userMedia={userMedia}
                 isLoggedIn={!!user}
+                defaultCoverUrl={media.cover_image_url}
+                currentCoverUrl={displayCoverUrl}
+                authorName={firstAuthor}
               />
             </div>
           </div>

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Monoton } from "next/font/google";
 import Nav from "@/components/nav";
 import "./globals.css";
 
@@ -10,6 +10,12 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+const monoton = Monoton({
+  variable: "--font-monoton",
+  weight: "400",
   subsets: ["latin"],
 });
 
@@ -27,8 +33,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${monoton.variable} h-full antialiased`}
     >
+      <head>
+        <link rel="stylesheet" href="https://use.typekit.net/vej3gnk.css" />
+      </head>
       <body className="min-h-full flex flex-col font-sans">
         <Nav />
         <main className="flex-1">{children}</main>

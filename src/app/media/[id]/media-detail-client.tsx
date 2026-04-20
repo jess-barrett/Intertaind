@@ -14,6 +14,7 @@ import {
   MessageSquare,
   History,
   ChevronDown,
+  Image as ImageIcon,
 } from "lucide-react";
 import Link from "next/link";
 import type { MediaType, TrackingStatus, UserMedia } from "@/lib/types";
@@ -25,6 +26,7 @@ import BookModal from "@/components/modals/book-modal";
 import GameModal from "@/components/modals/game-modal";
 import CurrentEpisodeModal from "@/components/modals/current-episode-modal";
 import LogEpisodeModal from "@/components/modals/log-episode-modal";
+import CoverPickerModal from "@/components/modals/cover-picker-modal";
 
 // Genre-specific config for the action panel
 interface ActionConfig {
@@ -149,6 +151,9 @@ export default function MediaDetailClient({
   seasonEpisodes,
   userMedia,
   isLoggedIn,
+  defaultCoverUrl,
+  currentCoverUrl,
+  authorName,
 }: {
   mediaId: string;
   mediaType: MediaType;
@@ -157,6 +162,9 @@ export default function MediaDetailClient({
   seasonEpisodes: Record<string, number> | null;
   userMedia: UserMedia | null;
   isLoggedIn: boolean;
+  defaultCoverUrl: string | null;
+  currentCoverUrl: string | null;
+  authorName?: string;
 }) {
   const cfg = ACTION_CONFIG[mediaType];
 
@@ -178,6 +186,7 @@ export default function MediaDetailClient({
   const [modalOpen, setModalOpen] = useState(false);
   const [currentEpisodeModalOpen, setCurrentEpisodeModalOpen] = useState(false);
   const [logEpisodeModalOpen, setLogEpisodeModalOpen] = useState(false);
+  const [coverModalOpen, setCoverModalOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -472,6 +481,17 @@ export default function MediaDetailClient({
           <History size={16} />
           Show your activity
         </button>
+
+        {/* Change cover — books only, tracked only */}
+        {mediaType === "book" && userMediaId && (
+          <button
+            onClick={() => setCoverModalOpen(true)}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary"
+          >
+            <ImageIcon size={16} />
+            Change cover
+          </button>
+        )}
       </div>
 
       {/* Modals */}
@@ -572,6 +592,21 @@ export default function MediaDetailClient({
               if (is_favorite) setIsFavorite(true);
               router.refresh();
             });
+          }}
+        />
+      )}
+
+      {coverModalOpen && userMediaId && (
+        <CoverPickerModal
+          userMediaId={userMediaId}
+          title={mediaTitle}
+          author={authorName}
+          currentCoverUrl={currentCoverUrl}
+          defaultCoverUrl={defaultCoverUrl}
+          onClose={() => setCoverModalOpen(false)}
+          onSaved={() => {
+            setCoverModalOpen(false);
+            router.refresh();
           }}
         />
       )}

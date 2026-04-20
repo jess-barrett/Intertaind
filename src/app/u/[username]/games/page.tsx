@@ -6,6 +6,15 @@ import type { MediaItem, UserMedia } from "@/lib/types";
 import MediaCard from "@/components/media-card";
 import ShelfSearch from "@/components/shelves/shelf-search";
 import ShelfTabs from "@/components/shelves/shelf-tabs";
+import MediaFilterBar from "@/components/shelves/media-filter-bar";
+import {
+  applyMediaFilters,
+  applyMediaSort,
+  getSortOptionsForType,
+  parseFilters,
+  GENRES_BY_TYPE,
+  GAME_PLATFORMS,
+} from "@/lib/media-query";
 
 interface GameTab {
   key: string;
@@ -33,11 +42,18 @@ export default async function GamesShelfPage({
   searchParams,
 }: {
   params: Promise<{ username: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{
+    tab?: string;
+    decade?: string;
+    genre?: string;
+    platform?: string;
+    sort?: string;
+  }>;
 }) {
   const { username } = await params;
-  const { tab } = await searchParams;
-  const activeTab = TABS.find((t) => t.key === tab) ?? TABS[0];
+  const sp = await searchParams;
+  const activeTab = TABS.find((t) => t.key === sp.tab) ?? TABS[0];
+  const filters = parseFilters(sp);
 
   const supabase = await createClient();
 
@@ -71,7 +87,9 @@ export default async function GamesShelfPage({
     query = query.neq("status", activeTab.excludeStatus);
   }
 
-  const { data } = await query.order("created_at", { ascending: false });
+  query = applyMediaFilters(query, filters, "video_game", "media_items.");
+  query = applyMediaSort(query, filters.sort, "video_game", "media_items");
+  const { data } = await query;
 
   const tracked =
     (data as (UserMedia & { media_items: MediaItem })[]) ?? [];
@@ -105,6 +123,12 @@ export default async function GamesShelfPage({
 
       <ShelfTabs tabs={TABS} activeTab={activeTab.key} />
 
+      <MediaFilterBar
+        genres={GENRES_BY_TYPE.video_game}
+        sortOptions={getSortOptionsForType("video_game")}
+        platforms={GAME_PLATFORMS}
+      />
+
       {tracked.length > 0 ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
           {tracked.map((um) => (
@@ -113,6 +137,11 @@ export default async function GamesShelfPage({
               item={um.media_items}
               userRating={um.rating}
               userFavorite={um.is_favorite}
+              customCoverUrl={
+                (um.progress as Record<string, unknown> | null)?.custom_cover_url as
+                  | string
+                  | undefined
+              }
             />
           ))}
         </div>

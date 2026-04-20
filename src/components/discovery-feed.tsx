@@ -106,7 +106,7 @@ export default function DiscoveryFeed({
           <section>
             <SectionHeader
               title="Popular Movies"
-              href="/search?type=movie"
+              href="/movies"
               icon={Film}
               iconColor="text-accent-movie"
             />
@@ -122,7 +122,7 @@ export default function DiscoveryFeed({
           <section>
             <SectionHeader
               title="Popular Books"
-              href="/search?type=book"
+              href="/books"
               icon={BookOpen}
               iconColor="text-accent-book"
             />
@@ -138,7 +138,7 @@ export default function DiscoveryFeed({
           <section>
             <SectionHeader
               title="Popular Shows"
-              href="/search?type=tv_show"
+              href="/tv-shows"
               icon={Tv}
               iconColor="text-accent-tv"
             />
@@ -154,7 +154,7 @@ export default function DiscoveryFeed({
           <section>
             <SectionHeader
               title="Popular Games"
-              href="/search?type=video_game"
+              href="/games"
               icon={Gamepad2}
               iconColor="text-accent-game"
             />

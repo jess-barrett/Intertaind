@@ -60,9 +60,14 @@ export interface GoogleBooksVolume {
     description?: string;
     pageCount?: number;
     categories?: string[];
+    language?: string;
     imageLinks?: {
       smallThumbnail?: string;
       thumbnail?: string;
+      small?: string;
+      medium?: string;
+      large?: string;
+      extraLarge?: string;
     };
     averageRating?: number;
     ratingsCount?: number;
@@ -70,6 +75,10 @@ export interface GoogleBooksVolume {
       type: string;
       identifier: string;
     }[];
+    maturityRating?: "MATURE" | "NOT_MATURE";
+  };
+  accessInfo?: {
+    viewability?: "NO_PAGES" | "PARTIAL" | "ALL_PAGES" | "UNKNOWN";
   };
 }
 

@@ -3,6 +3,8 @@
 import { createClient } from "@/lib/supabase/server";
 import type { SearchResult, TrackingStatus } from "@/lib/types";
 import { getMovieDetails, getTVDetails } from "@/lib/api/tmdb";
+import { findCanonicalBookEdition } from "@/lib/api/google-books";
+import { normalizeGoogleBook } from "@/lib/api/normalize";
 
 async function getAuthUser() {
   const supabase = await createClient();
@@ -72,13 +74,33 @@ export async function upsertMediaItem(
 ): Promise<string> {
   const { supabase } = await getAuthUser();
 
+  // For books, upgrade to the canonical English edition before any DB work.
+  // Google's pool for broad searches (e.g. "Mistborn") may only surface
+  // inferior editions; a targeted title+author query reliably finds the
+  // canonical one, giving us consistent data regardless of how the user
+  // discovered the book.
+  if (result.media_type === "book") {
+    const authors = (result.metadata as Record<string, unknown> | null)
+      ?.authors as string[] | undefined;
+    const firstAuthor = authors?.[0];
+    if (firstAuthor) {
+      const canonical = await findCanonicalBookEdition(result.title, firstAuthor);
+      // Always re-normalize from the canonical-query volume. Even when the ID
+      // matches the input, this fetch carries fresh accessInfo which
+      // bookCoverUrl uses to pick the right zoom level.
+      if (canonical) {
+        result = normalizeGoogleBook(canonical);
+      }
+    }
+  }
+
   // Check if media already exists by external_ids
   const externalKey = Object.keys(result.external_ids)[0];
   const externalValue = result.external_ids[externalKey];
 
   const { data: existing } = await supabase
     .from("media_items")
-    .select("id, metadata")
+    .select("id, metadata, cover_image_url")
     .contains("external_ids", { [externalKey]: externalValue })
     .limit(1)
     .single();
@@ -90,14 +112,22 @@ export async function upsertMediaItem(
       (result.media_type === "movie" && !meta?.director) ||
       (result.media_type === "tv_show" && (!meta?.creator || !meta?.season_episodes));
 
+    const updates: Record<string, unknown> = {};
+
     if (needsEnrichment) {
       const enriched = await enrichTMDBMetadata(result.media_type, result.external_ids, meta ?? {});
       if (enriched) {
-        await supabase
-          .from("media_items")
-          .update({ metadata: enriched })
-          .eq("id", existing.id);
+        updates.metadata = enriched;
       }
+    }
+
+    // Backfill cover if it's missing (e.g., was cleared by migration)
+    if (!existing.cover_image_url && result.cover_image_url) {
+      updates.cover_image_url = result.cover_image_url;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await supabase.from("media_items").update(updates).eq("id", existing.id);
     }
 
     return existing.id;
@@ -329,4 +359,38 @@ export async function removeTracking(userMediaId: string): Promise<void> {
     .eq("user_id", user.id);
 
   if (error) throw new Error(`Failed to remove tracking: ${error.message}`);
+}
+
+/**
+ * Set a custom cover for a user's tracked item. Stored in progress JSONB
+ * so it's per-user. Pass null to clear the override.
+ */
+export async function setCustomCover(
+  userMediaId: string,
+  coverUrl: string | null
+): Promise<void> {
+  const { supabase, user } = await getAuthUser();
+
+  // Read current progress to merge
+  const { data: current } = await supabase
+    .from("user_media")
+    .select("progress")
+    .eq("id", userMediaId)
+    .eq("user_id", user.id)
+    .single();
+
+  const progress = (current?.progress as Record<string, unknown> | null) ?? {};
+  if (coverUrl) {
+    progress.custom_cover_url = coverUrl;
+  } else {
+    delete progress.custom_cover_url;
+  }
+
+  const { error } = await supabase
+    .from("user_media")
+    .update({ progress })
+    .eq("id", userMediaId)
+    .eq("user_id", user.id);
+
+  if (error) throw new Error(`Failed to save cover: ${error.message}`);
 }

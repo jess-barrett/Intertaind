@@ -100,7 +100,7 @@ export default function SearchClient({
       </div>
 
       {/* Type tabs */}
-      <div className="mb-8 flex flex-wrap gap-2">
+      <div className="mb-3 flex flex-wrap gap-2">
         {TABS.map((tab) => (
           <button
             key={tab.key}
@@ -120,6 +120,15 @@ export default function SearchClient({
         ))}
       </div>
 
+      {type === "book" && (
+        <p className="mb-6 text-xs text-text-muted">
+          Can&apos;t find your book? Try adding{" "}
+          <span className="text-text-secondary">by [author name]</span> to your
+          search.
+        </p>
+      )}
+      {type !== "book" && <div className="mb-6" />}
+
       {/* Results */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
@@ -138,7 +147,9 @@ export default function SearchClient({
         <div className="flex flex-col items-center py-20 text-center">
           <p className="text-lg text-text-secondary">No results found</p>
           <p className="mt-1 text-sm text-text-muted">
-            Try a different search term or media type.
+            {type === "book"
+              ? "Try adding \"by [author name]\" to your search."
+              : "Try a different search term or media type."}
           </p>
         </div>
       ) : (

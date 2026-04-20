@@ -1,29 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0f1117;
-  --foreground: #e4e5e9;
+  --background: #0A0A0A;
+  --foreground: #F0F0F0;
 
-  /* Surface colors */
-  --surface-default: #0f1117;
-  --surface-raised: #181a24;
-  --surface-overlay: #1f2233;
-  --surface-border: #2a2d3e;
+  /* Surface colors — true near-black, neutral */
+  --surface-default: #0A0A0A;
+  --surface-raised: #141414;
+  --surface-overlay: #1F1F1F;
+  --surface-border: #2E2E2E;
 
-  /* Brand */
-  --brand: #4c6ef5;
-  --brand-light: #748ffc;
-  --brand-dark: #3b5bdb;
+  /* Brand — neon magenta (classic 80s) */
+  --brand: #FF006E;
+  --brand-light: #FF4D97;
+  --brand-dark: #D1005A;
 
-  /* Media type accents */
-  --accent-book: #34d399;
-  --accent-movie: #fb7185;
-  --accent-tv: #a78bfa;
-  --accent-game: #fbbf24;
-  /* Text */
-  --text-primary: #e4e5e9;
-  --text-secondary: #9194a1;
-  --text-muted: #5f6270;
+  /* Media type accents — full neon saturation */
+  --accent-book: #00FF85;
+  --accent-movie: #FF3D71;
+  --accent-tv: #B388FF;
+  --accent-game: #FFD600;
+
+  /* Text — CRT cream white */
+  --text-primary: #F0F0F0;
+  --text-secondary: #A0A0A0;
+  --text-muted: #606060;
 }
 
 @theme inline {
@@ -45,6 +46,7 @@
   --color-text-muted: var(--text-muted);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-monoton);
 }
 
 body {
@@ -54,7 +56,7 @@ body {
 
 /* Glassmorphism utility */
 .glass {
-  background: rgb(24 26 36 / 0.6);
+  background: rgb(20 20 20 / 0.6);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid var(--surface-border);
