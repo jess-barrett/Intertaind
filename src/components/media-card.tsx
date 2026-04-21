@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { BookOpen, Film, Tv, Gamepad2, Heart, List, Eye } from "lucide-react";
-import type { MediaItem, MediaType } from "@/lib/types";
+import type { MediaItem, MediaType, UserMedia } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
 import { StarRatingDisplay } from "@/components/star-rating";
 import CoverImage from "@/components/cover-image";
+import MediaCardActions from "@/components/media-card-actions";
 
 const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
   book: BookOpen,
@@ -19,6 +20,7 @@ export default function MediaCard({
   userRating,
   userFavorite,
   customCoverUrl,
+  userMedia,
 }: {
   item: MediaItem;
   /** No text section below cover */
@@ -29,6 +31,8 @@ export default function MediaCard({
   userFavorite?: boolean;
   /** User-selected override for the cover image */
   customCoverUrl?: string | null;
+  /** Existing tracking row — drives the hover action bar's initial state */
+  userMedia?: UserMedia | null;
 }) {
   const config = MEDIA_TYPE_CONFIG[item.media_type];
   const Icon = MEDIA_ICONS[item.media_type];
@@ -36,10 +40,10 @@ export default function MediaCard({
   const coverUrl = customCoverUrl ?? item.cover_image_url;
 
   return (
-    <Link href={`/media/${item.id}`} className="group shelf-item block">
+    <Link href={`/media/${item.id}`} className="group shelf-item relative block">
       <div className="overflow-hidden rounded-md border border-surface-border bg-surface-raised">
         {/* Cover image */}
-        <div className="relative aspect-[2/3] bg-surface-overlay">
+        <div className="relative aspect-2/3 bg-surface-overlay">
           <CoverImage
             src={coverUrl}
             alt={item.title}
@@ -51,13 +55,21 @@ export default function MediaCard({
             }
           />
 
-          {/* Media type icon tab — bottom-left with 45° corner cut */}
-          <div
-            className={`absolute bottom-0 left-0 flex items-center justify-center ${compact ? "h-6 w-6" : "h-8 w-8"} bg-surface-raised`}
-            style={{ clipPath: "polygon(0 0, 0 100%, 100% 100%, 100% 35%, 65% 0)" }}
-          >
-            <Icon size={compact ? 10 : 13} className={`${config.color} -translate-x-px translate-y-0.5`} />
-          </div>
+          <MediaCardActions
+            mediaId={item.id}
+            mediaType={item.media_type}
+            mediaTitle={item.title}
+            totalSeasons={
+              (item.metadata?.number_of_seasons as number | undefined) ??
+              (item.metadata?.seasons as number | undefined) ??
+              1
+            }
+            seasonEpisodes={
+              (item.metadata?.season_episodes as Record<string, number> | undefined) ?? null
+            }
+            userMedia={userMedia}
+            compact={compact}
+          />
         </div>
 
         {/* Stats row — replaces the title/info section */}
@@ -81,7 +93,7 @@ export default function MediaCard({
         {/* Full info (title + rating/year) */}
         {showInfo && (
           <div className="p-3">
-            <h3 className="truncate text-sm font-medium text-text-primary group-hover:text-brand transition-colors">
+            <h3 className="truncate text-sm font-normal text-text-primary group-hover:text-brand transition-colors duration-200">
               {item.title}
             </h3>
             <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">

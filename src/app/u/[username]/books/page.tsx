@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { BookOpen, ArrowLeft } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import type { MediaItem, TrackingStatus, UserMedia } from "@/lib/types";
 import MediaCard from "@/components/media-card";
 import ShelfSearch from "@/components/shelves/shelf-search";
@@ -68,26 +67,7 @@ export default async function BooksShelfPage({
     (data as (UserMedia & { media_items: MediaItem })[]) ?? [];
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8">
-      <div className="mb-8 flex items-center gap-4">
-        <Link
-          href={`/u/${username}`}
-          className="flex items-center gap-1 text-sm text-text-muted transition-colors hover:text-text-secondary"
-        >
-          <ArrowLeft size={14} />
-          Profile
-        </Link>
-        <div className="flex items-center gap-2">
-          <BookOpen size={20} className="text-accent-book" />
-          <h1 className="text-2xl font-bold text-text-primary">
-            {profile.display_name || profile.username}&apos;s Books
-          </h1>
-        </div>
-        <span className="ml-auto text-sm text-text-muted">
-          {tracked.length} books
-        </span>
-      </div>
-
+    <div className="pt-8">
       {isOwner && (
         <div className="mb-6">
           <ShelfSearch mediaType="book" />
@@ -109,6 +89,7 @@ export default async function BooksShelfPage({
               item={um.media_items}
               userRating={um.rating}
               userFavorite={um.is_favorite}
+              userMedia={um}
               customCoverUrl={
                 (um.progress as Record<string, unknown> | null)?.custom_cover_url as
                   | string

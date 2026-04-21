@@ -5,6 +5,7 @@ import type { MediaItem, MediaType, UserMedia } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
 import MediaDetailClient from "./media-detail-client";
 import CoverImage from "@/components/cover-image";
+import BackButton from "@/components/back-button";
 
 const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
   book: BookOpen,
@@ -158,6 +159,9 @@ export default async function MediaDetailPage({
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
+      <div className="mb-4">
+        <BackButton />
+      </div>
       <div className="flex flex-col gap-8 md:flex-row">
         {/* Left: Cover + Stats */}
         <div className="w-full shrink-0 md:w-56">

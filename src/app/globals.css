@@ -66,9 +66,16 @@ body {
 /* Shelf item hover lift */
 .shelf-item {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  /* Grayscale AA + GPU compositing so text glyphs don't re-rasterize
+     at shifting subpixel positions during the translateY animation —
+     stops the brief width "shimmer" on the title text. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .shelf-item:hover {
-  transform: translateY(-4px);
+  transform: translate3d(0, -4px, 0);
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
 }

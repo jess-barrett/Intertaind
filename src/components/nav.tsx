@@ -13,6 +13,7 @@ import {
   Tv,
   BookOpen,
   Gamepad2,
+  Settings,
 } from "lucide-react";
 import SearchBar from "./search-bar";
 
@@ -142,6 +143,14 @@ export default function Nav() {
 
                     <div className="my-1 border-t border-surface-border" />
 
+                    <Link
+                      href="/settings"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                    >
+                      <Settings size={14} />
+                      Settings
+                    </Link>
                     <button
                       onClick={handleSignOut}
                       className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"

@@ -6,6 +6,7 @@ import { BookOpen, Film, Tv, Gamepad2 } from "lucide-react";
 import type { MediaType, SearchResult } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
 import { upsertMediaItem } from "@/app/actions/media";
+import MediaCardActions from "@/components/media-card-actions";
 
 const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
   book: BookOpen,
@@ -33,7 +34,7 @@ export default function SearchResultCard({ result }: { result: SearchResult }) {
 
   return (
     <div
-      className="group shelf-item cursor-pointer"
+      className="group shelf-item relative cursor-pointer"
       onClick={handleClick}
     >
       <div className="overflow-hidden rounded-md border border-surface-border bg-surface-raised">
@@ -51,14 +52,19 @@ export default function SearchResultCard({ result }: { result: SearchResult }) {
             </div>
           )}
 
-          {/* Media type icon tab — bottom-left with 45° corner cut */}
-          <div
-            className="absolute bottom-0 left-0 flex h-8 w-8 items-center justify-center bg-surface-raised"
-            style={{ clipPath: "polygon(0 0, 0 100%, 100% 100%, 100% 35%, 65% 0)" }}
-          >
-            <Icon size={13} className={`${config.color} -translate-x-px translate-y-0.5`} />
-          </div>
-
+          <MediaCardActions
+            mediaType={result.media_type}
+            mediaTitle={result.title}
+            searchResult={result}
+            totalSeasons={
+              (result.metadata?.number_of_seasons as number | undefined) ??
+              (result.metadata?.seasons as number | undefined) ??
+              1
+            }
+            seasonEpisodes={
+              (result.metadata?.season_episodes as Record<string, number> | undefined) ?? null
+            }
+          />
         </div>
 
         {/* Info */}
