@@ -1,5 +1,6 @@
 "use client";
 
+import { useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function ShelfTabs({
@@ -11,15 +12,24 @@ export default function ShelfTabs({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
   function setTab(key: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", key);
-    router.push(`?${params.toString()}`, { scroll: false });
+    // Wrap navigation in a transition so the current tab's content stays
+    // rendered until the new tab's server data arrives (no empty-state flash).
+    startTransition(() => {
+      router.push(`?${params.toString()}`, { scroll: false });
+    });
   }
 
   return (
-    <div className="mb-6 flex flex-wrap gap-2 border-b border-surface-border pb-1">
+    <div
+      className={`mb-6 flex flex-wrap gap-2 border-b border-surface-border pb-1 transition-opacity ${
+        isPending ? "opacity-70" : ""
+      }`}
+    >
       {tabs.map((tab) => (
         <button
           key={tab.key}

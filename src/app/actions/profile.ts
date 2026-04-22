@@ -14,6 +14,49 @@ async function getAuthUser() {
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_-]{3,30}$/;
 
+/**
+ * Create the profiles row for an OAuth user after they pick a username.
+ * Called from /auth/setup-username. Errors if a profile already exists for
+ * this user, so OAuth sign-ins that land here by accident can't overwrite
+ * their existing profile.
+ */
+export async function createInitialProfile(username: string): Promise<void> {
+  const { supabase, user } = await getAuthUser();
+
+  const name = username.trim();
+  if (!USERNAME_REGEX.test(name)) {
+    throw new Error(
+      "Username must be 3–30 chars: letters, numbers, underscore, or dash."
+    );
+  }
+
+  // Refuse if a profile row already exists
+  const { data: existingForUser } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (existingForUser) {
+    throw new Error("Profile already set up.");
+  }
+
+  // Uniqueness check (case-insensitive)
+  const { data: taken } = await supabase
+    .from("profiles")
+    .select("id")
+    .ilike("username", name)
+    .maybeSingle();
+  if (taken) throw new Error("Username is already taken.");
+
+  const { error } = await supabase
+    .from("profiles")
+    .insert({ id: user.id, username: name });
+  if (error) throw new Error(`Failed to create profile: ${error.message}`);
+
+  // Keep auth.users.user_metadata.username in sync
+  await supabase.auth.updateUser({ data: { username: name } });
+}
+
 export async function updateProfile(input: {
   username?: string;
   display_name?: string | null;

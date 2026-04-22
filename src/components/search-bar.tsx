@@ -31,7 +31,7 @@ export default function SearchBar() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search..."
-            className="w-40 rounded-lg border border-surface-border bg-surface-overlay py-1.5 pl-8 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:w-56 focus:border-brand focus:outline-none transition-all"
+            className="w-40 rounded-sm border border-surface-border bg-surface-overlay py-1.5 pl-8 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:w-56 focus:border-brand focus:outline-none transition-all"
           />
         </div>
       </form>
@@ -39,7 +39,7 @@ export default function SearchBar() {
       {/* Mobile: icon toggle */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center justify-center rounded-lg p-1.5 text-text-secondary hover:bg-surface-overlay hover:text-text-primary sm:hidden"
+        className="flex items-center justify-center rounded-sm p-1.5 text-text-secondary hover:bg-surface-overlay hover:text-text-primary sm:hidden"
       >
         <Search size={18} />
       </button>
@@ -55,7 +55,7 @@ export default function SearchBar() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search movies, shows, books, games..."
             autoFocus
-            className="w-full rounded-lg border border-surface-border bg-surface-raised px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+            className="w-full rounded-sm border border-surface-border bg-surface-raised px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
           />
         </form>
       )}

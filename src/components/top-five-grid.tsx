@@ -59,7 +59,7 @@ export default function TopFiveGrid({
           const items = topFives[type];
           const config = MEDIA_TYPE_CONFIG[type];
           const Icon = MEDIA_ICONS[type];
-          const emptySlots = isOwner ? MAX_PICKS - items.length : 0;
+          const emptySlots = MAX_PICKS - items.length;
 
           return (
             <div key={type} className="glass p-4">
@@ -115,27 +115,28 @@ export default function TopFiveGrid({
                   </div>
                 ))}
 
-                {/* Placeholder "+" slots (owner only) */}
-                {Array.from({ length: emptySlots }, (_, i) => (
-                  <button
-                    key={`empty-${i}`}
-                    onClick={() => setPickerType(type)}
-                    className="flex-1"
-                  >
-                    <div className="flex aspect-2/3 items-center justify-center rounded-lg border-2 border-dashed border-surface-border transition-colors hover:border-brand/40 hover:bg-surface-overlay">
-                      <Plus
-                        size={20}
-                        className="text-text-muted transition-colors group-hover:text-brand"
-                      />
+                {/* Empty slots. Interactive "+" for the owner, non-interactive
+                    dashed placeholder for visitors so picks stay left-aligned
+                    and don't stretch to fill the row. */}
+                {Array.from({ length: emptySlots }, (_, i) =>
+                  isOwner ? (
+                    <button
+                      key={`empty-${i}`}
+                      onClick={() => setPickerType(type)}
+                      className="flex-1"
+                    >
+                      <div className="flex aspect-2/3 items-center justify-center rounded-lg border-2 border-dashed border-surface-border transition-colors hover:border-brand/40 hover:bg-surface-overlay">
+                        <Plus
+                          size={20}
+                          className="text-text-muted transition-colors group-hover:text-brand"
+                        />
+                      </div>
+                    </button>
+                  ) : (
+                    <div key={`empty-${i}`} className="flex-1">
+                      <div className="aspect-2/3 rounded-lg border-2 border-dashed border-surface-border/60" />
                     </div>
-                  </button>
-                ))}
-
-                {/* Visitor sees empty message if no picks and not owner */}
-                {!isOwner && items.length === 0 && (
-                  <p className="w-full py-6 text-center text-sm text-text-muted">
-                    No top picks yet
-                  </p>
+                  )
                 )}
               </div>
             </div>

@@ -16,6 +16,7 @@ import {
   Settings,
 } from "lucide-react";
 import SearchBar from "./search-bar";
+import NotificationBell from "./notification-bell";
 
 export default function Nav() {
   const [user, setUser] = useState<User | null>(null);
@@ -79,13 +80,14 @@ export default function Nav() {
           <div className="sm:hidden">
             <SearchBar />
           </div>
+          {user && <NotificationBell />}
           {user ? (
             <div
               className="relative"
               onMouseEnter={() => setMenuOpen(true)}
               onMouseLeave={() => setMenuOpen(false)}
             >
-              <button className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary">
+              <button className="flex items-center gap-2 rounded-sm px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary">
                 <UserIcon size={16} />
                 <span className="hidden sm:inline">{username}</span>
                 <ChevronDown size={14} />
@@ -93,11 +95,11 @@ export default function Nav() {
 
               {menuOpen && (
                 <div className="absolute right-0 top-full z-50 w-48 pt-2">
-                  <div className="rounded-xl border border-surface-border bg-surface-raised p-1 shadow-xl shadow-black/40">
+                  <div className="rounded-sm border border-surface-border bg-surface-raised p-1 shadow-xl shadow-black/40">
                     <Link
                       href={`/u/${username}`}
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                      className="flex items-center gap-2 rounded-sm px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
                     >
                       <UserIcon size={14} />
                       Profile
@@ -111,7 +113,7 @@ export default function Nav() {
                     <Link
                       href={`/u/${username}/movies`}
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                      className="flex items-center gap-2 rounded-sm px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
                     >
                       <Film size={14} className="text-accent-movie" />
                       Movies
@@ -119,7 +121,7 @@ export default function Nav() {
                     <Link
                       href={`/u/${username}/tv-shows`}
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                      className="flex items-center gap-2 rounded-sm px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
                     >
                       <Tv size={14} className="text-accent-tv" />
                       Shows
@@ -127,7 +129,7 @@ export default function Nav() {
                     <Link
                       href={`/u/${username}/books`}
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                      className="flex items-center gap-2 rounded-sm px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
                     >
                       <BookOpen size={14} className="text-accent-book" />
                       Books
@@ -135,7 +137,7 @@ export default function Nav() {
                     <Link
                       href={`/u/${username}/games`}
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                      className="flex items-center gap-2 rounded-sm px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
                     >
                       <Gamepad2 size={14} className="text-accent-game" />
                       Games
@@ -146,14 +148,14 @@ export default function Nav() {
                     <Link
                       href="/settings"
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                      className="flex items-center gap-2 rounded-sm px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
                     >
                       <Settings size={14} />
                       Settings
                     </Link>
                     <button
                       onClick={handleSignOut}
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                      className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
                     >
                       <LogOut size={14} />
                       Sign out
@@ -166,13 +168,13 @@ export default function Nav() {
             <>
               <Link
                 href="/login"
-                className="rounded-lg px-4 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary"
+                className="rounded-sm px-4 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary"
               >
                 Sign in
               </Link>
               <Link
                 href="/signup"
-                className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-dark"
+                className="rounded-sm bg-brand px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-dark"
               >
                 Sign up
               </Link>

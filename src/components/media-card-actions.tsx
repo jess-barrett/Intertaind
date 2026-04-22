@@ -451,7 +451,7 @@ export default function MediaCardActions({
 
   // Popup row class — shared button look
   const rowCls =
-    "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-50";
+    "flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-50";
 
   return (
     <div ref={rootRef}>
@@ -531,7 +531,7 @@ export default function MediaCardActions({
             left: menuPos.left,
             bottom: menuPos.bottom,
           }}
-          className="z-50 w-48 rounded-lg border border-surface-border bg-surface-raised p-1 shadow-xl shadow-black/40"
+          className="z-50 w-48 rounded-sm border border-surface-border bg-surface-raised p-1 shadow-xl shadow-black/40"
         >
           {mediaType === "movie" && (
             <>
@@ -659,8 +659,13 @@ export default function MediaCardActions({
 
           <div className="my-1 border-t border-surface-border" />
 
-          <div className="flex items-center justify-center px-2.5 py-1.5">
-            <StarRating value={rating} onChange={handleRate} size={12} />
+          <div className="flex items-center justify-center px-2.5 py-0.5">
+            <StarRating
+              value={rating}
+              onChange={handleRate}
+              size={18}
+              showClear={false}
+            />
           </div>
 
           <div className="my-1 border-t border-surface-border" />
@@ -672,7 +677,7 @@ export default function MediaCardActions({
                 e.stopPropagation();
                 setMenuOpen(false);
               }}
-              className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+              className="flex items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
             >
               <ExternalLink size={12} />
               View details
@@ -792,7 +797,7 @@ function StatusButton({
         onClick();
       }}
       disabled={pending}
-      className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-surface-overlay disabled:opacity-50 ${
+      className={`flex w-full items-center justify-between rounded-sm px-2.5 py-1.5 text-xs transition-colors hover:bg-surface-overlay disabled:opacity-50 ${
         active ? "text-text-primary" : "text-text-secondary"
       }`}
     >

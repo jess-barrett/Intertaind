@@ -5,6 +5,9 @@ import { BookOpen, Film, Tv, Gamepad2, Settings } from "lucide-react";
 import type { MediaType } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
 import ProfileNavTabs from "./profile-nav-tabs";
+import FollowButton from "@/components/follow-button";
+import FollowActionsMenu from "@/components/follow-actions-menu";
+import { getFollowState } from "@/app/actions/social";
 
 const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
   movie: Film,
@@ -44,7 +47,8 @@ export default async function UserProfileLayout({
         .from("user_media")
         .select("id, media_items!inner(media_type)", { count: "exact", head: true })
         .eq("user_id", profile.id)
-        .eq("media_items.media_type", "movie"),
+        .eq("media_items.media_type", "movie")
+        .neq("status", "want"),
       supabase
         .from("user_media")
         .select("id, media_items!inner(media_type)", { count: "exact", head: true })
@@ -69,8 +73,10 @@ export default async function UserProfileLayout({
     video_game: gameCountRes.count ?? 0,
   };
 
-  const followersCount = 0;
-  const followingCount = 0;
+  const followersCount = profile.followers_count ?? 0;
+  const followingCount = profile.following_count ?? 0;
+
+  const followState = isOwner ? "self" : await getFollowState(profile.id);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8">
@@ -99,18 +105,24 @@ export default async function UserProfileLayout({
               </p>
             )}
             <div className="mt-3 flex items-center gap-4 text-sm">
-              <span className="text-text-secondary">
+              <Link
+                href={`/u/${username}/followers`}
+                className="text-text-secondary transition-colors hover:text-text-primary"
+              >
                 <span className="font-semibold text-text-primary">
                   {followersCount}
                 </span>{" "}
                 followers
-              </span>
-              <span className="text-text-secondary">
+              </Link>
+              <Link
+                href={`/u/${username}/following`}
+                className="text-text-secondary transition-colors hover:text-text-primary"
+              >
                 <span className="font-semibold text-text-primary">
                   {followingCount}
                 </span>{" "}
                 following
-              </span>
+              </Link>
               {isOwner && (
                 <Link
                   href="/settings"
@@ -121,6 +133,23 @@ export default async function UserProfileLayout({
                 </Link>
               )}
             </div>
+
+            {!isOwner && (
+              <div className="mt-4 flex items-center gap-2">
+                <FollowButton
+                  targetId={profile.id}
+                  targetIsPrivate={profile.is_private}
+                  initialState={followState}
+                  loggedIn={!!user}
+                />
+                {!!user && (
+                  <FollowActionsMenu
+                    targetId={profile.id}
+                    targetUsername={profile.username}
+                  />
+                )}
+              </div>
+            )}
           </div>
         </div>
 

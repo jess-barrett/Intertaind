@@ -1,11 +1,14 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { BookOpen, Film, Tv, Gamepad2 } from "lucide-react";
+import UserSearchBar from "@/components/user-search-bar";
 
 export default function ProfileNavTabs({ username }: { username: string }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const base = `/u/${username}`;
 
   const tabs = [
@@ -16,15 +19,28 @@ export default function ProfileNavTabs({ username }: { username: string }) {
     { href: `${base}/games`, label: "Games", icon: Gamepad2, color: "text-accent-game" },
   ] as const;
 
+  function navigate(href: string) {
+    // Transition keeps the current tab's content rendered until the new
+    // page's server data is ready — no empty-state flash between tabs.
+    startTransition(() => {
+      router.push(href);
+    });
+  }
+
   return (
-    <nav className="mt-10 flex gap-2 border-b border-surface-border pb-3">
+    <nav
+      className={`mt-10 flex flex-wrap items-center gap-2 border-b border-surface-border pb-3 transition-opacity ${
+        isPending ? "opacity-70" : ""
+      }`}
+    >
       {tabs.map((tab) => {
         const active = pathname === tab.href;
         return (
-          <Link
+          <button
             key={tab.href}
-            href={tab.href}
-            className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            type="button"
+            onClick={() => navigate(tab.href)}
+            className={`flex items-center gap-1.5 rounded-sm px-4 py-2 text-sm font-medium transition-colors ${
               active
                 ? "bg-surface-raised text-text-primary"
                 : "text-text-muted hover:bg-surface-raised hover:text-text-primary"
@@ -32,9 +48,14 @@ export default function ProfileNavTabs({ username }: { username: string }) {
           >
             {"icon" in tab && <tab.icon size={14} className={tab.color} />}
             {tab.label}
-          </Link>
+          </button>
         );
       })}
+
+      {/* Right-aligned user search */}
+      <div className="ml-auto">
+        <UserSearchBar />
+      </div>
     </nav>
   );
 }

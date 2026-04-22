@@ -1,5 +1,6 @@
 "use client";
 
+import { useTransition } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import type { MediaType } from "@/lib/types";
 import type { SortKey, MediaFilters } from "@/lib/media-query";
@@ -34,6 +35,7 @@ export default function MediaFilterBar({
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
+  const [isPending, startTransition] = useTransition();
 
   // Read current values from URL (query params) or from passed filters
   const decade =
@@ -59,33 +61,41 @@ export default function MediaFilterBar({
   }
 
   function applyChange(overrides: Partial<MediaFilters>) {
-    if ((mode === "redirect" || mode === "inplace") && mediaType) {
-      const filters = buildFilters(overrides);
-      const path = filtersToPath(mediaType, filters);
-      if (mode === "redirect") {
-        router.push(path);
-      } else {
-        router.replace(path, { scroll: false });
-      }
-    } else {
-      // queryparam mode — update search params in place
-      const params = new URLSearchParams(searchParams.toString());
-      for (const [key, value] of Object.entries(overrides)) {
-        if (value) {
-          params.set(key, String(value));
+    // Wrap in a transition so current results stay visible while the server
+    // re-fetches — otherwise the empty-state flash briefly shows.
+    startTransition(() => {
+      if ((mode === "redirect" || mode === "inplace") && mediaType) {
+        const filters = buildFilters(overrides);
+        const path = filtersToPath(mediaType, filters);
+        if (mode === "redirect") {
+          router.push(path);
         } else {
-          params.delete(key);
+          router.replace(path, { scroll: false });
         }
+      } else {
+        // queryparam mode — update search params in place
+        const params = new URLSearchParams(searchParams.toString());
+        for (const [key, value] of Object.entries(overrides)) {
+          if (value) {
+            params.set(key, String(value));
+          } else {
+            params.delete(key);
+          }
+        }
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
       }
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-    }
+    });
   }
 
   const selectClass =
-    "rounded-lg border border-surface-border bg-surface-overlay px-3 py-1.5 text-xs text-text-secondary focus:border-brand focus:outline-none";
+    "rounded-sm border border-surface-border bg-surface-overlay px-3 py-1.5 text-xs text-text-secondary focus:border-brand focus:outline-none";
 
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-surface-border pb-4">
+    <div
+      className={`mb-6 flex flex-wrap items-center gap-2 border-b border-surface-border pb-4 transition-opacity ${
+        isPending ? "opacity-70" : ""
+      }`}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-text-muted">Filter:</span>
 

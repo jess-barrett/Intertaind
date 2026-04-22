@@ -168,7 +168,7 @@ export default function SettingsForm({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="flex items-center gap-2 rounded-lg border border-surface-border bg-surface-raised px-3 py-2 text-sm text-text-primary transition-colors hover:bg-surface-overlay disabled:opacity-50"
+                className="flex items-center gap-2 rounded-sm border border-surface-border bg-surface-raised px-3 py-2 text-sm text-text-primary transition-colors hover:bg-surface-overlay disabled:opacity-50"
               >
                 {uploading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
                 Upload
@@ -178,7 +178,7 @@ export default function SettingsForm({
                   type="button"
                   onClick={handleRemoveAvatar}
                   disabled={uploading}
-                  className="flex items-center gap-2 rounded-lg border border-surface-border px-3 py-2 text-sm text-text-muted transition-colors hover:text-text-primary disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-sm border border-surface-border px-3 py-2 text-sm text-text-muted transition-colors hover:text-text-primary disabled:opacity-50"
                 >
                   <Trash2 size={14} />
                   Remove
@@ -211,7 +211,7 @@ export default function SettingsForm({
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-lg border border-surface-border bg-surface-overlay px-4 py-2.5 text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+              className="w-full rounded-sm border border-surface-border bg-surface-overlay px-4 py-2.5 text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
               required
             />
           </Field>
@@ -221,7 +221,7 @@ export default function SettingsForm({
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               maxLength={50}
-              className="w-full rounded-lg border border-surface-border bg-surface-overlay px-4 py-2.5 text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+              className="w-full rounded-sm border border-surface-border bg-surface-overlay px-4 py-2.5 text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
               placeholder={profile.username}
             />
           </Field>
@@ -231,11 +231,11 @@ export default function SettingsForm({
               onChange={(e) => setBio(e.target.value)}
               maxLength={500}
               rows={3}
-              className="w-full resize-none rounded-lg border border-surface-border bg-surface-overlay px-4 py-2.5 text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+              className="w-full resize-none rounded-sm border border-surface-border bg-surface-overlay px-4 py-2.5 text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
             />
           </Field>
 
-          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-surface-border p-3 transition-colors hover:bg-surface-overlay">
+          <label className="flex cursor-pointer items-start gap-3 rounded-sm border border-surface-border p-3 transition-colors hover:bg-surface-overlay">
             <input
               type="checkbox"
               checked={isPrivate}
@@ -258,7 +258,7 @@ export default function SettingsForm({
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50"
+              className="rounded-sm bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50"
             >
               {saving ? "Saving…" : "Save changes"}
             </button>
@@ -287,7 +287,7 @@ export default function SettingsForm({
                 type="email"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
-                className="w-full rounded-lg border border-surface-border bg-surface-overlay px-4 py-2.5 text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+                className="w-full rounded-sm border border-surface-border bg-surface-overlay px-4 py-2.5 text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
                 required
               />
             </Field>
@@ -295,7 +295,7 @@ export default function SettingsForm({
               <button
                 type="submit"
                 disabled={savingEmail || emailInput === email}
-                className="rounded-lg border border-surface-border bg-surface-raised px-4 py-2 text-sm text-text-primary transition-colors hover:bg-surface-overlay disabled:opacity-50"
+                className="rounded-sm border border-surface-border bg-surface-raised px-4 py-2 text-sm text-text-primary transition-colors hover:bg-surface-overlay disabled:opacity-50"
               >
                 {savingEmail ? "Sending…" : "Update email"}
               </button>
@@ -317,7 +317,7 @@ export default function SettingsForm({
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full rounded-lg border border-surface-border bg-surface-overlay px-4 py-2.5 text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+                className="w-full rounded-sm border border-surface-border bg-surface-overlay px-4 py-2.5 text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
                 minLength={8}
                 required
               />
@@ -327,7 +327,7 @@ export default function SettingsForm({
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full rounded-lg border border-surface-border bg-surface-overlay px-4 py-2.5 text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+                className="w-full rounded-sm border border-surface-border bg-surface-overlay px-4 py-2.5 text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
                 minLength={8}
                 required
               />
@@ -336,7 +336,7 @@ export default function SettingsForm({
               <button
                 type="submit"
                 disabled={savingPassword || !newPassword}
-                className="rounded-lg border border-surface-border bg-surface-raised px-4 py-2 text-sm text-text-primary transition-colors hover:bg-surface-overlay disabled:opacity-50"
+                className="rounded-sm border border-surface-border bg-surface-raised px-4 py-2 text-sm text-text-primary transition-colors hover:bg-surface-overlay disabled:opacity-50"
               >
                 {savingPassword ? "Saving…" : "Change password"}
               </button>

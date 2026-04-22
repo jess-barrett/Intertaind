@@ -15,8 +15,8 @@ import {
 } from "@/lib/media-query";
 
 const TABS = [
-  { key: "reading", label: "Reading", status: "in_progress" as TrackingStatus },
   { key: "read", label: "Read", status: "completed" as TrackingStatus },
+  { key: "reading", label: "Reading", status: "in_progress" as TrackingStatus },
   { key: "tbr", label: "TBR", status: "want" as TrackingStatus },
   { key: "dnf", label: "DNF", status: "dropped" as TrackingStatus },
 ];
@@ -66,6 +66,22 @@ export default async function BooksShelfPage({
   const tracked =
     (data as (UserMedia & { media_items: MediaItem })[]) ?? [];
 
+  // When viewing someone else's shelves, fetch the viewer's own tracking
+  // rows for the same media so the hover action bar reflects the viewer's
+  // state instead of the profile owner's.
+  const viewerTracking = new Map<string, UserMedia>();
+  if (!isOwner && user && tracked.length > 0) {
+    const mediaIds = tracked.map((t) => t.media_items.id);
+    const { data: vm } = await supabase
+      .from("user_media")
+      .select("*")
+      .eq("user_id", user.id)
+      .in("media_id", mediaIds);
+    for (const row of (vm as UserMedia[]) ?? []) {
+      viewerTracking.set(row.media_id, row);
+    }
+  }
+
   return (
     <div className="pt-8">
       {isOwner && (
@@ -89,7 +105,7 @@ export default async function BooksShelfPage({
               item={um.media_items}
               userRating={um.rating}
               userFavorite={um.is_favorite}
-              userMedia={um}
+              userMedia={isOwner ? um : viewerTracking.get(um.media_items.id) ?? null}
               customCoverUrl={
                 (um.progress as Record<string, unknown> | null)?.custom_cover_url as
                   | string

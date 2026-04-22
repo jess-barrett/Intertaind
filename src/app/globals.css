@@ -60,7 +60,7 @@ body {
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid var(--surface-border);
-  border-radius: 1rem;
+  border-radius: 0.25rem;
 }
 
 /* Shelf item hover lift */

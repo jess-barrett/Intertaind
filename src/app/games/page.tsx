@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { MediaItem } from "@/lib/types";
 import MediaFilterBar from "@/components/shelves/media-filter-bar";
 import PopularCarousel from "@/components/popular-carousel";
+import BackButton from "@/components/back-button";
 import {
   getSortOptionsForType,
   GENRES_BY_TYPE,
@@ -30,6 +31,9 @@ export default async function GamesLandingPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8">
+      <div className="mb-4">
+        <BackButton />
+      </div>
       <div className="mb-6 flex items-center gap-2">
         <Gamepad2 size={22} className="text-accent-game" />
         <h1 className="text-3xl font-bold text-text-primary">Games</h1>

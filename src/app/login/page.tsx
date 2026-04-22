@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import GoogleSignInButton from "@/components/google-sign-in-button";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -42,6 +43,14 @@ export default function LoginPage() {
         <p className="mb-6 text-text-secondary">
           Sign in to your Intertaind account
         </p>
+
+        <GoogleSignInButton />
+
+        <div className="my-6 flex items-center gap-3 text-xs text-text-muted">
+          <div className="h-px flex-1 bg-surface-border" />
+          or
+          <div className="h-px flex-1 bg-surface-border" />
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

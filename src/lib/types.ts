@@ -45,8 +45,44 @@ export interface Profile {
   avatar_url: string | null;
   bio: string | null;
   is_private: boolean;
+  followers_count: number;
+  following_count: number;
   created_at: string;
 }
+
+export type NotificationType =
+  | "follow"
+  | "follow_request"
+  | "follow_accepted";
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  actor_id: string;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface Follow {
+  follower_id: string;
+  following_id: string;
+  created_at: string;
+}
+
+export interface FollowRequest {
+  requester_id: string;
+  target_id: string;
+  created_at: string;
+}
+
+/** Viewer's relationship to a profile, for follow-button state. */
+export type FollowState =
+  | "self"
+  | "none"
+  | "following"
+  | "requested"
+  | "blocked_by_me";
 
 export interface UserMedia {
   id: string;

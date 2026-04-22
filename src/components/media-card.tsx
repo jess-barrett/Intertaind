@@ -41,7 +41,7 @@ export default function MediaCard({
 
   return (
     <Link href={`/media/${item.id}`} className="group shelf-item relative block">
-      <div className="overflow-hidden rounded-md border border-surface-border bg-surface-raised">
+      <div className="overflow-hidden rounded-sm border border-surface-border bg-surface-raised">
         {/* Cover image */}
         <div className="relative aspect-2/3 bg-surface-overlay">
           <CoverImage
