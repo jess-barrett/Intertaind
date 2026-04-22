@@ -218,6 +218,15 @@ export async function trackMedia(
 ): Promise<string> {
   const { supabase, user } = await getAuthUser();
 
+  // Read the existing row first so we can tell a status-change action
+  // apart from an add, and skip activity logging on pure metadata edits.
+  const { data: prior } = await supabase
+    .from("user_media")
+    .select("status, progress, rating, review, is_favorite")
+    .eq("user_id", user.id)
+    .eq("media_id", mediaId)
+    .maybeSingle();
+
   const { data, error } = await supabase
     .from("user_media")
     .upsert(
@@ -239,14 +248,56 @@ export async function trackMedia(
 
   if (error) throw new Error(`Failed to track media: ${error.message}`);
 
-  // Pick the activity_type by priority: explicit override > review > completed > added_to_shelf.
-  // The rule comes from the user's spec: a "full log" with a review should
-  // surface as the review; without a review but with rating/love it should
-  // surface as added-to-shelf with the rating + heart in the card.
+  // Pick the activity_type by priority: explicit override > review > pure
+  // status change (when the row already existed and the user isn't logging
+  // a rating/review) > completed > added_to_shelf.
   const hasReview = !!(options?.review && options.review.trim().length > 0);
+  const hasRatingChange = options?.rating !== undefined;
+  const priorSubStatus = (prior?.progress as Record<string, unknown> | null)
+    ?.sub_status;
+  const newSubStatus = (options?.progress as Record<string, unknown> | undefined)
+    ?.sub_status;
+  const isStatusChange =
+    !!prior &&
+    !hasReview &&
+    !hasRatingChange &&
+    (prior.status !== status || priorSubStatus !== newSubStatus);
   const activityType =
     options?.activity_type_override ??
-    (hasReview ? "reviewed" : status === "completed" ? "completed" : "added_to_shelf");
+    (hasReview
+      ? "reviewed"
+      : isStatusChange
+      ? "status_changed"
+      : status === "completed"
+      ? "completed"
+      : "added_to_shelf");
+
+  // Decide whether this trackMedia call deserves an activity row, or if it's
+  // a silent metadata edit (just adjusting hours played, a date, or rewriting
+  // an existing review). We only log on genuine "events":
+  //   - first time tracking
+  //   - status / sub_status changed
+  //   - newly added or cleared rating
+  //   - newly added review (not text edits to an existing review)
+  //   - log-episode / log-season overrides are always discrete events
+  const overrideAlwaysLogs =
+    options?.activity_type_override === "logged_episode" ||
+    options?.activity_type_override === "logged_season";
+  const isFirstTime = !prior;
+  const ratingNewlySet =
+    !!prior && prior.rating == null && options?.rating != null;
+  const ratingCleared =
+    !!prior && prior.rating != null && options?.rating === null;
+  const priorReviewText = typeof prior?.review === "string" ? prior.review.trim() : "";
+  const reviewNewlyAdded = !!prior && priorReviewText.length === 0 && hasReview;
+
+  const shouldLog =
+    overrideAlwaysLogs ||
+    isFirstTime ||
+    isStatusChange ||
+    ratingNewlySet ||
+    ratingCleared ||
+    reviewNewlyAdded;
 
   const metadata: Record<string, unknown> = {
     status,
@@ -270,13 +321,20 @@ export async function trackMedia(
     ?.current_episode;
   if (currentSeason != null) metadata.current_season = currentSeason;
   if (currentEpisode != null) metadata.current_episode = currentEpisode;
+  // Game hours_played, surfaced on the activity card next to the title.
+  const hoursPlayed = (options?.progress as Record<string, unknown> | undefined)
+    ?.hours_played;
+  if (typeof hoursPlayed === "number" && hoursPlayed > 0)
+    metadata.hours_played = hoursPlayed;
 
-  await supabase.from("activity_log").insert({
-    user_id: user.id,
-    media_id: mediaId,
-    activity_type: activityType,
-    metadata,
-  });
+  if (shouldLog) {
+    await supabase.from("activity_log").insert({
+      user_id: user.id,
+      media_id: mediaId,
+      activity_type: activityType,
+      metadata,
+    });
+  }
 
   return data.id;
 }
@@ -328,12 +386,17 @@ export async function rateMedia(
 
   if (error) throw new Error(`Failed to rate: ${error.message}`);
 
-  await supabase.from("activity_log").insert({
-    user_id: user.id,
-    media_id: data.media_id,
-    activity_type: "rated",
-    metadata: { rating },
-  });
+  // Skip the activity log when the user is *clearing* their rating —
+  // there's nothing meaningful to show in the feed for "unrated", and a
+  // null-rating row would otherwise display as a 0-star "Rated X".
+  if (rating !== null) {
+    await supabase.from("activity_log").insert({
+      user_id: user.id,
+      media_id: data.media_id,
+      activity_type: "rated",
+      metadata: { rating },
+    });
+  }
 }
 
 export async function toggleFavorite(userMediaId: string): Promise<boolean> {
@@ -407,13 +470,22 @@ export async function removeTracking(userMediaId: string): Promise<void> {
     .eq("user_id", user.id)
     .single();
 
-  const { error } = await supabase
+  // .select() forces Postgres to return the deleted rows so we can verify
+  // the delete actually happened — RLS blocks return success-with-0-rows,
+  // which would otherwise look identical to a real delete from the client.
+  const { data: deleted, error } = await supabase
     .from("user_media")
     .delete()
     .eq("id", userMediaId)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("id");
 
   if (error) throw new Error(`Failed to remove tracking: ${error.message}`);
+  if (!deleted || deleted.length === 0) {
+    throw new Error(
+      "Failed to remove tracking: nothing was deleted (likely an RLS policy issue)."
+    );
+  }
 
   if (existing) {
     await supabase.from("activity_log").insert({
@@ -423,6 +495,36 @@ export async function removeTracking(userMediaId: string): Promise<void> {
       metadata: { previous_status: existing.status },
     });
   }
+}
+
+/**
+ * Update just the current_page on a book's tracking row. Used by the
+ * inline progress bar on the Reading shelf. Intentionally lightweight —
+ * no activity log entry, no status change — a page bump isn't newsworthy.
+ */
+export async function updateBookPage(
+  userMediaId: string,
+  currentPage: number
+): Promise<void> {
+  const { supabase, user } = await getAuthUser();
+
+  const { data: current } = await supabase
+    .from("user_media")
+    .select("progress")
+    .eq("id", userMediaId)
+    .eq("user_id", user.id)
+    .single();
+
+  const progress = (current?.progress as Record<string, unknown> | null) ?? {};
+  progress.current_page = Math.max(0, Math.floor(currentPage));
+
+  const { error } = await supabase
+    .from("user_media")
+    .update({ progress })
+    .eq("id", userMediaId)
+    .eq("user_id", user.id);
+
+  if (error) throw new Error(`Failed to update page: ${error.message}`);
 }
 
 /**

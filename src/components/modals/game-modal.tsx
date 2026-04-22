@@ -56,15 +56,26 @@ export default function GameModal({
   };
 }) {
   const initialSubStatus = (initial?.progress?.sub_status as GameStatus) ?? "played";
+  const initialHoursPlayed =
+    (initial?.progress?.hours_played as number)?.toString() ?? "";
+  const initialRating = initial?.rating ? initial.rating / 2 : null;
+  const initialReview = initial?.review ?? "";
+  const initialFavorite = initial?.is_favorite ?? false;
   const [gameStatus, setGameStatus] = useState<GameStatus>(initialSubStatus);
-  const [hoursPlayed, setHoursPlayed] = useState<string>(
-    (initial?.progress?.hours_played as number)?.toString() ?? ""
-  );
-  const [rating, setRating] = useState<number | null>(
-    initial?.rating ? initial.rating / 2 : null
-  );
-  const [review, setReview] = useState(initial?.review ?? "");
-  const [isFavorite, setIsFavorite] = useState(initial?.is_favorite ?? false);
+  const [hoursPlayed, setHoursPlayed] = useState<string>(initialHoursPlayed);
+  const [rating, setRating] = useState<number | null>(initialRating);
+  const [review, setReview] = useState(initialReview);
+  const [isFavorite, setIsFavorite] = useState(initialFavorite);
+
+  // Disable Save until something differs from the loaded values, so opening
+  // the modal and clicking Save without edits doesn't generate a noisy
+  // activity row.
+  const isDirty =
+    gameStatus !== initialSubStatus ||
+    hoursPlayed !== initialHoursPlayed ||
+    rating !== initialRating ||
+    review !== initialReview ||
+    isFavorite !== initialFavorite;
 
   function handleSave() {
     const trackingStatus = GAME_STATUS_TO_TRACKING[gameStatus];
@@ -97,7 +108,7 @@ export default function GameModal({
           <select
             value={gameStatus}
             onChange={(e) => setGameStatus(e.target.value as GameStatus)}
-            className="w-full rounded-lg border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none"
+            className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none"
           >
             {STATUS_OPTIONS.map((opt) => (
               <option key={opt.key} value={opt.key}>
@@ -119,7 +130,7 @@ export default function GameModal({
             value={hoursPlayed}
             onChange={(e) => setHoursPlayed(e.target.value)}
             placeholder="0"
-            className="w-full rounded-lg border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+            className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
           />
         </div>
 
@@ -141,7 +152,7 @@ export default function GameModal({
             onChange={(e) => setReview(e.target.value)}
             placeholder="Write a review..."
             rows={3}
-            className="w-full rounded-lg border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+            className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
           />
         </div>
 
@@ -150,7 +161,7 @@ export default function GameModal({
           <button
             type="button"
             onClick={() => setIsFavorite(!isFavorite)}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+            className={`flex items-center gap-1.5 rounded-sm px-3 py-2 text-sm transition-colors ${
               isFavorite
                 ? "bg-accent-movie/10 text-accent-movie"
                 : "text-text-muted hover:text-text-secondary"
@@ -162,7 +173,8 @@ export default function GameModal({
 
           <button
             onClick={handleSave}
-            className="rounded-lg bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark"
+            disabled={!isDirty}
+            className="rounded-sm bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50 disabled:hover:bg-brand"
           >
             Save
           </button>

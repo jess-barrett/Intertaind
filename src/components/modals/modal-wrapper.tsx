@@ -36,13 +36,13 @@ export default function ModalWrapper({
       onClick={handleOverlayClick}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
     >
-      <div className="w-full max-w-lg rounded-2xl border border-surface-border bg-surface-raised shadow-2xl shadow-black/50">
+      <div className="w-full max-w-lg rounded-sm border border-surface-border bg-surface-raised shadow-2xl shadow-black/50">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-border px-6 py-4">
           <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary"
+            className="flex h-8 w-8 items-center justify-center rounded-sm text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary"
           >
             <X size={18} />
           </button>

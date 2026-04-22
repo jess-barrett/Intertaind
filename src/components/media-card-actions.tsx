@@ -226,6 +226,24 @@ export default function MediaCardActions({
   }
 
   function handleStatusClick(newStatus: TrackingStatus) {
+    // Toggle behavior for the "want" (Watchlist / TBR / Wishlist) buttons:
+    // clicking while already on the wishlist removes the tracking entirely
+    // so users can take it off without going to the media detail page.
+    if (newStatus === "want" && status === "want" && userMediaId) {
+      startTransition(async () => {
+        try {
+          await removeTracking(userMediaId);
+          setUserMediaId(null);
+          setStatus(null);
+          setFavorite(false);
+          setRating(null);
+          router.refresh();
+        } catch (err) {
+          console.error(err);
+        }
+      });
+      return;
+    }
     startTransition(async () => {
       try {
         const id = await ensureMediaId();
@@ -287,12 +305,14 @@ export default function MediaCardActions({
   /** Save handler shared by Movie/TV/Book/Game modals (mirrors media-detail). */
   function handleModalSave(data: {
     status: string;
-    rating: number | null;
-    review: string;
-    is_favorite: boolean;
+    rating?: number | null;
+    review?: string;
+    is_favorite?: boolean;
     progress: Record<string, unknown>;
     started_at?: string | null;
     completed_at?: string | null;
+    activity_type_override?: string;
+    activity_metadata_extra?: Record<string, unknown>;
   }) {
     setMovieModalOpen(false);
     setTvModalOpen(false);
@@ -309,11 +329,17 @@ export default function MediaCardActions({
           progress: data.progress,
           started_at: data.started_at,
           completed_at: data.completed_at,
+          activity_type_override: data.activity_type_override,
+          activity_metadata_extra: data.activity_metadata_extra,
         });
         setUserMediaId(umId);
         setStatus(data.status as TrackingStatus);
-        setRating(data.rating ? data.rating / 2 : null);
-        setFavorite(data.is_favorite);
+        if (data.rating !== undefined) {
+          setRating(data.rating ? data.rating / 2 : null);
+        }
+        if (data.is_favorite !== undefined) {
+          setFavorite(data.is_favorite);
+        }
         setProgress(data.progress);
         const sub = data.progress?.sub_status as GameStatus | undefined;
         if (sub) setGameStatus(sub);
@@ -728,7 +754,7 @@ export default function MediaCardActions({
           user to the media page via the Link). */}
       {movieModalOpen &&
         createPortal(
-          <div onClick={stopLink} onMouseDown={stopLink}>
+          <div onClick={(e) => e.stopPropagation()}>
             <MovieModal
               title={mediaTitle}
               onClose={() => setMovieModalOpen(false)}
@@ -740,7 +766,7 @@ export default function MediaCardActions({
         )}
       {tvModalOpen &&
         createPortal(
-          <div onClick={stopLink} onMouseDown={stopLink}>
+          <div onClick={(e) => e.stopPropagation()}>
             <TVModal
               title={mediaTitle}
               totalSeasons={totalSeasons ?? 1}
@@ -753,7 +779,7 @@ export default function MediaCardActions({
         )}
       {bookModalOpen &&
         createPortal(
-          <div onClick={stopLink} onMouseDown={stopLink}>
+          <div onClick={(e) => e.stopPropagation()}>
             <BookModal
               title={mediaTitle}
               onClose={() => setBookModalOpen(false)}
@@ -765,7 +791,7 @@ export default function MediaCardActions({
         )}
       {gameModalOpen &&
         createPortal(
-          <div onClick={stopLink} onMouseDown={stopLink}>
+          <div onClick={(e) => e.stopPropagation()}>
             <GameModal
               title={mediaTitle}
               onClose={() => setGameModalOpen(false)}
@@ -777,7 +803,7 @@ export default function MediaCardActions({
         )}
       {logEpisodeModalOpen &&
         createPortal(
-          <div onClick={stopLink} onMouseDown={stopLink}>
+          <div onClick={(e) => e.stopPropagation()}>
             <LogEpisodeModal
               title={mediaTitle}
               seasonEpisodes={seasonEpisodes ?? null}
@@ -792,7 +818,7 @@ export default function MediaCardActions({
         )}
       {currentEpisodeModalOpen &&
         createPortal(
-          <div onClick={stopLink} onMouseDown={stopLink}>
+          <div onClick={(e) => e.stopPropagation()}>
             <CurrentEpisodeModal
               title={mediaTitle}
               seasonEpisodes={seasonEpisodes ?? null}

@@ -25,3 +25,76 @@ export async function listUserActivity(
     .range(offset, offset + limit - 1);
   return (data as ActivityWithMedia[] | null) ?? [];
 }
+
+/**
+ * Fetch the user's most recent "reviewed" activity rows — used to populate
+ * the Recent Reviews section on the profile overview. Reuses the activity
+ * log so the existing ActivityItem renderer (cover + stars + review text)
+ * applies without duplication.
+ */
+export async function listUserRecentReviews(
+  userId: string,
+  limit = 3
+): Promise<ActivityWithMedia[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("activity_log")
+    .select(
+      "id, user_id, media_id, activity_type, metadata, created_at, media:media_items(id, title, cover_image_url, media_type)"
+    )
+    .eq("user_id", userId)
+    .eq("activity_type", "reviewed")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  return (data as ActivityWithMedia[] | null) ?? [];
+}
+
+/**
+ * Paginated variant: returns the page + an exact total count in a single
+ * round-trip. The count lets the UI render numbered page links (first, last,
+ * window around current). Backed by the (user_id, created_at DESC) index
+ * from migration 013.
+ */
+export async function listUserActivityPage(
+  userId: string,
+  limit: number,
+  offset: number
+): Promise<{ items: ActivityWithMedia[]; total: number }> {
+  const supabase = await createClient();
+  const { data, count } = await supabase
+    .from("activity_log")
+    .select(
+      "id, user_id, media_id, activity_type, metadata, created_at, media:media_items(id, title, cover_image_url, media_type)",
+      { count: "exact" }
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  return {
+    items: (data as ActivityWithMedia[] | null) ?? [],
+    total: count ?? 0,
+  };
+}
+
+/** Paginated review list — activity_log filtered to activity_type=reviewed. */
+export async function listUserReviewsPage(
+  userId: string,
+  limit: number,
+  offset: number
+): Promise<{ items: ActivityWithMedia[]; total: number }> {
+  const supabase = await createClient();
+  const { data, count } = await supabase
+    .from("activity_log")
+    .select(
+      "id, user_id, media_id, activity_type, metadata, created_at, media:media_items(id, title, cover_image_url, media_type)",
+      { count: "exact" }
+    )
+    .eq("user_id", userId)
+    .eq("activity_type", "reviewed")
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  return {
+    items: (data as ActivityWithMedia[] | null) ?? [],
+    total: count ?? 0,
+  };
+}

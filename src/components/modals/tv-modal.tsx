@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Heart } from "lucide-react";
 import ModalWrapper from "./modal-wrapper";
 import StarRating from "@/components/star-rating";
 
@@ -41,7 +40,9 @@ export default function TVModal({
   const [seasons, setSeasons] = useState<
     Record<string, { rating: number | null; review: string; completed: boolean }>
   >(existingSeasons);
-  const [isFavorite, setIsFavorite] = useState(initial?.is_favorite ?? false);
+  // Carry the existing favorite state through unchanged — the button has
+  // been removed but we don't want to overwrite an existing favorite.
+  const isFavorite = initial?.is_favorite ?? false;
   // Remember the season the user most recently saved so we can surface it
   // as a "logged_season" activity row with its specific rating/review.
   const [lastLoggedSeason, setLastLoggedSeason] = useState<number | null>(null);
@@ -49,6 +50,9 @@ export default function TVModal({
   const seasonCount = Math.max(totalSeasons, 1);
   const completedCount = Object.values(seasons).filter((s) => s.completed).length;
   const allCompleted = completedCount === seasonCount;
+  // Disable Save until the seasons map differs from what we loaded — opening
+  // and closing without changes shouldn't fire a fresh activity row.
+  const isDirty = JSON.stringify(seasons) !== JSON.stringify(existingSeasons);
 
   function handleSelectSeason(num: number) {
     const existing = seasons[String(num)];
@@ -147,14 +151,14 @@ export default function TVModal({
               onChange={(e) => setSeasonReview(e.target.value)}
               placeholder="Thoughts on this season..."
               rows={3}
-              className="w-full rounded-lg border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+              className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
             />
           </div>
 
           <div className="flex justify-end pt-2">
             <button
               onClick={handleSaveSeason}
-              className="rounded-lg bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark"
+              className="rounded-sm bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark"
             >
               Save season
             </button>
@@ -179,7 +183,7 @@ export default function TVModal({
               <button
                 key={num}
                 onClick={() => handleSelectSeason(num)}
-                className={`rounded-lg border px-3 py-3 text-center text-sm font-medium transition-colors ${
+                className={`rounded-sm border px-3 py-3 text-center text-sm font-medium transition-colors ${
                   logged
                     ? "border-accent-tv/30 bg-accent-tv/10 text-accent-tv"
                     : "border-surface-border text-text-secondary hover:bg-surface-overlay"
@@ -196,25 +200,12 @@ export default function TVModal({
           })}
         </div>
 
-        {/* Footer: heart + save */}
-        <div className="flex items-center justify-between border-t border-surface-border pt-4">
-          <button
-            type="button"
-            onClick={() => setIsFavorite(!isFavorite)}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-colors ${
-              isFavorite
-                ? "bg-accent-movie/10 text-accent-movie"
-                : "text-text-muted hover:text-text-secondary"
-            }`}
-          >
-            <Heart size={16} className={isFavorite ? "fill-accent-movie" : ""} />
-            {isFavorite ? "Loved" : "Love it?"}
-          </button>
-
+        {/* Footer */}
+        <div className="flex justify-end border-t border-surface-border pt-4">
           <button
             onClick={handleSaveAll}
-            disabled={completedCount === 0}
-            className="rounded-lg bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50"
+            disabled={completedCount === 0 || !isDirty}
+            className="rounded-sm bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50 disabled:hover:bg-brand"
           >
             Save
           </button>

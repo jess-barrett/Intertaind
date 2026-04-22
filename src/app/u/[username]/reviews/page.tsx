@@ -3,22 +3,15 @@ import { notFound } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import ActivityItem from "@/components/activity/activity-item";
-import { listUserActivityPage } from "@/app/actions/activity";
+import { listUserReviewsPage } from "@/app/actions/activity";
 
-const PAGE_SIZE = 20;
-// Hard-cap how deep a viewer can paginate. Beyond this the query cost isn't
-// worth it and nobody is scrolling 400 items in anyway.
+const PAGE_SIZE = 10;
 const MAX_PAGES = 20;
 
 function pageHref(username: string, n: number) {
-  return n === 1 ? `/u/${username}/activity` : `/u/${username}/activity?page=${n}`;
+  return n === 1 ? `/u/${username}/reviews` : `/u/${username}/reviews?page=${n}`;
 }
 
-/**
- * Build the list of page numbers to render:
- *   first, ...(maybe ellipsis), page-1, page, page+1, (maybe ellipsis)..., last
- * Edges collapse when the window already touches 1 or totalPages.
- */
 function getPageNumbers(current: number, total: number): (number | "ellipsis")[] {
   if (total <= 1) return [];
   const windowStart = Math.max(1, current - 1);
@@ -37,7 +30,7 @@ function getPageNumbers(current: number, total: number): (number | "ellipsis")[]
   return out;
 }
 
-export default async function ActivityPage({
+export default async function ReviewsPage({
   params,
   searchParams,
 }: {
@@ -59,7 +52,7 @@ export default async function ActivityPage({
     .single();
   if (!profile) notFound();
 
-  const { items, total } = await listUserActivityPage(profile.id, PAGE_SIZE, offset);
+  const { items, total } = await listUserReviewsPage(profile.id, PAGE_SIZE, offset);
   const totalPages = Math.min(MAX_PAGES, Math.max(1, Math.ceil(total / PAGE_SIZE)));
   const pageNumbers = getPageNumbers(page, totalPages);
   const hasPrev = page > 1;
@@ -67,11 +60,11 @@ export default async function ActivityPage({
 
   return (
     <div className="pt-8">
-      <h2 className="mb-4 text-lg font-semibold text-text-primary">Activity</h2>
+      <h2 className="mb-4 text-lg font-semibold text-text-primary">Reviews</h2>
 
       {items.length === 0 ? (
         <p className="py-12 text-center text-sm text-text-muted">
-          {page === 1 ? "Nothing here yet." : "No more activity."}
+          {page === 1 ? "No reviews yet." : "No more reviews."}
         </p>
       ) : (
         <div className="flex flex-col gap-2">

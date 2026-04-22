@@ -165,7 +165,7 @@ export default async function MediaDetailPage({
       <div className="flex flex-col gap-8 md:flex-row">
         {/* Left: Cover + Stats */}
         <div className="w-full shrink-0 md:w-56">
-          <div className="overflow-hidden rounded-lg border border-surface-border bg-surface-overlay aspect-2/3">
+          <div className="overflow-hidden rounded-sm border border-surface-border bg-surface-overlay aspect-2/3">
             <CoverImage
               src={displayCoverUrl}
               alt={media.title}

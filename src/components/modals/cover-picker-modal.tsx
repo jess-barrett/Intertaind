@@ -72,7 +72,7 @@ export default function CoverPickerModal({
             <button
               onClick={handleReset}
               disabled={isPending}
-              className="flex items-center gap-1.5 rounded-lg border border-surface-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-sm border border-surface-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-50"
             >
               <RotateCcw size={12} />
               Reset to default
@@ -97,7 +97,7 @@ export default function CoverPickerModal({
                   key={opt.volumeId}
                   onClick={() => handlePick(opt.coverUrl)}
                   disabled={isPending}
-                  className={`group relative overflow-hidden rounded-md border-2 transition-colors ${
+                  className={`group relative overflow-hidden rounded-sm border-2 transition-colors ${
                     isSelected
                       ? "border-brand"
                       : "border-surface-border hover:border-brand/40"

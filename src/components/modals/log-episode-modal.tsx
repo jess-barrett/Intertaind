@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Heart } from "lucide-react";
 import ModalWrapper from "./modal-wrapper";
 import StarRating from "@/components/star-rating";
 
@@ -40,7 +39,6 @@ export default function LogEpisodeModal({
   const [episode, setEpisode] = useState<number | null>(initialEpisode ?? null);
   const [rating, setRating] = useState<number | null>(null);
   const [review, setReview] = useState("");
-  const [isFavorite, setIsFavorite] = useState(false);
   const [manualEpisodeCount, setManualEpisodeCount] = useState<number>(0);
 
   const knownCount = seasonEpisodes?.[String(season)] ?? 0;
@@ -53,7 +51,7 @@ export default function LogEpisodeModal({
       episode,
       rating: rating ? rating * 2 : null,
       review,
-      is_favorite: isFavorite,
+      is_favorite: false,
     });
   }
 
@@ -71,7 +69,7 @@ export default function LogEpisodeModal({
                   setSeason(s);
                   setEpisode(null);
                 }}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`rounded-sm px-3 py-1.5 text-sm font-medium transition-colors ${
                   season === s
                     ? "bg-accent-tv/15 text-accent-tv border border-accent-tv/30"
                     : "border border-surface-border text-text-secondary hover:bg-surface-overlay"
@@ -93,7 +91,7 @@ export default function LogEpisodeModal({
               value={manualEpisodeCount || ""}
               onChange={(e) => setManualEpisodeCount(Number(e.target.value))}
               placeholder="Number of episodes in this season"
-              className="w-full rounded-lg border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+              className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
             />
           ) : (
             <div className="grid grid-cols-8 gap-2 sm:grid-cols-10">
@@ -102,7 +100,7 @@ export default function LogEpisodeModal({
                   <button
                     key={ep}
                     onClick={() => setEpisode(ep)}
-                    className={`flex h-9 items-center justify-center rounded-md text-xs font-medium transition-all ${
+                    className={`flex h-9 items-center justify-center rounded-sm text-xs font-medium transition-all ${
                       episode === ep
                         ? "bg-accent-tv text-white"
                         : "border border-surface-border text-text-muted hover:bg-surface-overlay hover:text-text-secondary"
@@ -133,32 +131,18 @@ export default function LogEpisodeModal({
                 onChange={(e) => setReview(e.target.value)}
                 placeholder="Thoughts on this episode..."
                 rows={3}
-                className="w-full rounded-lg border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+                className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
               />
             </div>
           </>
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-surface-border pt-4">
-          <button
-            type="button"
-            onClick={() => setIsFavorite(!isFavorite)}
-            disabled={!episode}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-colors disabled:opacity-50 ${
-              isFavorite
-                ? "bg-accent-movie/10 text-accent-movie"
-                : "text-text-muted hover:text-text-secondary"
-            }`}
-          >
-            <Heart size={16} className={isFavorite ? "fill-accent-movie" : ""} />
-            {isFavorite ? "Loved" : "Love it?"}
-          </button>
-
+        <div className="flex justify-end border-t border-surface-border pt-4">
           <button
             onClick={handleSave}
             disabled={!episode}
-            className="rounded-lg bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50"
+            className="rounded-sm bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50"
           >
             Save
           </button>

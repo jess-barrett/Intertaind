@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { BookOpen } from "lucide-react";
 import type { MediaItem, TrackingStatus, UserMedia } from "@/lib/types";
 import MediaCard from "@/components/media-card";
+import BookProgressHeader from "@/components/book-progress-header";
 import ShelfSearch from "@/components/shelves/shelf-search";
 import ShelfTabs from "@/components/shelves/shelf-tabs";
 import MediaFilterBar from "@/components/shelves/media-filter-bar";
@@ -99,20 +100,42 @@ export default async function BooksShelfPage({
 
       {tracked.length > 0 ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-          {tracked.map((um) => (
-            <MediaCard
-              key={um.media_items.id}
-              item={um.media_items}
-              userRating={um.rating}
-              userFavorite={um.is_favorite}
-              userMedia={isOwner ? um : viewerTracking.get(um.media_items.id) ?? null}
-              customCoverUrl={
-                (um.progress as Record<string, unknown> | null)?.custom_cover_url as
-                  | string
-                  | undefined
-              }
-            />
-          ))}
+          {tracked.map((um) => {
+            const progress =
+              (um.progress as Record<string, unknown> | null) ?? {};
+            const isReadingTab = activeTab.key === "reading";
+            const totalPages =
+              (um.media_items.metadata?.page_count as number | undefined) ??
+              null;
+            const currentPage =
+              (progress.current_page as number | undefined) ?? 0;
+
+            return (
+              <MediaCard
+                key={um.media_items.id}
+                item={um.media_items}
+                userRating={um.rating}
+                userFavorite={um.is_favorite}
+                userMedia={
+                  isOwner ? um : viewerTracking.get(um.media_items.id) ?? null
+                }
+                customCoverUrl={progress.custom_cover_url as string | undefined}
+                topSlot={
+                  isReadingTab ? (
+                    <BookProgressHeader
+                      userMediaId={um.id}
+                      mediaId={um.media_items.id}
+                      title={um.media_items.title}
+                      startedAt={um.started_at}
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      editable={isOwner}
+                    />
+                  ) : undefined
+                }
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="flex flex-col items-center py-20 text-center">

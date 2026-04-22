@@ -94,6 +94,7 @@ export type ActivityType =
   | "removed"
   | "logged_episode"
   | "logged_season"
+  | "started_reading"
   | "added_to_top"
   | "removed_from_top";
 

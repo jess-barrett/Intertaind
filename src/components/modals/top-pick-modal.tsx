@@ -72,7 +72,7 @@ export default function TopPickModal({
                 disabled={isAdded || isPending}
                 className="group relative text-left disabled:opacity-60"
               >
-                <div className="aspect-2/3 overflow-hidden rounded-lg border border-surface-border bg-surface-overlay transition-all group-hover:border-brand/40">
+                <div className="aspect-2/3 overflow-hidden rounded-sm border border-surface-border bg-surface-overlay transition-all group-hover:border-brand/40">
                   {item.cover_image_url ? (
                     <img
                       src={item.cover_image_url}
@@ -89,14 +89,14 @@ export default function TopPickModal({
 
                   {/* Added overlay */}
                   {isAdded && (
-                    <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50">
+                    <div className="absolute inset-0 flex items-center justify-center rounded-sm bg-black/50">
                       <Check size={20} className="text-accent-book" />
                     </div>
                   )}
 
                   {/* Saving spinner */}
                   {isSaving && (
-                    <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50">
+                    <div className="absolute inset-0 flex items-center justify-center rounded-sm bg-black/50">
                       <Loader2
                         size={20}
                         className="animate-spin text-white"

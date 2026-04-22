@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Heart } from "lucide-react";
+import { Check } from "lucide-react";
 import ModalWrapper from "./modal-wrapper";
 import StarRating from "@/components/star-rating";
 
@@ -45,7 +45,6 @@ export default function CurrentEpisodeModal({
   const [manualEpisodeCount, setManualEpisodeCount] = useState<number>(0);
   const [rating, setRating] = useState<number | null>(null);
   const [review, setReview] = useState("");
-  const [isFavorite, setIsFavorite] = useState(false);
 
   const knownCount = seasonEpisodes?.[String(selectedSeason)] ?? 0;
   const episodeCount = knownCount > 0 ? knownCount : manualEpisodeCount;
@@ -61,7 +60,7 @@ export default function CurrentEpisodeModal({
       episode: currentEpisode,
       rating,
       review: review.trim(),
-      is_favorite: isFavorite,
+      is_favorite: false,
     });
   }
 
@@ -79,7 +78,7 @@ export default function CurrentEpisodeModal({
                   setSelectedSeason(s);
                   setCurrentEpisode(null);
                 }}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`rounded-sm px-3 py-1.5 text-sm font-medium transition-colors ${
                   selectedSeason === s
                     ? "bg-accent-tv/15 text-accent-tv border border-accent-tv/30"
                     : "border border-surface-border text-text-secondary hover:bg-surface-overlay"
@@ -111,7 +110,7 @@ export default function CurrentEpisodeModal({
                   setManualEpisodeCount(Number(e.target.value))
                 }
                 placeholder="Number of episodes"
-                className="w-full rounded-lg border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+                className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
               />
             </div>
           ) : (
@@ -125,7 +124,7 @@ export default function CurrentEpisodeModal({
                     <button
                       key={ep}
                       onClick={() => handleEpisodeClick(ep)}
-                      className={`relative flex h-9 items-center justify-center rounded-md text-xs font-medium transition-all ${
+                      className={`relative flex h-9 items-center justify-center rounded-sm text-xs font-medium transition-all ${
                         isCurrent
                           ? "bg-brand text-white ring-2 ring-brand-light"
                           : isWatched
@@ -160,21 +159,7 @@ export default function CurrentEpisodeModal({
           <p className="mb-2 text-xs font-medium text-text-muted">
             Rate this season (optional)
           </p>
-          <div className="flex items-center gap-3">
-            <StarRating value={rating} onChange={setRating} size={20} />
-            <button
-              type="button"
-              onClick={() => setIsFavorite((v) => !v)}
-              aria-label={isFavorite ? "Unfavorite" : "Favorite"}
-              className={`flex h-8 w-8 items-center justify-center rounded-sm border border-surface-border transition-colors ${
-                isFavorite
-                  ? "text-accent-movie"
-                  : "text-text-muted hover:text-text-secondary"
-              }`}
-            >
-              <Heart size={14} className={isFavorite ? "fill-current" : ""} />
-            </button>
-          </div>
+          <StarRating value={rating} onChange={setRating} size={20} />
         </div>
 
         {/* Review */}
@@ -196,7 +181,7 @@ export default function CurrentEpisodeModal({
           <button
             onClick={handleSave}
             disabled={!currentEpisode}
-            className="rounded-lg bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50"
+            className="rounded-sm bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50"
           >
             Save
           </button>

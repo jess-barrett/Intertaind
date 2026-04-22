@@ -21,6 +21,7 @@ export default function MediaCard({
   userFavorite,
   customCoverUrl,
   userMedia,
+  topSlot,
 }: {
   item: MediaItem;
   /** No text section below cover */
@@ -33,6 +34,9 @@ export default function MediaCard({
   customCoverUrl?: string | null;
   /** Existing tracking row — drives the hover action bar's initial state */
   userMedia?: UserMedia | null;
+  /** Optional content rendered above the cover, inside the card border but
+      outside the Link (so interactive widgets like inputs work). */
+  topSlot?: React.ReactNode;
 }) {
   const config = MEDIA_TYPE_CONFIG[item.media_type];
   const Icon = MEDIA_ICONS[item.media_type];
@@ -40,8 +44,11 @@ export default function MediaCard({
   const coverUrl = customCoverUrl ?? item.cover_image_url;
 
   return (
-    <Link href={`/media/${item.id}`} className="group shelf-item relative block">
-      <div className="overflow-hidden rounded-sm border border-surface-border bg-surface-raised">
+    <div className="group shelf-item relative overflow-hidden rounded-sm border border-surface-border bg-surface-raised">
+      {topSlot && (
+        <div className="border-b border-surface-border">{topSlot}</div>
+      )}
+      <Link href={`/media/${item.id}`} className="block">
         {/* Cover image */}
         <div className="relative aspect-2/3 bg-surface-overlay">
           <CoverImage
@@ -111,7 +118,7 @@ export default function MediaCard({
             </div>
           </div>
         )}
-      </div>
-    </Link>
+      </Link>
+    </div>
   );
 }

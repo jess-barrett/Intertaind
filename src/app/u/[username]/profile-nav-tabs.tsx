@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { BookOpen, Film, Tv, Gamepad2, History } from "lucide-react";
+import { BookOpen, Film, Tv, Gamepad2, History, MessageSquare, User } from "lucide-react";
 import UserSearchBar from "@/components/user-search-bar";
 
 export default function ProfileNavTabs({ username }: { username: string }) {
@@ -12,12 +12,13 @@ export default function ProfileNavTabs({ username }: { username: string }) {
   const base = `/u/${username}`;
 
   const tabs = [
-    { href: base, label: "Overview" },
+    { href: base, label: "Profile", icon: User, color: "text-text-secondary" },
     { href: `${base}/movies`, label: "Movies", icon: Film, color: "text-accent-movie" },
     { href: `${base}/tv-shows`, label: "Shows", icon: Tv, color: "text-accent-tv" },
     { href: `${base}/books`, label: "Books", icon: BookOpen, color: "text-accent-book" },
     { href: `${base}/games`, label: "Games", icon: Gamepad2, color: "text-accent-game" },
     { href: `${base}/activity`, label: "Activity", icon: History, color: "text-text-secondary" },
+    { href: `${base}/reviews`, label: "Reviews", icon: MessageSquare, color: "text-text-secondary" },
   ] as const;
 
   function navigate(href: string) {
@@ -47,7 +48,7 @@ export default function ProfileNavTabs({ username }: { username: string }) {
                 : "text-text-muted hover:bg-surface-raised hover:text-text-primary"
             }`}
           >
-            {"icon" in tab && <tab.icon size={14} className={tab.color} />}
+            <tab.icon size={14} className={tab.color} />
             {tab.label}
           </button>
         );

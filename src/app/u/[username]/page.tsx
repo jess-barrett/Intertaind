@@ -5,7 +5,7 @@ import type { MediaItem, MediaType, ShelfItem } from "@/lib/types";
 import { TOP_5_SHELF_NAMES } from "@/lib/types";
 import TopFiveGrid from "@/components/top-five-grid";
 import ActivityItem from "@/components/activity/activity-item";
-import { listUserActivity } from "@/app/actions/activity";
+import { listUserActivity, listUserRecentReviews } from "@/app/actions/activity";
 
 export default async function ProfilePage({
   params,
@@ -65,7 +65,10 @@ export default async function ProfilePage({
   } = await supabase.auth.getUser();
   const isOwner = user?.id === profile.id;
 
-  const recentActivity = await listUserActivity(profile.id, 3, 0);
+  const [recentActivity, recentReviews] = await Promise.all([
+    listUserActivity(profile.id, 3, 0),
+    listUserRecentReviews(profile.id, 3),
+  ]);
 
   return (
     <>
@@ -97,6 +100,35 @@ export default async function ProfilePage({
           <div className="flex flex-col gap-2">
             {recentActivity.map((a) => (
               <ActivityItem key={a.id} activity={a} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <hr className="my-10 border-surface-border" />
+
+      <section>
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="text-lg font-semibold text-text-primary">
+            Recent Reviews
+          </h2>
+          {recentReviews.length > 0 && (
+            <Link
+              href={`/u/${username}/reviews`}
+              className="text-xs text-text-muted transition-colors hover:text-text-secondary"
+            >
+              See all &rarr;
+            </Link>
+          )}
+        </div>
+        {recentReviews.length === 0 ? (
+          <p className="py-6 text-center text-sm text-text-muted">
+            No reviews yet.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {recentReviews.map((r) => (
+              <ActivityItem key={r.id} activity={r} />
             ))}
           </div>
         )}

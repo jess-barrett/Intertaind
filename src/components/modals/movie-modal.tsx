@@ -30,18 +30,27 @@ export default function MovieModal({
   };
 }) {
   const today = new Date().toISOString().split("T")[0];
-  const [watchedOn, setWatchedOn] = useState(
-    (initial?.progress?.watched_on as string) ?? initial?.completed_at?.split("T")[0] ?? today
-  );
-  const [isRewatch, setIsRewatch] = useState(
-    (initial?.progress?.is_rewatch as boolean) ?? false
-  );
+  const initialWatchedOn =
+    (initial?.progress?.watched_on as string) ??
+    initial?.completed_at?.split("T")[0] ??
+    today;
+  const initialIsRewatch = (initial?.progress?.is_rewatch as boolean) ?? false;
   // Convert DB rating (1-10) to star rating (0.5-5.0)
-  const [rating, setRating] = useState<number | null>(
-    initial?.rating ? initial.rating / 2 : null
-  );
-  const [review, setReview] = useState(initial?.review ?? "");
-  const [isFavorite, setIsFavorite] = useState(initial?.is_favorite ?? false);
+  const initialRating = initial?.rating ? initial.rating / 2 : null;
+  const initialReview = initial?.review ?? "";
+  const initialFavorite = initial?.is_favorite ?? false;
+  const [watchedOn, setWatchedOn] = useState(initialWatchedOn);
+  const [isRewatch, setIsRewatch] = useState(initialIsRewatch);
+  const [rating, setRating] = useState<number | null>(initialRating);
+  const [review, setReview] = useState(initialReview);
+  const [isFavorite, setIsFavorite] = useState(initialFavorite);
+
+  const isDirty =
+    watchedOn !== initialWatchedOn ||
+    isRewatch !== initialIsRewatch ||
+    rating !== initialRating ||
+    review !== initialReview ||
+    isFavorite !== initialFavorite;
 
   function handleSave() {
     onSave({
@@ -66,7 +75,7 @@ export default function MovieModal({
             type="date"
             value={watchedOn}
             onChange={(e) => setWatchedOn(e.target.value)}
-            className="w-full rounded-lg border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none"
+            className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none"
           />
         </div>
 
@@ -101,7 +110,7 @@ export default function MovieModal({
             onChange={(e) => setReview(e.target.value)}
             placeholder="What did you think?"
             rows={3}
-            className="w-full rounded-lg border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+            className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
           />
         </div>
 
@@ -110,7 +119,7 @@ export default function MovieModal({
           <button
             type="button"
             onClick={() => setIsFavorite(!isFavorite)}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+            className={`flex items-center gap-1.5 rounded-sm px-3 py-2 text-sm transition-colors ${
               isFavorite
                 ? "bg-accent-movie/10 text-accent-movie"
                 : "text-text-muted hover:text-text-secondary"
@@ -122,7 +131,8 @@ export default function MovieModal({
 
           <button
             onClick={handleSave}
-            className="rounded-lg bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark"
+            disabled={!isDirty}
+            className="rounded-sm bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50 disabled:hover:bg-brand"
           >
             Save
           </button>

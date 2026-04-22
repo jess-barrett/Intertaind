@@ -11,14 +11,16 @@ import {
   Tv,
   Gamepad2,
   BookOpen,
+  BookOpenCheck,
   MessageSquare,
   History,
   ChevronDown,
   Image as ImageIcon,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import type { MediaType, TrackingStatus, UserMedia } from "@/lib/types";
-import { trackMedia, toggleFavorite, rateMedia } from "@/app/actions/media";
+import { trackMedia, toggleFavorite, rateMedia, removeTracking } from "@/app/actions/media";
 import StarRating from "@/components/star-rating";
 import MovieModal from "@/components/modals/movie-modal";
 import TVModal from "@/components/modals/tv-modal";
@@ -26,6 +28,7 @@ import BookModal from "@/components/modals/book-modal";
 import GameModal from "@/components/modals/game-modal";
 import CurrentEpisodeModal from "@/components/modals/current-episode-modal";
 import LogEpisodeModal from "@/components/modals/log-episode-modal";
+import CurrentReadingModal from "@/components/modals/current-reading-modal";
 import CoverPickerModal from "@/components/modals/cover-picker-modal";
 
 // Genre-specific config for the action panel
@@ -64,10 +67,15 @@ const ACTION_CONFIG: Record<MediaType, ActionConfig> = {
   },
   book: {
     primaryLabel: "Read",
-    primaryIcon: Check,
+    primaryIcon: BookOpenCheck,
     primaryStatus: "completed",
-    wantLabel: "Want to Read",
-    logLabel: "Review or shelve...",
+    secondaryPrimary: {
+      label: "Reading",
+      icon: BookOpen,
+      status: "in_progress",
+    },
+    wantLabel: "Add to TBR",
+    logLabel: "Review...",
   },
   video_game: {
     primaryLabel: "Played",
@@ -98,46 +106,63 @@ const GAME_STATUSES: { key: GameStatus; label: string; desc: string; tracking: T
 function GameStatusDropdown({
   value,
   onChange,
+  onClear,
   disabled,
 }: {
   value: GameStatus | "";
   onChange: (status: GameStatus) => void;
+  onClear?: () => void;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const current = GAME_STATUSES.find((s) => s.key === value);
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        disabled={disabled}
-        className="flex w-full items-center justify-between rounded-lg border border-surface-border bg-surface-overlay px-3 py-2 text-sm transition-colors hover:border-brand/40 disabled:opacity-50"
-      >
-        <span className={current ? "text-text-primary" : "text-text-muted"}>
-          {current ? current.label : "Set status..."}
-        </span>
-        <ChevronDown size={14} className={`text-text-muted transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
+    <div className="flex items-stretch gap-2">
+      <div className="relative flex-1">
+        <button
+          onClick={() => setOpen(!open)}
+          disabled={disabled}
+          className="flex w-full items-center justify-between rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm transition-colors hover:border-brand/40 disabled:opacity-50"
+        >
+          <span className={current ? "text-text-primary" : "text-text-muted"}>
+            {current ? current.label : "Set status..."}
+          </span>
+          <ChevronDown size={14} className={`text-text-muted transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
 
-      {open && (
-        <div className="absolute left-0 right-0 top-full z-30 mt-1 rounded-lg border border-surface-border bg-surface-raised py-1 shadow-xl shadow-black/40">
-          {GAME_STATUSES.map((s) => (
-            <button
-              key={s.key}
-              onClick={() => {
-                onChange(s.key);
-                setOpen(false);
-              }}
-              className={`flex w-full flex-col px-3 py-2 text-left transition-colors hover:bg-surface-overlay ${
-                value === s.key ? "bg-surface-overlay" : ""
-              }`}
-            >
-              <span className="text-sm font-medium text-text-primary">{s.label}</span>
-              <span className="text-xs text-text-muted">{s.desc}</span>
-            </button>
-          ))}
-        </div>
+        {open && (
+          <div className="absolute left-0 right-0 top-full z-30 mt-1 rounded-sm border border-surface-border bg-surface-raised py-1 shadow-xl shadow-black/40">
+            {GAME_STATUSES.map((s) => (
+              <button
+                key={s.key}
+                onClick={() => {
+                  onChange(s.key);
+                  setOpen(false);
+                }}
+                className={`flex w-full flex-col px-3 py-2 text-left transition-colors hover:bg-surface-overlay ${
+                  value === s.key ? "bg-surface-overlay" : ""
+                }`}
+              >
+                <span className="text-sm font-medium text-text-primary">{s.label}</span>
+                <span className="text-xs text-text-muted">{s.desc}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {value && onClear && (
+        <button
+          type="button"
+          onClick={onClear}
+          disabled={disabled}
+          aria-label="Remove status"
+          title="Remove status"
+          className="flex shrink-0 items-center justify-center rounded-sm border border-surface-border bg-surface-overlay px-2 text-text-muted transition-colors hover:border-accent-movie/40 hover:text-accent-movie disabled:opacity-50"
+        >
+          <X size={14} />
+        </button>
       )}
     </div>
   );
@@ -186,6 +211,7 @@ export default function MediaDetailClient({
   const [modalOpen, setModalOpen] = useState(false);
   const [currentEpisodeModalOpen, setCurrentEpisodeModalOpen] = useState(false);
   const [logEpisodeModalOpen, setLogEpisodeModalOpen] = useState(false);
+  const [currentReadingModalOpen, setCurrentReadingModalOpen] = useState(false);
   const [coverModalOpen, setCoverModalOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -229,28 +255,56 @@ export default function MediaDetailClient({
 
   function handleStatusToggle(targetStatus: TrackingStatus) {
     const isActive = status === targetStatus;
-    const newStatus = isActive ? null : targetStatus;
-    setStatus(newStatus);
+    if (isActive) {
+      // Toggling off — remove the user_media row entirely so the item
+      // leaves the user's library. Optimistically clear local state.
+      if (!userMediaId) return;
+      const idToRemove = userMediaId;
+      setStatus(null);
+      setUserMediaId(null);
+      setIsFavorite(false);
+      setRating(null);
+      startTransition(async () => {
+        try {
+          await removeTracking(idToRemove);
+          router.refresh();
+        } catch (err) {
+          console.error(err);
+        }
+      });
+      return;
+    }
+    setStatus(targetStatus);
     startTransition(async () => {
-      if (newStatus) {
-        const id = await trackMedia(mediaId, newStatus);
-        setUserMediaId(id);
-      } else {
-        await trackMedia(mediaId, "want" as TrackingStatus);
-        setStatus(null);
-      }
+      const id = await trackMedia(mediaId, targetStatus);
+      setUserMediaId(id);
       router.refresh();
     });
   }
 
   function handleWantToggle() {
-    const newStatus = isWant ? null : ("want" as TrackingStatus);
-    setStatus(newStatus);
+    if (isWant) {
+      // Toggling off the wishlist — remove the row from user_media.
+      if (!userMediaId) return;
+      const idToRemove = userMediaId;
+      setStatus(null);
+      setUserMediaId(null);
+      setIsFavorite(false);
+      setRating(null);
+      startTransition(async () => {
+        try {
+          await removeTracking(idToRemove);
+          router.refresh();
+        } catch (err) {
+          console.error(err);
+        }
+      });
+      return;
+    }
+    setStatus("want" as TrackingStatus);
     startTransition(async () => {
-      if (newStatus) {
-        const id = await trackMedia(mediaId, "want" as TrackingStatus);
-        setUserMediaId(id);
-      }
+      const id = await trackMedia(mediaId, "want" as TrackingStatus);
+      setUserMediaId(id);
       router.refresh();
     });
   }
@@ -277,14 +331,35 @@ export default function MediaDetailClient({
 
   function handleRatingChange(newRating: number | null) {
     setRating(newRating);
+    // For games, default sub_status to 'played' when the user rates and
+    // the GameStatusDropdown is currently empty — only fires when there
+    // isn't already a sub_status, so an existing Playing/Completed/etc
+    // selection is preserved.
+    const isGame = mediaType === "video_game";
+    const shouldDefaultGameStatus = isGame && !gameStatus;
+    if (shouldDefaultGameStatus) setGameStatus("played");
+
     startTransition(async () => {
       let id = userMediaId;
       if (!id) {
         id = await trackMedia(mediaId, cfg.primaryStatus, {
           rating: newRating ? newRating * 2 : null,
+          ...(shouldDefaultGameStatus
+            ? { progress: { sub_status: "played" } }
+            : {}),
         });
         setUserMediaId(id);
         setStatus(cfg.primaryStatus);
+      } else if (shouldDefaultGameStatus) {
+        // Existing tracking but no sub_status — promote to "Played" along
+        // with the rating in a single trackMedia call so we get one
+        // combined activity row instead of a separate "rated" + manual
+        // sub_status update.
+        await trackMedia(mediaId, "completed", {
+          rating: newRating ? newRating * 2 : null,
+          progress: { ...userProgress, sub_status: "played" },
+        });
+        setStatus("completed");
       } else {
         await rateMedia(id, newRating ? newRating * 2 : null);
       }
@@ -294,9 +369,12 @@ export default function MediaDetailClient({
 
   function handleModalSave(data: {
     status: string;
-    rating: number | null;
-    review: string;
-    is_favorite: boolean;
+    /** Optional — undefined means don't update user_media's rating */
+    rating?: number | null;
+    /** Optional — undefined means don't update user_media's review */
+    review?: string;
+    /** Optional — undefined means don't update user_media's favorite */
+    is_favorite?: boolean;
     progress: Record<string, unknown>;
     started_at?: string | null;
     completed_at?: string | null;
@@ -317,8 +395,14 @@ export default function MediaDetailClient({
       });
       setUserMediaId(id);
       setStatus(data.status as TrackingStatus);
-      setRating(data.rating ? data.rating / 2 : null);
-      setIsFavorite(data.is_favorite);
+      // Only sync the optimistic UI state for fields the modal actually
+      // sent — undefined means "leave as-is".
+      if (data.rating !== undefined) {
+        setRating(data.rating ? data.rating / 2 : null);
+      }
+      if (data.is_favorite !== undefined) {
+        setIsFavorite(data.is_favorite);
+      }
       // Sync game sub_status dropdown to whatever the modal saved
       const subStatus = data.progress?.sub_status as GameStatus | undefined;
       if (subStatus) setGameStatus(subStatus);
@@ -336,6 +420,23 @@ export default function MediaDetailClient({
           <GameStatusDropdown
             value={gameStatus}
             onChange={handleGameStatusChange}
+            onClear={() => {
+              if (!userMediaId) return;
+              const idToRemove = userMediaId;
+              setGameStatus("");
+              setStatus(null);
+              setUserMediaId(null);
+              setIsFavorite(false);
+              setRating(null);
+              startTransition(async () => {
+                try {
+                  await removeTracking(idToRemove);
+                  router.refresh();
+                } catch (err) {
+                  console.error(err);
+                }
+              });
+            }}
             disabled={isPending}
           />
         ) : (
@@ -346,31 +447,35 @@ export default function MediaDetailClient({
                 <button
                   onClick={() => handleStatusToggle(cfg.primaryStatus)}
                   disabled={isPending}
-                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs transition-colors ${
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-2 text-sm transition-colors ${
                     isPrimary
                       ? "bg-accent-book/15 text-accent-book"
                       : "text-text-muted hover:bg-surface-overlay hover:text-text-primary"
                   } disabled:opacity-50`}
                 >
-                  <PrimaryIcon size={14} className="shrink-0" />
+                  <PrimaryIcon size={16} className="shrink-0" />
                   {cfg.primaryLabel}
                 </button>
                 <button
                   onClick={() => {
                     if (mediaType === "tv_show") {
                       setCurrentEpisodeModalOpen(true);
+                    } else if (mediaType === "book") {
+                      setCurrentReadingModalOpen(true);
                     } else {
                       handleStatusToggle(cfg.secondaryPrimary!.status);
                     }
                   }}
                   disabled={isPending}
-                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs transition-colors ${
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-2 text-sm transition-colors ${
                     isSecondary
-                      ? "bg-accent-tv/15 text-accent-tv"
+                      ? mediaType === "book"
+                        ? "bg-accent-game/15 text-accent-game"
+                        : "bg-accent-tv/15 text-accent-tv"
                       : "text-text-muted hover:bg-surface-overlay hover:text-text-primary"
                   } disabled:opacity-50`}
                 >
-                  <cfg.secondaryPrimary.icon size={14} className="shrink-0" />
+                  <cfg.secondaryPrimary.icon size={16} className="shrink-0" />
                   {cfg.secondaryPrimary.label}
                 </button>
               </div>
@@ -378,23 +483,13 @@ export default function MediaDetailClient({
               <button
                 onClick={() => handleStatusToggle(cfg.primaryStatus)}
                 disabled={isPending}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                className={`flex w-full items-center gap-2.5 rounded-sm px-3 py-2 text-sm transition-colors ${
                   isPrimary
                     ? "bg-accent-book/15 text-accent-book"
                     : "text-text-muted hover:bg-surface-overlay hover:text-text-primary"
                 } disabled:opacity-50`}
               >
-                {mediaType === "book" ? (
-                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-                    isPrimary
-                      ? "border-accent-book bg-accent-book text-white"
-                      : "border-current"
-                  }`}>
-                    <PrimaryIcon size={12} />
-                  </span>
-                ) : (
-                  <PrimaryIcon size={16} className="shrink-0" />
-                )}
+                <PrimaryIcon size={16} className="shrink-0" />
                 {cfg.primaryLabel}
               </button>
             )}
@@ -406,7 +501,7 @@ export default function MediaDetailClient({
         <button
           onClick={handleFavoriteToggle}
           disabled={isPending}
-          className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+          className={`flex w-full items-center gap-2.5 rounded-sm px-3 py-2 text-sm transition-colors ${
             isFavorite
               ? "bg-accent-movie/15 text-accent-movie"
               : "text-text-muted hover:bg-surface-overlay hover:text-text-primary"
@@ -420,7 +515,7 @@ export default function MediaDetailClient({
         <button
           onClick={handleWantToggle}
           disabled={isPending}
-          className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+          className={`flex w-full items-center gap-2.5 rounded-sm px-3 py-2 text-sm transition-colors ${
             isWant
               ? "bg-brand/15 text-brand-light"
               : "text-text-muted hover:bg-surface-overlay hover:text-text-primary"
@@ -436,7 +531,7 @@ export default function MediaDetailClient({
             <button
               onClick={() => setModalOpen(true)}
               disabled={isPending}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-50"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-2 text-xs text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-50"
             >
               <MessageSquare size={14} className="shrink-0" />
               Log Season
@@ -444,7 +539,7 @@ export default function MediaDetailClient({
             <button
               onClick={() => setLogEpisodeModalOpen(true)}
               disabled={isPending}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-50"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-2 text-xs text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-50"
             >
               <MessageSquare size={14} className="shrink-0" />
               Log Episode
@@ -454,7 +549,7 @@ export default function MediaDetailClient({
           <button
             onClick={() => setModalOpen(true)}
             disabled={isPending}
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-50"
+            className="flex w-full items-center gap-2.5 rounded-sm px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-50"
           >
             <MessageSquare size={16} />
             {cfg.logLabel}
@@ -480,7 +575,7 @@ export default function MediaDetailClient({
 
         {/* Show your activity */}
         <button
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary"
+          className="flex w-full items-center gap-2.5 rounded-sm px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary"
         >
           <History size={16} />
           Show your activity
@@ -490,7 +585,7 @@ export default function MediaDetailClient({
         {mediaType === "book" && userMediaId && (
           <button
             onClick={() => setCoverModalOpen(true)}
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary"
+            className="flex w-full items-center gap-2.5 rounded-sm px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary"
           >
             <ImageIcon size={16} />
             Change cover
@@ -618,6 +713,40 @@ export default function MediaDetailClient({
               setUserMediaId(id);
               setStatus(newStatus);
               if (is_favorite) setIsFavorite(true);
+              router.refresh();
+            });
+          }}
+        />
+      )}
+
+      {currentReadingModalOpen && mediaType === "book" && (
+        <CurrentReadingModal
+          title={mediaTitle}
+          // Only seed the modal with the saved page/reread values when the
+          // book is *currently* on the Reading shelf. If the user switched
+          // away (to Read, DNF, TBR, etc.), treat the next Reading session
+          // as fresh — otherwise the stale page number forces an
+          // artificial "no change" Save-disabled state.
+          initial={
+            status === "in_progress"
+              ? {
+                  progress: userMedia?.progress ?? null,
+                  started_at: userMedia?.started_at ?? null,
+                }
+              : undefined
+          }
+          onClose={() => setCurrentReadingModalOpen(false)}
+          onSave={(data) => {
+            setCurrentReadingModalOpen(false);
+            startTransition(async () => {
+              const id = await trackMedia(mediaId, data.status, {
+                progress: { ...userProgress, ...data.progress },
+                started_at: data.started_at,
+                activity_type_override: data.activity_type_override,
+                activity_metadata_extra: data.activity_metadata_extra,
+              });
+              setUserMediaId(id);
+              setStatus(data.status);
               router.refresh();
             });
           }}
