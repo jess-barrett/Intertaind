@@ -83,6 +83,13 @@ export async function addTopPick(
   });
 
   if (error) throw new Error(`Failed to add top pick: ${error.message}`);
+
+  await supabase.from("activity_log").insert({
+    user_id: user.id,
+    media_id: mediaId,
+    activity_type: "added_to_top",
+    metadata: { media_type: mediaType },
+  });
 }
 
 /** Remove a media item from a user's top picks */
@@ -103,11 +110,19 @@ export async function removeTopPick(
 
   if (!shelf) return;
 
-  await supabase
+  const { error } = await supabase
     .from("shelf_items")
     .delete()
     .eq("shelf_id", shelf.id)
     .eq("media_id", mediaId);
+  if (error) throw new Error(`Failed to remove top pick: ${error.message}`);
+
+  await supabase.from("activity_log").insert({
+    user_id: user.id,
+    media_id: mediaId,
+    activity_type: "removed_from_top",
+    metadata: { media_type: mediaType },
+  });
 }
 
 /** Fetch the user's tracked media for a given type (for the picker modal) */

@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Users } from "lucide-react";
 import type { MediaItem, MediaType, ShelfItem } from "@/lib/types";
 import { TOP_5_SHELF_NAMES } from "@/lib/types";
 import TopFiveGrid from "@/components/top-five-grid";
+import ActivityItem from "@/components/activity/activity-item";
+import { listUserActivity } from "@/app/actions/activity";
 
 export default async function ProfilePage({
   params,
@@ -63,6 +65,8 @@ export default async function ProfilePage({
   } = await supabase.auth.getUser();
   const isOwner = user?.id === profile.id;
 
+  const recentActivity = await listUserActivity(profile.id, 3, 0);
+
   return (
     <>
       <section className="mt-8">
@@ -72,15 +76,30 @@ export default async function ProfilePage({
       <hr className="my-10 border-surface-border" />
 
       <section>
-        <h2 className="mb-4 text-lg font-semibold text-text-primary">
-          Recent Activity
-        </h2>
-        <div className="flex flex-col items-center py-12 text-center">
-          <Users size={24} className="mb-3 text-text-muted" />
-          <p className="text-sm text-text-muted">
-            Activity feed coming soon
-          </p>
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="text-lg font-semibold text-text-primary">
+            Recent Activity
+          </h2>
+          {recentActivity.length > 0 && (
+            <Link
+              href={`/u/${username}/activity`}
+              className="text-xs text-text-muted transition-colors hover:text-text-secondary"
+            >
+              See all &rarr;
+            </Link>
+          )}
         </div>
+        {recentActivity.length === 0 ? (
+          <p className="py-6 text-center text-sm text-text-muted">
+            No activity yet.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {recentActivity.map((a) => (
+              <ActivityItem key={a.id} activity={a} />
+            ))}
+          </div>
+        )}
       </section>
     </>
   );

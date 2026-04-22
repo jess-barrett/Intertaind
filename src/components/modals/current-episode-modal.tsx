@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Check } from "lucide-react";
+import { Check, Heart } from "lucide-react";
 import ModalWrapper from "./modal-wrapper";
+import StarRating from "@/components/star-rating";
 
 export default function CurrentEpisodeModal({
   title,
@@ -20,7 +21,13 @@ export default function CurrentEpisodeModal({
   initialSeason?: number | null;
   initialEpisode?: number | null;
   onClose: () => void;
-  onSave: (data: { season: number; episode: number }) => void;
+  onSave: (data: {
+    season: number;
+    episode: number;
+    rating: number | null;
+    review: string;
+    is_favorite: boolean;
+  }) => void;
 }) {
   // Build available seasons from metadata, falling back to totalSeasons range
   const seasonNumbers = seasonEpisodes
@@ -36,6 +43,9 @@ export default function CurrentEpisodeModal({
     initialEpisode ?? null
   );
   const [manualEpisodeCount, setManualEpisodeCount] = useState<number>(0);
+  const [rating, setRating] = useState<number | null>(null);
+  const [review, setReview] = useState("");
+  const [isFavorite, setIsFavorite] = useState(false);
 
   const knownCount = seasonEpisodes?.[String(selectedSeason)] ?? 0;
   const episodeCount = knownCount > 0 ? knownCount : manualEpisodeCount;
@@ -46,7 +56,13 @@ export default function CurrentEpisodeModal({
 
   function handleSave() {
     if (!currentEpisode) return;
-    onSave({ season: selectedSeason, episode: currentEpisode });
+    onSave({
+      season: selectedSeason,
+      episode: currentEpisode,
+      rating,
+      review: review.trim(),
+      is_favorite: isFavorite,
+    });
   }
 
   return (
@@ -137,6 +153,42 @@ export default function CurrentEpisodeModal({
               {currentEpisode} as your current episode.
             </p>
           )}
+        </div>
+
+        {/* Rate this season */}
+        <div>
+          <p className="mb-2 text-xs font-medium text-text-muted">
+            Rate this season (optional)
+          </p>
+          <div className="flex items-center gap-3">
+            <StarRating value={rating} onChange={setRating} size={20} />
+            <button
+              type="button"
+              onClick={() => setIsFavorite((v) => !v)}
+              aria-label={isFavorite ? "Unfavorite" : "Favorite"}
+              className={`flex h-8 w-8 items-center justify-center rounded-sm border border-surface-border transition-colors ${
+                isFavorite
+                  ? "text-accent-movie"
+                  : "text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              <Heart size={14} className={isFavorite ? "fill-current" : ""} />
+            </button>
+          </div>
+        </div>
+
+        {/* Review */}
+        <div>
+          <p className="mb-2 text-xs font-medium text-text-muted">
+            Review (optional)
+          </p>
+          <textarea
+            value={review}
+            onChange={(e) => setReview(e.target.value)}
+            rows={4}
+            placeholder="What did you think of this season?"
+            className="w-full resize-none rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+          />
         </div>
 
         {/* Save */}

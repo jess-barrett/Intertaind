@@ -210,6 +210,10 @@ export async function trackMedia(
     progress?: Record<string, unknown>;
     started_at?: string | null;
     completed_at?: string | null;
+    /** Caller-supplied activity_type override (for TV episode/season logging). */
+    activity_type_override?: string;
+    /** Extra metadata fields merged into the activity row. */
+    activity_metadata_extra?: Record<string, unknown>;
   }
 ): Promise<string> {
   const { supabase, user } = await getAuthUser();
@@ -235,11 +239,43 @@ export async function trackMedia(
 
   if (error) throw new Error(`Failed to track media: ${error.message}`);
 
+  // Pick the activity_type by priority: explicit override > review > completed > added_to_shelf.
+  // The rule comes from the user's spec: a "full log" with a review should
+  // surface as the review; without a review but with rating/love it should
+  // surface as added-to-shelf with the rating + heart in the card.
+  const hasReview = !!(options?.review && options.review.trim().length > 0);
+  const activityType =
+    options?.activity_type_override ??
+    (hasReview ? "reviewed" : status === "completed" ? "completed" : "added_to_shelf");
+
+  const metadata: Record<string, unknown> = {
+    status,
+    ...(options?.activity_metadata_extra ?? {}),
+  };
+  if (options?.rating != null) metadata.rating = options.rating;
+  if (hasReview && options?.review) {
+    metadata.review_length = options.review.length;
+    metadata.review_text = options.review;
+  }
+  if (options?.is_favorite) metadata.is_favorite = true;
+  // Game sub-status drives display labels like "as Playing" / "as Shelved".
+  const subStatus = (options?.progress as Record<string, unknown> | undefined)
+    ?.sub_status;
+  if (subStatus) metadata.sub_status = subStatus;
+  // For TV shows, capture the user's current position so activity rows like
+  // "Added X as Currently Watching (S2 E5)" can render the season/episode.
+  const currentSeason = (options?.progress as Record<string, unknown> | undefined)
+    ?.current_season;
+  const currentEpisode = (options?.progress as Record<string, unknown> | undefined)
+    ?.current_episode;
+  if (currentSeason != null) metadata.current_season = currentSeason;
+  if (currentEpisode != null) metadata.current_episode = currentEpisode;
+
   await supabase.from("activity_log").insert({
     user_id: user.id,
     media_id: mediaId,
-    activity_type: status === "completed" ? "completed" : "added_to_shelf",
-    metadata: { status },
+    activity_type: activityType,
+    metadata,
   });
 
   return data.id;
@@ -268,8 +304,8 @@ export async function updateTrackingStatus(
   await supabase.from("activity_log").insert({
     user_id: user.id,
     media_id: data.media_id,
-    activity_type: status === "completed" ? "completed" : "added_to_shelf",
-    metadata: { status },
+    activity_type: "status_changed",
+    metadata: { to_status: status },
   });
 }
 
@@ -303,10 +339,10 @@ export async function rateMedia(
 export async function toggleFavorite(userMediaId: string): Promise<boolean> {
   const { supabase, user } = await getAuthUser();
 
-  // Get current state
+  // Get current state + media_id for the activity log
   const { data: current } = await supabase
     .from("user_media")
-    .select("is_favorite")
+    .select("is_favorite, media_id")
     .eq("id", userMediaId)
     .eq("user_id", user.id)
     .single();
@@ -322,6 +358,17 @@ export async function toggleFavorite(userMediaId: string): Promise<boolean> {
     .eq("user_id", user.id);
 
   if (error) throw new Error(`Failed to toggle favorite: ${error.message}`);
+
+  // Only log the positive transition — unfavoriting is silent.
+  if (newValue) {
+    await supabase.from("activity_log").insert({
+      user_id: user.id,
+      media_id: current.media_id,
+      activity_type: "favorited",
+      metadata: {},
+    });
+  }
+
   return newValue;
 }
 
@@ -345,12 +392,20 @@ export async function reviewMedia(
     user_id: user.id,
     media_id: data.media_id,
     activity_type: "reviewed",
-    metadata: { review_length: review.length },
+    metadata: { review_length: review.length, review_text: review },
   });
 }
 
 export async function removeTracking(userMediaId: string): Promise<void> {
   const { supabase, user } = await getAuthUser();
+
+  // Read the row first so we can record what status it had.
+  const { data: existing } = await supabase
+    .from("user_media")
+    .select("media_id, status")
+    .eq("id", userMediaId)
+    .eq("user_id", user.id)
+    .single();
 
   const { error } = await supabase
     .from("user_media")
@@ -359,6 +414,15 @@ export async function removeTracking(userMediaId: string): Promise<void> {
     .eq("user_id", user.id);
 
   if (error) throw new Error(`Failed to remove tracking: ${error.message}`);
+
+  if (existing) {
+    await supabase.from("activity_log").insert({
+      user_id: user.id,
+      media_id: existing.media_id,
+      activity_type: "removed",
+      metadata: { previous_status: existing.status },
+    });
+  }
 }
 
 /**

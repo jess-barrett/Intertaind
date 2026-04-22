@@ -300,6 +300,8 @@ export default function MediaDetailClient({
     progress: Record<string, unknown>;
     started_at?: string | null;
     completed_at?: string | null;
+    activity_type_override?: string;
+    activity_metadata_extra?: Record<string, unknown>;
   }) {
     setModalOpen(false);
     startTransition(async () => {
@@ -310,6 +312,8 @@ export default function MediaDetailClient({
         progress: data.progress,
         started_at: data.started_at,
         completed_at: data.completed_at,
+        activity_type_override: data.activity_type_override,
+        activity_metadata_extra: data.activity_metadata_extra,
       });
       setUserMediaId(id);
       setStatus(data.status as TrackingStatus);
@@ -505,12 +509,13 @@ export default function MediaDetailClient({
           initialSeason={initialCurrentSeason}
           initialEpisode={initialCurrentEpisode}
           onClose={() => setCurrentEpisodeModalOpen(false)}
-          onSave={({ season, episode }) => {
+          onSave={({ season, episode, rating: r, review, is_favorite }) => {
             setCurrentEpisodeModalOpen(false);
             const watched: Record<string, number[]> = {
               ...(userProgress.watched_episodes as Record<string, number[]> | undefined),
             };
             watched[String(season)] = Array.from({ length: episode - 1 }, (_, i) => i + 1);
+            const hasReview = !!(review && review.trim().length > 0);
             startTransition(async () => {
               const id = await trackMedia(mediaId, "in_progress", {
                 progress: {
@@ -519,9 +524,21 @@ export default function MediaDetailClient({
                   current_episode: episode,
                   watched_episodes: watched,
                 },
+                is_favorite: is_favorite || isFavorite,
+                activity_type_override: "logged_season",
+                activity_metadata_extra: {
+                  season,
+                  episode,
+                  ...(r != null ? { rating: r } : {}),
+                  ...(hasReview
+                    ? { review_length: review.length, review_text: review }
+                    : {}),
+                  ...(is_favorite ? { is_favorite: true } : {}),
+                },
               });
               setUserMediaId(id);
               setStatus("in_progress");
+              if (is_favorite) setIsFavorite(true);
               router.refresh();
             });
           }}
@@ -575,6 +592,7 @@ export default function MediaDetailClient({
               }
             }
 
+            const hasReview = !!(review && review.trim().length > 0);
             startTransition(async () => {
               const id = await trackMedia(mediaId, newStatus, {
                 is_favorite: is_favorite || isFavorite,
@@ -586,6 +604,16 @@ export default function MediaDetailClient({
                   episode_logs: episodeLogs,
                 },
                 completed_at: newStatus === "completed" ? new Date().toISOString() : null,
+                activity_type_override: "logged_episode",
+                activity_metadata_extra: {
+                  season,
+                  episode,
+                  ...(rating != null ? { rating } : {}),
+                  ...(hasReview
+                    ? { review_length: review.length, review_text: review }
+                    : {}),
+                  ...(is_favorite ? { is_favorite: true } : {}),
+                },
               });
               setUserMediaId(id);
               setStatus(newStatus);

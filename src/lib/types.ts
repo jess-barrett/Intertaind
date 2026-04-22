@@ -84,6 +84,32 @@ export type FollowState =
   | "requested"
   | "blocked_by_me";
 
+export type ActivityType =
+  | "added_to_shelf"
+  | "completed"
+  | "status_changed"
+  | "reviewed"
+  | "rated"
+  | "favorited"
+  | "removed"
+  | "logged_episode"
+  | "logged_season"
+  | "added_to_top"
+  | "removed_from_top";
+
+export interface Activity {
+  id: string;
+  user_id: string;
+  media_id: string | null;
+  activity_type: ActivityType;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export type ActivityWithMedia = Activity & {
+  media: Pick<MediaItem, "id" | "title" | "cover_image_url" | "media_type"> | null;
+};
+
 export interface UserMedia {
   id: string;
   user_id: string;

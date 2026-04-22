@@ -22,6 +22,8 @@ export default function TVModal({
     is_favorite: boolean;
     progress: Record<string, unknown>;
     completed_at: string | null;
+    activity_type_override?: string;
+    activity_metadata_extra?: Record<string, unknown>;
   }) => void;
   initial?: {
     rating: number | null;
@@ -40,6 +42,9 @@ export default function TVModal({
     Record<string, { rating: number | null; review: string; completed: boolean }>
   >(existingSeasons);
   const [isFavorite, setIsFavorite] = useState(initial?.is_favorite ?? false);
+  // Remember the season the user most recently saved so we can surface it
+  // as a "logged_season" activity row with its specific rating/review.
+  const [lastLoggedSeason, setLastLoggedSeason] = useState<number | null>(null);
 
   const seasonCount = Math.max(totalSeasons, 1);
   const completedCount = Object.values(seasons).filter((s) => s.completed).length;
@@ -62,6 +67,7 @@ export default function TVModal({
         completed: true,
       },
     }));
+    setLastLoggedSeason(selectedSeason);
     setSelectedSeason(null);
     setSeasonRating(null);
     setSeasonReview("");
@@ -75,6 +81,28 @@ export default function TVModal({
         ? Math.round(ratedSeasons.reduce((sum, s) => sum + (s.rating ?? 0), 0) / ratedSeasons.length)
         : null;
 
+    // If the user just logged a specific season, surface that as a
+    // "logged_season" activity row carrying that season's rating + review,
+    // instead of a generic "added to shelf as Currently Watching".
+    const seasonKey = lastLoggedSeason !== null ? String(lastLoggedSeason) : null;
+    const seasonData = seasonKey ? seasons[seasonKey] : null;
+    const seasonReviewText = seasonData?.review?.trim() ?? "";
+    const hasSeasonReview = seasonReviewText.length > 0;
+    const overrideExtras: Record<string, unknown> | undefined =
+      lastLoggedSeason !== null
+        ? {
+            season: lastLoggedSeason,
+            ...(seasonData?.rating != null ? { rating: seasonData.rating } : {}),
+            ...(hasSeasonReview
+              ? {
+                  review_length: seasonReviewText.length,
+                  review_text: seasonReviewText,
+                }
+              : {}),
+            ...(isFavorite ? { is_favorite: true } : {}),
+          }
+        : undefined;
+
     onSave({
       status: allCompleted ? "completed" : "in_progress",
       rating: avgRating,
@@ -82,6 +110,12 @@ export default function TVModal({
       is_favorite: isFavorite,
       progress: { seasons, current_season: completedCount + 1 },
       completed_at: allCompleted ? new Date().toISOString() : null,
+      ...(lastLoggedSeason !== null
+        ? {
+            activity_type_override: "logged_season",
+            activity_metadata_extra: overrideExtras,
+          }
+        : {}),
     });
   }
 

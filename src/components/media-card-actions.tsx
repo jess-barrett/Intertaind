@@ -263,14 +263,19 @@ export default function MediaCardActions({
   function handleRate(newRating: number | null) {
     startTransition(async () => {
       try {
-        let umId = userMediaId;
-        if (!umId) {
+        // StarRating emits 0.5–5.0; DB stores 1–10.
+        const dbRating = newRating ? newRating * 2 : null;
+        if (userMediaId) {
+          // Already tracking — standalone rate logs one "rated" activity.
+          await rateMedia(userMediaId, dbRating);
+        } else {
+          // Not tracked yet — fold the rating into the initial trackMedia
+          // call so we get one combined activity row instead of two.
           const id = await ensureMediaId();
-          umId = await trackMedia(id, "completed");
+          const umId = await trackMedia(id, "completed", { rating: dbRating });
           setUserMediaId(umId);
           setStatus("completed");
         }
-        await rateMedia(umId, newRating ? newRating * 2 : null);
         setRating(newRating);
         router.refresh();
       } catch (err) {
@@ -382,6 +387,16 @@ export default function MediaCardActions({
           is_favorite: is_favorite || favorite,
           progress: newProgress,
           completed_at: newStatus === "completed" ? new Date().toISOString() : null,
+          activity_type_override: "logged_episode",
+          activity_metadata_extra: {
+            season,
+            episode,
+            ...(r != null ? { rating: r } : {}),
+            ...(review && review.trim().length > 0
+              ? { review_length: review.length, review_text: review }
+              : {}),
+            ...(is_favorite ? { is_favorite: true } : {}),
+          },
         });
         setUserMediaId(umId);
         setStatus(newStatus);
@@ -397,9 +412,15 @@ export default function MediaCardActions({
   function handleCurrentEpisodeSave({
     season,
     episode,
+    rating: r,
+    review,
+    is_favorite,
   }: {
     season: number;
     episode: number;
+    rating: number | null;
+    review: string;
+    is_favorite: boolean;
   }) {
     setCurrentEpisodeModalOpen(false);
     setMenuOpen(false);
@@ -419,12 +440,25 @@ export default function MediaCardActions({
           current_episode: episode,
           watched_episodes: watched,
         };
+        const hasReview = !!(review && review.trim().length > 0);
         const umId = await trackMedia(id, "in_progress", {
           progress: newProgress,
+          is_favorite: is_favorite || favorite,
+          activity_type_override: "logged_season",
+          activity_metadata_extra: {
+            season,
+            episode,
+            ...(r != null ? { rating: r } : {}),
+            ...(hasReview
+              ? { review_length: review.length, review_text: review }
+              : {}),
+            ...(is_favorite ? { is_favorite: true } : {}),
+          },
         });
         setUserMediaId(umId);
         setStatus("in_progress");
         setProgress(newProgress);
+        if (is_favorite) setFavorite(true);
         router.refresh();
       } catch (err) {
         console.error(err);
@@ -531,7 +565,7 @@ export default function MediaCardActions({
             left: menuPos.left,
             bottom: menuPos.bottom,
           }}
-          className="z-50 w-48 rounded-sm border border-surface-border bg-surface-raised p-1 shadow-xl shadow-black/40"
+          className="z-50 w-44 rounded-sm border border-surface-border bg-surface-raised p-1 shadow-xl shadow-black/40"
         >
           {mediaType === "movie" && (
             <>
