@@ -74,6 +74,11 @@ export default function MediaCard({
             seasonEpisodes={
               (item.metadata?.season_episodes as Record<string, number> | undefined) ?? null
             }
+            totalPagesDefault={
+              item.media_type === "book"
+                ? (item.metadata?.page_count as number | undefined) ?? null
+                : null
+            }
             userMedia={userMedia}
             compact={compact}
           />

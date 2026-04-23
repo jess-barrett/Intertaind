@@ -9,15 +9,20 @@ import {
   Heart,
   MoreHorizontal,
   BookOpen,
+  BookOpenCheck,
+  Bookmark,
   Film,
   Tv,
+  TvMinimalPlay,
   Gamepad2,
+  Swords,
   Check,
+  Clapperboard,
+  GalleryHorizontalEnd,
   Loader2,
   ExternalLink,
   ChevronDown,
   MessageSquare,
-  History,
 } from "lucide-react";
 import type {
   MediaType,
@@ -40,6 +45,7 @@ import BookModal from "@/components/modals/book-modal";
 import GameModal from "@/components/modals/game-modal";
 import LogEpisodeModal from "@/components/modals/log-episode-modal";
 import CurrentEpisodeModal from "@/components/modals/current-episode-modal";
+import CurrentReadingModal from "@/components/modals/current-reading-modal";
 
 const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
   book: BookOpen,
@@ -77,6 +83,7 @@ export default function MediaCardActions({
   totalSeasons,
   seasonEpisodes,
   userMedia,
+  totalPagesDefault,
   compact,
 }: {
   mediaId?: string;
@@ -88,6 +95,8 @@ export default function MediaCardActions({
   seasonEpisodes?: Record<string, number> | null;
   /** Existing tracking row, if user already tracks this item */
   userMedia?: UserMedia | null;
+  /** Book-only — Google Books page count used as Total pages placeholder */
+  totalPagesDefault?: number | null;
   compact?: boolean;
 }) {
   const router = useRouter();
@@ -124,11 +133,29 @@ export default function MediaCardActions({
   const [gameModalOpen, setGameModalOpen] = useState(false);
   const [logEpisodeModalOpen, setLogEpisodeModalOpen] = useState(false);
   const [currentEpisodeModalOpen, setCurrentEpisodeModalOpen] = useState(false);
+  const [currentReadingModalOpen, setCurrentReadingModalOpen] = useState(false);
 
   const [pending, startTransition] = useTransition();
   const rootRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Sync local state from the userMedia prop when it changes. Other
+  // components on the same card (e.g. TVProgressHeader's quick-log button)
+  // trigger router.refresh after a server mutation — without this sync the
+  // three-dots popup would keep showing the pre-refresh progress / status
+  // / rating until the user navigates away.
+  useEffect(() => {
+    setUserMediaId(userMedia?.id ?? null);
+    setStatus(userMedia?.status ?? null);
+    setFavorite(userMedia?.is_favorite ?? false);
+    setRating(userMedia?.rating ? userMedia.rating / 2 : null);
+    setGameStatus(
+      ((userMedia?.progress as Record<string, unknown> | null)
+        ?.sub_status as GameStatus) ?? ""
+    );
+    setProgress((userMedia?.progress as Record<string, unknown>) ?? {});
+  }, [userMedia]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -318,6 +345,7 @@ export default function MediaCardActions({
     setTvModalOpen(false);
     setBookModalOpen(false);
     setGameModalOpen(false);
+    setCurrentReadingModalOpen(false);
     setMenuOpen(false);
     startTransition(async () => {
       try {
@@ -542,7 +570,15 @@ export default function MediaCardActions({
               watched ? "text-accent-book" : "text-text-secondary"
             }`}
           >
-            {watched ? <Check size={iconBtnSize} /> : <Eye size={iconBtnSize} />}
+            {watched ? (
+              <Check size={iconBtnSize} />
+            ) : mediaType === "book" ? (
+              <BookOpenCheck size={iconBtnSize} />
+            ) : mediaType === "video_game" ? (
+              <Swords size={iconBtnSize} />
+            ) : (
+              <Eye size={iconBtnSize} />
+            )}
           </button>
           <button
             type="button"
@@ -595,8 +631,8 @@ export default function MediaCardActions({
         >
           {mediaType === "movie" && (
             <>
-              <StatusButton label="Watched" active={status === "completed"} onClick={() => handleStatusClick("completed")} pending={pending} color={config.color} />
-              <StatusButton label="Watchlist" active={status === "want"} onClick={() => handleStatusClick("want")} pending={pending} color={config.color} />
+              <StatusButton label="Watched" icon={Eye} active={status === "completed"} onClick={() => handleStatusClick("completed")} pending={pending} color={config.color} />
+              <StatusButton label="Watchlist" icon={Bookmark} active={status === "want"} onClick={() => handleStatusClick("want")} pending={pending} color={config.color} />
               <button
                 type="button"
                 onClick={(e) => {
@@ -615,9 +651,9 @@ export default function MediaCardActions({
 
           {mediaType === "tv_show" && (
             <>
-              <StatusButton label="Watched" active={status === "completed"} onClick={() => handleStatusClick("completed")} pending={pending} color={config.color} />
-              <StatusButton label="Currently Watching" active={status === "in_progress"} onClick={() => handleStatusClick("in_progress")} pending={pending} color={config.color} />
-              <StatusButton label="Watchlist" active={status === "want"} onClick={() => handleStatusClick("want")} pending={pending} color={config.color} />
+              <StatusButton label="Watched" icon={Eye} active={status === "completed"} onClick={() => handleStatusClick("completed")} pending={pending} color={config.color} />
+              <StatusButton label="Currently Watching" icon={TvMinimalPlay} active={status === "in_progress"} onClick={() => handleStatusClick("in_progress")} pending={pending} color={config.color} />
+              <StatusButton label="Watchlist" icon={Bookmark} active={status === "want"} onClick={() => handleStatusClick("want")} pending={pending} color={config.color} />
               <button
                 type="button"
                 onClick={(e) => {
@@ -628,7 +664,7 @@ export default function MediaCardActions({
                 disabled={pending}
                 className={rowCls}
               >
-                <History size={12} />
+                <GalleryHorizontalEnd size={12} />
                 Log episode
               </button>
               <button
@@ -636,31 +672,46 @@ export default function MediaCardActions({
                 onClick={(e) => {
                   stopLink(e);
                   setMenuOpen(false);
-                  setCurrentEpisodeModalOpen(true);
+                  setTvModalOpen(true);
                 }}
                 disabled={pending}
                 className={rowCls}
               >
-                <Tv size={12} />
+                <Clapperboard size={12} />
                 Log season
               </button>
             </>
           )}
 
           {mediaType === "book" && (
-            <button
-              type="button"
-              onClick={(e) => {
-                stopLink(e);
-                setMenuOpen(false);
-                setBookModalOpen(true);
-              }}
-              disabled={pending}
-              className={rowCls}
-            >
-              <MessageSquare size={12} />
-              Review or shelve
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  stopLink(e);
+                  setMenuOpen(false);
+                  setCurrentReadingModalOpen(true);
+                }}
+                disabled={pending}
+                className={rowCls}
+              >
+                <BookOpen size={12} />
+                Currently Reading
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  stopLink(e);
+                  setMenuOpen(false);
+                  setBookModalOpen(true);
+                }}
+                disabled={pending}
+                className={rowCls}
+              >
+                <MessageSquare size={12} />
+                Review
+              </button>
+            </>
           )}
 
           {mediaType === "video_game" && (
@@ -700,7 +751,7 @@ export default function MediaCardActions({
                   ))}
                 </div>
               )}
-              <StatusButton label="Wishlist" active={status === "want"} onClick={() => handleStatusClick("want")} pending={pending} color={config.color} />
+              <StatusButton label="Wishlist" icon={Bookmark} active={status === "want"} onClick={() => handleStatusClick("want")} pending={pending} color={config.color} />
               <button
                 type="button"
                 onClick={(e) => {
@@ -810,8 +861,33 @@ export default function MediaCardActions({
               totalSeasons={totalSeasons ?? 1}
               initialSeason={progress.current_season as number | undefined}
               initialEpisode={progress.current_episode as number | undefined}
+              watchedEpisodes={
+                progress.watched_episodes as
+                  | Record<string, number[]>
+                  | undefined
+              }
               onClose={() => setLogEpisodeModalOpen(false)}
               onSave={handleLogEpisodeSave}
+            />
+          </div>,
+          document.body
+        )}
+      {currentReadingModalOpen &&
+        createPortal(
+          <div onClick={(e) => e.stopPropagation()}>
+            <CurrentReadingModal
+              title={mediaTitle}
+              totalPagesDefault={totalPagesDefault ?? null}
+              initial={
+                userMedia
+                  ? {
+                      progress: userMedia.progress,
+                      started_at: userMedia.started_at,
+                    }
+                  : undefined
+              }
+              onClose={() => setCurrentReadingModalOpen(false)}
+              onSave={handleModalSave}
             />
           </div>,
           document.body
@@ -837,12 +913,14 @@ export default function MediaCardActions({
 
 function StatusButton({
   label,
+  icon: Icon,
   active,
   onClick,
   pending,
   color,
 }: {
   label: string;
+  icon?: React.ElementType;
   active: boolean;
   onClick: () => void;
   pending: boolean;
@@ -861,7 +939,10 @@ function StatusButton({
         active ? "text-text-primary" : "text-text-secondary"
       }`}
     >
-      <span>{label}</span>
+      <span className="flex items-center gap-2">
+        {Icon && <Icon size={12} />}
+        {label}
+      </span>
       {active && <Check size={12} className={color} />}
     </button>
   );

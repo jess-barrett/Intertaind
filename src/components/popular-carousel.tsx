@@ -3,16 +3,20 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import MediaCard from "@/components/media-card";
-import type { MediaItem } from "@/lib/types";
+import type { MediaItem, UserMedia } from "@/lib/types";
 
 const PAGE_SIZE = 4;
 
 export default function PopularCarousel({
   items,
   title,
+  viewerTracking,
 }: {
   items: MediaItem[];
   title: string;
+  /** Map keyed by media_id. Lets each card reflect the viewer's
+      watched/loved/rated state in the hover slideout. */
+  viewerTracking?: Record<string, UserMedia>;
 }) {
   const [offset, setOffset] = useState(0);
 
@@ -53,9 +57,19 @@ export default function PopularCarousel({
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {visible.map((item) => (
-          <MediaCard key={item.id} item={item} showStats />
-        ))}
+        {visible.map((item) => {
+          const um = viewerTracking?.[item.id];
+          return (
+            <MediaCard
+              key={item.id}
+              item={item}
+              showStats
+              userMedia={um ?? null}
+              userRating={um?.rating ?? null}
+              userFavorite={um?.is_favorite ?? false}
+            />
+          );
+        })}
       </div>
     </section>
   );

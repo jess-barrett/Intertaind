@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Check } from "lucide-react";
 import ModalWrapper from "./modal-wrapper";
 import StarRating from "@/components/star-rating";
 
@@ -10,6 +11,7 @@ export default function LogEpisodeModal({
   totalSeasons,
   initialSeason,
   initialEpisode,
+  watchedEpisodes,
   onClose,
   onSave,
 }: {
@@ -18,6 +20,10 @@ export default function LogEpisodeModal({
   totalSeasons: number;
   initialSeason?: number | null;
   initialEpisode?: number | null;
+  /** Episodes the user has already logged, keyed by season number. Watched
+      episodes render with a subtle fill + checkmark so the user can see
+      at a glance where they left off. */
+  watchedEpisodes?: Record<string, number[]>;
   onClose: () => void;
   onSave: (data: {
     season: number;
@@ -96,19 +102,33 @@ export default function LogEpisodeModal({
           ) : (
             <div className="grid grid-cols-8 gap-2 sm:grid-cols-10">
               {Array.from({ length: episodeCount }, (_, i) => i + 1).map(
-                (ep) => (
-                  <button
-                    key={ep}
-                    onClick={() => setEpisode(ep)}
-                    className={`flex h-9 items-center justify-center rounded-sm text-xs font-medium transition-all ${
-                      episode === ep
-                        ? "bg-accent-tv text-white"
-                        : "border border-surface-border text-text-muted hover:bg-surface-overlay hover:text-text-secondary"
-                    }`}
-                  >
-                    {ep}
-                  </button>
-                )
+                (ep) => {
+                  const watched = !!watchedEpisodes?.[String(season)]?.includes(
+                    ep
+                  );
+                  const selected = episode === ep;
+                  return (
+                    <button
+                      key={ep}
+                      onClick={() => setEpisode(ep)}
+                      className={`relative flex h-9 items-center justify-center rounded-sm text-xs font-medium transition-all ${
+                        selected
+                          ? "bg-accent-tv text-white"
+                          : watched
+                          ? "border border-accent-tv/30 bg-accent-tv/15 text-accent-tv"
+                          : "border border-surface-border text-text-muted hover:bg-surface-overlay hover:text-text-secondary"
+                      }`}
+                    >
+                      {ep}
+                      {watched && !selected && (
+                        <Check
+                          size={8}
+                          className="absolute right-0.5 top-0.5 text-accent-tv"
+                        />
+                      )}
+                    </button>
+                  );
+                }
               )}
             </div>
           )}

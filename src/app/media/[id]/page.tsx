@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { BookOpen, BookOpenCheck, Film, Tv, Gamepad2, Eye, Heart, List } from "lucide-react";
+import { BookOpen, BookOpenCheck, Film, Tv, TvMinimalPlay, Gamepad2, Eye, Heart, List } from "lucide-react";
 import type { MediaItem, MediaType, UserMedia } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
 import MediaDetailClient from "./media-detail-client";
@@ -187,7 +187,7 @@ export default async function MediaDetailPage({
               <>
                 <Stat icon={Eye} count={stats.completed} label="Watched" />
                 <Stat
-                  icon={Tv}
+                  icon={TvMinimalPlay}
                   count={stats.inProgress}
                   label="Currently watching"
                   iconClassName="-translate-y-px"
@@ -258,6 +258,9 @@ export default async function MediaDetailPage({
                 defaultCoverUrl={media.cover_image_url}
                 currentCoverUrl={displayCoverUrl}
                 authorName={firstAuthor}
+                totalPagesDefault={
+                  (media.metadata?.page_count as number | undefined) ?? null
+                }
               />
             </div>
           </div>

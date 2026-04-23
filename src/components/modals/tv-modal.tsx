@@ -10,6 +10,7 @@ export default function TVModal({
   onClose,
   onSave,
   initial,
+  initialSelectedSeason,
 }: {
   title: string;
   totalSeasons: number;
@@ -30,13 +31,24 @@ export default function TVModal({
     is_favorite: boolean;
     progress: Record<string, unknown> | null;
   };
+  /** Jump straight into the rating/review form for this season. */
+  initialSelectedSeason?: number | null;
 }) {
   const existingSeasons =
     (initial?.progress?.seasons as Record<string, { rating: number | null; review: string; completed: boolean }>) ?? {};
 
-  const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
-  const [seasonRating, setSeasonRating] = useState<number | null>(null);
-  const [seasonReview, setSeasonReview] = useState("");
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(
+    initialSelectedSeason ?? null
+  );
+  const initialPrefilled = initialSelectedSeason != null
+    ? existingSeasons[String(initialSelectedSeason)]
+    : undefined;
+  const [seasonRating, setSeasonRating] = useState<number | null>(
+    initialPrefilled?.rating ? initialPrefilled.rating / 2 : null
+  );
+  const [seasonReview, setSeasonReview] = useState(
+    initialPrefilled?.review ?? ""
+  );
   const [seasons, setSeasons] = useState<
     Record<string, { rating: number | null; review: string; completed: boolean }>
   >(existingSeasons);
@@ -63,40 +75,68 @@ export default function TVModal({
 
   function handleSaveSeason() {
     if (selectedSeason === null) return;
-    setSeasons((prev) => ({
-      ...prev,
-      [String(selectedSeason)]: {
-        rating: seasonRating ? seasonRating * 2 : null,
-        review: seasonReview,
-        completed: true,
-      },
-    }));
+    const updatedEntry = {
+      rating: seasonRating ? seasonRating * 2 : null,
+      review: seasonReview,
+      completed: true,
+    };
+    const updatedSeasons = {
+      ...seasons,
+      [String(selectedSeason)]: updatedEntry,
+    };
+    setSeasons(updatedSeasons);
     setLastLoggedSeason(selectedSeason);
+
+    // If the modal opened pre-selected to a specific season (e.g. from
+    // the end-of-season celebration popup), saving that season IS the
+    // commit — no sense bouncing back to the grid just to click Save
+    // again. Commit directly using the freshly-updated map so we don't
+    // read a stale `seasons` value before React flushes setState.
+    if (initialSelectedSeason === selectedSeason) {
+      commit(updatedSeasons, selectedSeason);
+      return;
+    }
+
     setSelectedSeason(null);
     setSeasonRating(null);
     setSeasonReview("");
   }
 
   function handleSaveAll() {
-    // Compute overall rating as average of season ratings
-    const ratedSeasons = Object.values(seasons).filter((s) => s.rating !== null);
+    commit(seasons, lastLoggedSeason);
+  }
+
+  function commit(
+    seasonsMap: Record<
+      string,
+      { rating: number | null; review: string; completed: boolean }
+    >,
+    lastLogged: number | null
+  ) {
+    const seasonValues = Object.values(seasonsMap);
+    const completed = seasonValues.filter((s) => s.completed).length;
+    const all = completed === seasonCount;
+
+    const ratedSeasons = seasonValues.filter((s) => s.rating !== null);
     const avgRating =
       ratedSeasons.length > 0
-        ? Math.round(ratedSeasons.reduce((sum, s) => sum + (s.rating ?? 0), 0) / ratedSeasons.length)
+        ? Math.round(
+            ratedSeasons.reduce((sum, s) => sum + (s.rating ?? 0), 0) /
+              ratedSeasons.length
+          )
         : null;
 
-    // If the user just logged a specific season, surface that as a
-    // "logged_season" activity row carrying that season's rating + review,
-    // instead of a generic "added to shelf as Currently Watching".
-    const seasonKey = lastLoggedSeason !== null ? String(lastLoggedSeason) : null;
-    const seasonData = seasonKey ? seasons[seasonKey] : null;
+    const seasonKey = lastLogged !== null ? String(lastLogged) : null;
+    const seasonData = seasonKey ? seasonsMap[seasonKey] : null;
     const seasonReviewText = seasonData?.review?.trim() ?? "";
     const hasSeasonReview = seasonReviewText.length > 0;
     const overrideExtras: Record<string, unknown> | undefined =
-      lastLoggedSeason !== null
+      lastLogged !== null
         ? {
-            season: lastLoggedSeason,
-            ...(seasonData?.rating != null ? { rating: seasonData.rating } : {}),
+            season: lastLogged,
+            ...(seasonData?.rating != null
+              ? { rating: seasonData.rating }
+              : {}),
             ...(hasSeasonReview
               ? {
                   review_length: seasonReviewText.length,
@@ -108,13 +148,13 @@ export default function TVModal({
         : undefined;
 
     onSave({
-      status: allCompleted ? "completed" : "in_progress",
+      status: all ? "completed" : "in_progress",
       rating: avgRating,
       review: "",
       is_favorite: isFavorite,
-      progress: { seasons, current_season: completedCount + 1 },
-      completed_at: allCompleted ? new Date().toISOString() : null,
-      ...(lastLoggedSeason !== null
+      progress: { seasons: seasonsMap, current_season: completed + 1 },
+      completed_at: all ? new Date().toISOString() : null,
+      ...(lastLogged !== null
         ? {
             activity_type_override: "logged_season",
             activity_metadata_extra: overrideExtras,

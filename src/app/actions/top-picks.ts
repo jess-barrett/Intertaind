@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { MediaType, MediaItem } from "@/lib/types";
-import { TOP_5_SHELF_NAMES } from "@/lib/types";
+import { TOP_4_SHELF_NAMES } from "@/lib/types";
 
 async function getAuthUser() {
   const supabase = await createClient();
@@ -19,7 +19,7 @@ async function ensureTopShelf(
   userId: string,
   mediaType: MediaType
 ): Promise<string> {
-  const shelfName = TOP_5_SHELF_NAMES[mediaType];
+  const shelfName = TOP_4_SHELF_NAMES[mediaType];
 
   const { data: existing } = await supabase
     .from("shelves")
@@ -98,7 +98,7 @@ export async function removeTopPick(
   mediaId: string
 ): Promise<void> {
   const { supabase, user } = await getAuthUser();
-  const shelfName = TOP_5_SHELF_NAMES[mediaType];
+  const shelfName = TOP_4_SHELF_NAMES[mediaType];
 
   const { data: shelf } = await supabase
     .from("shelves")

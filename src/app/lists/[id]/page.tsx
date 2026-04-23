@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Heart, User } from "lucide-react";
 import MediaCard from "@/components/media-card";
+import { fetchViewerTracking } from "@/lib/viewer-tracking";
 import type { List, ListItem, MediaItem, Profile } from "@/lib/types";
 
 export default async function ListDetailPage({
@@ -32,6 +33,15 @@ export default async function ListDetailPage({
     .order("position");
 
   const listItems = (items as (ListItem & { media_items: MediaItem })[]) ?? [];
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const viewerTracking = await fetchViewerTracking(
+    supabase,
+    user?.id ?? null,
+    listItems.map((li) => li.media_items.id)
+  );
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
@@ -76,7 +86,16 @@ export default async function ListDetailPage({
               </span>
 
               <div className="w-16 shrink-0">
-                <MediaCard item={item.media_items} />
+                <MediaCard
+                  item={item.media_items}
+                  userMedia={viewerTracking[item.media_items.id] ?? null}
+                  userRating={
+                    viewerTracking[item.media_items.id]?.rating ?? null
+                  }
+                  userFavorite={
+                    viewerTracking[item.media_items.id]?.is_favorite ?? false
+                  }
+                />
               </div>
 
               <div className="flex-1 min-w-0 pt-1">

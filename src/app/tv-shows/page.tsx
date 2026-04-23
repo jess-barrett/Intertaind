@@ -10,6 +10,7 @@ import {
   GENRES_BY_TYPE,
   TV_STATUSES,
 } from "@/lib/media-query";
+import { fetchViewerTracking } from "@/lib/viewer-tracking";
 
 export const metadata = {
   title: "Popular TV Shows — Intertaind",
@@ -28,6 +29,15 @@ export default async function TVShowsLandingPage() {
     .limit(20);
 
   const items = (popular as MediaItem[]) ?? [];
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const viewerTracking = await fetchViewerTracking(
+    supabase,
+    user?.id ?? null,
+    items.map((i) => i.id)
+  );
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8">
@@ -48,7 +58,11 @@ export default async function TVShowsLandingPage() {
         statuses={TV_STATUSES}
       />
 
-      <PopularCarousel items={items} title="Popular Shows This Week" />
+      <PopularCarousel
+        items={items}
+        title="Popular Shows This Week"
+        viewerTracking={viewerTracking}
+      />
 
       <div className="mt-6 flex justify-center">
         <Link

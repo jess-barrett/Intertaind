@@ -8,7 +8,7 @@ import ShelfTabs from "@/components/shelves/shelf-tabs";
 import MediaFilterBar from "@/components/shelves/media-filter-bar";
 import {
   applyMediaFilters,
-  applyMediaSort,
+  sortTrackedMedia,
   getSortOptionsForType,
   parseFilters,
   GENRES_BY_TYPE,
@@ -58,11 +58,13 @@ export default async function MoviesShelfPage({
     .eq("media_items.media_type", "movie")
     .eq("status", activeTab.status);
   query = applyMediaFilters(query, filters, "movie", "media_items.");
-  query = applyMediaSort(query, filters.sort, "movie", "media_items");
   const { data } = await query;
 
-  const tracked =
-    (data as (UserMedia & { media_items: MediaItem })[]) ?? [];
+  const tracked = sortTrackedMedia(
+    (data as (UserMedia & { media_items: MediaItem })[]) ?? [],
+    filters.sort,
+    "movie"
+  );
 
   const viewerTracking = new Map<string, UserMedia>();
   if (!isOwner && user && tracked.length > 0) {

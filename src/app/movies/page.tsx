@@ -9,6 +9,7 @@ import {
   getSortOptionsForType,
   GENRES_BY_TYPE,
 } from "@/lib/media-query";
+import { fetchViewerTracking } from "@/lib/viewer-tracking";
 
 export const metadata = {
   title: "Popular Movies — Intertaind",
@@ -28,6 +29,15 @@ export default async function MoviesLandingPage() {
 
   const items = (popular as MediaItem[]) ?? [];
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const viewerTracking = await fetchViewerTracking(
+    supabase,
+    user?.id ?? null,
+    items.map((i) => i.id)
+  );
+
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8">
       <div className="mb-4">
@@ -46,7 +56,11 @@ export default async function MoviesLandingPage() {
         sortOptions={getSortOptionsForType("movie")}
       />
 
-      <PopularCarousel items={items} title="Popular Films This Week" />
+      <PopularCarousel
+        items={items}
+        title="Popular Films This Week"
+        viewerTracking={viewerTracking}
+      />
 
       <div className="mt-6 flex justify-center">
         <Link

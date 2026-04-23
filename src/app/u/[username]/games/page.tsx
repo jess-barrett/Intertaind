@@ -8,7 +8,7 @@ import ShelfTabs from "@/components/shelves/shelf-tabs";
 import MediaFilterBar from "@/components/shelves/media-filter-bar";
 import {
   applyMediaFilters,
-  applyMediaSort,
+  sortTrackedMedia,
   getSortOptionsForType,
   parseFilters,
   GENRES_BY_TYPE,
@@ -87,11 +87,13 @@ export default async function GamesShelfPage({
   }
 
   query = applyMediaFilters(query, filters, "video_game", "media_items.");
-  query = applyMediaSort(query, filters.sort, "video_game", "media_items");
   const { data } = await query;
 
-  const tracked =
-    (data as (UserMedia & { media_items: MediaItem })[]) ?? [];
+  const tracked = sortTrackedMedia(
+    (data as (UserMedia & { media_items: MediaItem })[]) ?? [],
+    filters.sort,
+    "video_game"
+  );
 
   const viewerTracking = new Map<string, UserMedia>();
   if (!isOwner && user && tracked.length > 0) {

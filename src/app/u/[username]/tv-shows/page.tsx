@@ -3,12 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { Tv } from "lucide-react";
 import type { MediaItem, TrackingStatus, UserMedia } from "@/lib/types";
 import MediaCard from "@/components/media-card";
+import TVProgressHeader from "@/components/tv-progress-header";
 import ShelfSearch from "@/components/shelves/shelf-search";
 import ShelfTabs from "@/components/shelves/shelf-tabs";
 import MediaFilterBar from "@/components/shelves/media-filter-bar";
 import {
   applyMediaFilters,
-  applyMediaSort,
+  sortTrackedMedia,
   getSortOptionsForType,
   parseFilters,
   GENRES_BY_TYPE,
@@ -61,11 +62,13 @@ export default async function TVShowsShelfPage({
     .eq("media_items.media_type", "tv_show")
     .eq("status", activeTab.status);
   query = applyMediaFilters(query, filters, "tv_show", "media_items.");
-  query = applyMediaSort(query, filters.sort, "tv_show", "media_items");
   const { data } = await query;
 
-  const tracked =
-    (data as (UserMedia & { media_items: MediaItem })[]) ?? [];
+  const tracked = sortTrackedMedia(
+    (data as (UserMedia & { media_items: MediaItem })[]) ?? [],
+    filters.sort,
+    "tv_show"
+  );
 
   const viewerTracking = new Map<string, UserMedia>();
   if (!isOwner && user && tracked.length > 0) {
@@ -98,20 +101,46 @@ export default async function TVShowsShelfPage({
 
       {tracked.length > 0 ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-          {tracked.map((um) => (
-            <MediaCard
-              key={um.media_items.id}
-              item={um.media_items}
-              userRating={um.rating}
-              userFavorite={um.is_favorite}
-              userMedia={isOwner ? um : viewerTracking.get(um.media_items.id) ?? null}
-              customCoverUrl={
-                (um.progress as Record<string, unknown> | null)?.custom_cover_url as
-                  | string
-                  | undefined
-              }
-            />
-          ))}
+          {tracked.map((um) => {
+            const isWatchingTab = activeTab.key === "watching";
+            const meta = um.media_items.metadata as
+              | Record<string, unknown>
+              | null;
+            const totalSeasons =
+              (meta?.number_of_seasons as number | undefined) ??
+              (meta?.seasons as number | undefined) ??
+              1;
+            const seasonEps =
+              (meta?.season_episodes as Record<string, number> | undefined) ??
+              null;
+            return (
+              <MediaCard
+                key={um.media_items.id}
+                item={um.media_items}
+                userRating={um.rating}
+                userFavorite={um.is_favorite}
+                userMedia={
+                  isOwner ? um : viewerTracking.get(um.media_items.id) ?? null
+                }
+                customCoverUrl={
+                  (um.progress as Record<string, unknown> | null)
+                    ?.custom_cover_url as string | undefined
+                }
+                topSlot={
+                  isWatchingTab ? (
+                    <TVProgressHeader
+                      userMedia={um}
+                      mediaId={um.media_items.id}
+                      title={um.media_items.title}
+                      totalSeasons={totalSeasons}
+                      seasonEpisodes={seasonEps}
+                      editable={isOwner}
+                    />
+                  ) : undefined
+                }
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="flex flex-col items-center py-20 text-center">

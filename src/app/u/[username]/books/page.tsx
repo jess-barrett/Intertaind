@@ -9,7 +9,7 @@ import ShelfTabs from "@/components/shelves/shelf-tabs";
 import MediaFilterBar from "@/components/shelves/media-filter-bar";
 import {
   applyMediaFilters,
-  applyMediaSort,
+  sortTrackedMedia,
   getSortOptionsForType,
   parseFilters,
   GENRES_BY_TYPE,
@@ -61,11 +61,13 @@ export default async function BooksShelfPage({
     .eq("media_items.media_type", "book")
     .eq("status", activeTab.status);
   query = applyMediaFilters(query, filters, "book", "media_items.");
-  query = applyMediaSort(query, filters.sort, "book", "media_items");
   const { data } = await query;
 
-  const tracked =
-    (data as (UserMedia & { media_items: MediaItem })[]) ?? [];
+  const tracked = sortTrackedMedia(
+    (data as (UserMedia & { media_items: MediaItem })[]) ?? [],
+    filters.sort,
+    "book"
+  );
 
   // When viewing someone else's shelves, fetch the viewer's own tracking
   // rows for the same media so the hover action bar reflects the viewer's
@@ -104,9 +106,17 @@ export default async function BooksShelfPage({
             const progress =
               (um.progress as Record<string, unknown> | null) ?? {};
             const isReadingTab = activeTab.key === "reading";
+            // Prefer the user's override when they've saved one in the
+            // Currently Reading modal. Fall back to Google Books metadata.
+            const userTotalPages = progress.total_pages as
+              | number
+              | null
+              | undefined;
             const totalPages =
-              (um.media_items.metadata?.page_count as number | undefined) ??
-              null;
+              (userTotalPages ?? null) !== null
+                ? (userTotalPages as number)
+                : (um.media_items.metadata?.page_count as number | undefined) ??
+                  null;
             const currentPage =
               (progress.current_page as number | undefined) ?? 0;
 

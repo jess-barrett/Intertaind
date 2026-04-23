@@ -5,11 +5,14 @@ import ModalWrapper from "./modal-wrapper";
 
 export default function CurrentReadingModal({
   title,
+  totalPagesDefault,
   onClose,
   onSave,
   initial,
 }: {
   title: string;
+  /** Fallback page count from book metadata — used as placeholder. */
+  totalPagesDefault: number | null;
   onClose: () => void;
   onSave: (data: {
     status: "in_progress";
@@ -27,9 +30,12 @@ export default function CurrentReadingModal({
   const initialDateStarted = initial?.started_at?.split("T")[0] ?? today;
   const initialCurrentPage = (initial?.progress?.current_page as number) ?? 0;
   const initialIsReread = (initial?.progress?.is_reread as boolean) ?? false;
+  const initialTotalPages =
+    (initial?.progress?.total_pages as number | undefined) ?? null;
 
   const [dateStarted, setDateStarted] = useState(initialDateStarted);
   const [currentPage, setCurrentPage] = useState(initialCurrentPage);
+  const [totalPages, setTotalPages] = useState<number | null>(initialTotalPages);
   const [isReread, setIsReread] = useState(initialIsReread);
 
   // When no initial is passed, the user is starting a fresh Reading
@@ -41,6 +47,7 @@ export default function CurrentReadingModal({
     isFreshSession ||
     dateStarted !== initialDateStarted ||
     currentPage !== initialCurrentPage ||
+    totalPages !== initialTotalPages ||
     isReread !== initialIsReread;
 
   function handleSave() {
@@ -50,6 +57,10 @@ export default function CurrentReadingModal({
         sub_shelf: "currently_reading",
         current_page: currentPage,
         is_reread: isReread,
+        // Always emit total_pages (including null) so clearing the field
+        // overwrites a previously-saved override instead of silently
+        // keeping the old value.
+        total_pages: totalPages,
       },
       started_at: new Date(dateStarted).toISOString(),
       activity_type_override: "started_reading",
@@ -75,18 +86,38 @@ export default function CurrentReadingModal({
           />
         </div>
 
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-text-secondary">
-            Current page
-          </label>
-          <input
-            type="number"
-            min={0}
-            value={currentPage || ""}
-            onChange={(e) => setCurrentPage(Number(e.target.value))}
-            placeholder="0"
-            className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
-          />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-text-secondary">
+              Current page
+            </label>
+            <input
+              type="number"
+              min={0}
+              value={currentPage || ""}
+              onChange={(e) => setCurrentPage(Number(e.target.value))}
+              placeholder="0"
+              className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-text-secondary">
+              Total pages
+            </label>
+            <input
+              type="number"
+              min={0}
+              value={totalPages ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setTotalPages(v === "" ? null : Number(v));
+              }}
+              placeholder={
+                totalPagesDefault != null ? String(totalPagesDefault) : "0"
+              }
+              className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+            />
+          </div>
         </div>
 
         <label className="flex cursor-pointer items-center gap-2">

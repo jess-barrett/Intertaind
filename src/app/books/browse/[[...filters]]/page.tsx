@@ -11,6 +11,7 @@ import {
   getSortOptionsForType,
   GENRES_BY_TYPE,
 } from "@/lib/media-query";
+import { fetchViewerTracking } from "@/lib/viewer-tracking";
 import { parsePath, filtersToPath, getFiltersDescription } from "@/lib/filter-path";
 
 const PAGE_SIZE = 48;
@@ -55,6 +56,15 @@ export default async function BooksBrowsePage({
   const items = (data as MediaItem[]) ?? [];
   const totalCount = count ?? 0;
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const viewerTracking = await fetchViewerTracking(
+    supabase,
+    user?.id ?? null,
+    items.map((i) => i.id)
+  );
+
   const { title } = getFiltersDescription("book", filters);
 
   return (
@@ -80,9 +90,19 @@ export default async function BooksBrowsePage({
 
       {items.length > 0 ? (
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
-          {items.map((item) => (
-            <MediaCard key={item.id} item={item} showStats />
-          ))}
+          {items.map((item) => {
+            const um = viewerTracking[item.id];
+            return (
+              <MediaCard
+                key={item.id}
+                item={item}
+                showStats
+                userMedia={um ?? null}
+                userRating={um?.rating ?? null}
+                userFavorite={um?.is_favorite ?? false}
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="flex flex-col items-center py-16 text-center">

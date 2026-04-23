@@ -9,6 +9,7 @@ import {
   Check,
   Clock,
   Tv,
+  TvMinimalPlay,
   Gamepad2,
   BookOpen,
   BookOpenCheck,
@@ -17,6 +18,8 @@ import {
   ChevronDown,
   Image as ImageIcon,
   X,
+  GalleryHorizontalEnd,
+  Clapperboard,
 } from "lucide-react";
 import Link from "next/link";
 import type { MediaType, TrackingStatus, UserMedia } from "@/lib/types";
@@ -59,7 +62,7 @@ const ACTION_CONFIG: Record<MediaType, ActionConfig> = {
     primaryStatus: "completed",
     secondaryPrimary: {
       label: "Watching",
-      icon: Tv,
+      icon: TvMinimalPlay,
       status: "in_progress",
     },
     wantLabel: "Watchlist",
@@ -179,6 +182,7 @@ export default function MediaDetailClient({
   defaultCoverUrl,
   currentCoverUrl,
   authorName,
+  totalPagesDefault,
 }: {
   mediaId: string;
   mediaType: MediaType;
@@ -190,6 +194,7 @@ export default function MediaDetailClient({
   defaultCoverUrl: string | null;
   currentCoverUrl: string | null;
   authorName?: string;
+  totalPagesDefault?: number | null;
 }) {
   const cfg = ACTION_CONFIG[mediaType];
 
@@ -533,7 +538,7 @@ export default function MediaDetailClient({
               disabled={isPending}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-2 text-xs text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-50"
             >
-              <MessageSquare size={14} className="shrink-0" />
+              <Clapperboard size={14} className="shrink-0" />
               Log Season
             </button>
             <button
@@ -541,7 +546,7 @@ export default function MediaDetailClient({
               disabled={isPending}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-2 text-xs text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-50"
             >
-              <MessageSquare size={14} className="shrink-0" />
+              <GalleryHorizontalEnd size={14} className="shrink-0" />
               Log Episode
             </button>
           </div>
@@ -647,6 +652,11 @@ export default function MediaDetailClient({
           totalSeasons={totalSeasons}
           initialSeason={initialCurrentSeason}
           initialEpisode={initialCurrentEpisode}
+          watchedEpisodes={
+            userProgress.watched_episodes as
+              | Record<string, number[]>
+              | undefined
+          }
           onClose={() => setLogEpisodeModalOpen(false)}
           onSave={({ season, episode, rating, review, is_favorite }) => {
             setLogEpisodeModalOpen(false);
@@ -722,6 +732,7 @@ export default function MediaDetailClient({
       {currentReadingModalOpen && mediaType === "book" && (
         <CurrentReadingModal
           title={mediaTitle}
+          totalPagesDefault={totalPagesDefault ?? null}
           // Only seed the modal with the saved page/reread values when the
           // book is *currently* on the Reading shelf. If the user switched
           // away (to Read, DNF, TBR, etc.), treat the next Reading session

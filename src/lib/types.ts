@@ -165,7 +165,11 @@ export interface ShelfItem {
   media_items?: MediaItem;
 }
 
-export const TOP_5_SHELF_NAMES: Record<MediaType, string> = {
+// Shelf-name identifiers kept as-is (`__top5_*`) because they're stored in
+// the `shelves.name` column for existing rows. Renaming the string would
+// require a data migration; the *concept* is now "Top 4" but the storage
+// key is just an opaque label.
+export const TOP_4_SHELF_NAMES: Record<MediaType, string> = {
   movie: "__top5_movie",
   tv_show: "__top5_tv_show",
   book: "__top5_book",
