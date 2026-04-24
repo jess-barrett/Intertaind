@@ -27,6 +27,32 @@ export async function listUserActivity(
 }
 
 /**
+ * Fetch the signed-in viewer's own activity for a single media item.
+ * Used by the "Show your activity" page on the media detail. Null-returns
+ * when the viewer isn't signed in.
+ */
+export async function listMyActivityForMedia(
+  mediaId: string,
+  limit = 50
+): Promise<ActivityWithMedia[] | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data } = await supabase
+    .from("activity_log")
+    .select(
+      "id, user_id, media_id, activity_type, metadata, created_at, media:media_items(id, title, cover_image_url, media_type)"
+    )
+    .eq("user_id", user.id)
+    .eq("media_id", mediaId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  return (data as ActivityWithMedia[] | null) ?? [];
+}
+
+/**
  * Fetch the user's most recent "reviewed" activity rows — used to populate
  * the Recent Reviews section on the profile overview. Reuses the activity
  * log so the existing ActivityItem renderer (cover + stars + review text)

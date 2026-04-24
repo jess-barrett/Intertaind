@@ -33,6 +33,7 @@ import CurrentEpisodeModal from "@/components/modals/current-episode-modal";
 import LogEpisodeModal from "@/components/modals/log-episode-modal";
 import CurrentReadingModal from "@/components/modals/current-reading-modal";
 import CoverPickerModal from "@/components/modals/cover-picker-modal";
+import BackdropPickerModal from "@/components/modals/backdrop-picker-modal";
 
 // Genre-specific config for the action panel
 interface ActionConfig {
@@ -183,6 +184,8 @@ export default function MediaDetailClient({
   currentCoverUrl,
   authorName,
   totalPagesDefault,
+  defaultBackdropUrl,
+  currentBackdropUrl,
 }: {
   mediaId: string;
   mediaType: MediaType;
@@ -195,6 +198,8 @@ export default function MediaDetailClient({
   currentCoverUrl: string | null;
   authorName?: string;
   totalPagesDefault?: number | null;
+  defaultBackdropUrl?: string | null;
+  currentBackdropUrl?: string | null;
 }) {
   const cfg = ACTION_CONFIG[mediaType];
 
@@ -218,6 +223,7 @@ export default function MediaDetailClient({
   const [logEpisodeModalOpen, setLogEpisodeModalOpen] = useState(false);
   const [currentReadingModalOpen, setCurrentReadingModalOpen] = useState(false);
   const [coverModalOpen, setCoverModalOpen] = useState(false);
+  const [backdropModalOpen, setBackdropModalOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -579,12 +585,13 @@ export default function MediaDetailClient({
         <div className="border-t border-surface-border" />
 
         {/* Show your activity */}
-        <button
+        <Link
+          href={`/media/${mediaId}/activity`}
           className="flex w-full items-center gap-2.5 rounded-sm px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary"
         >
           <History size={16} />
           Show your activity
-        </button>
+        </Link>
 
         {/* Change cover — books only, tracked only */}
         {mediaType === "book" && userMediaId && (
@@ -594,6 +601,18 @@ export default function MediaDetailClient({
           >
             <ImageIcon size={16} />
             Change cover
+          </button>
+        )}
+
+        {/* Change backdrop — movies, TV, and games. Requires the item to be
+            tracked (so we have a user_media row to store the override on). */}
+        {mediaType !== "book" && userMediaId && (
+          <button
+            onClick={() => setBackdropModalOpen(true)}
+            className="flex w-full items-center gap-2.5 rounded-sm px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary"
+          >
+            <ImageIcon size={16} />
+            Change backdrop
           </button>
         )}
       </div>
@@ -774,6 +793,20 @@ export default function MediaDetailClient({
           onClose={() => setCoverModalOpen(false)}
           onSaved={() => {
             setCoverModalOpen(false);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {backdropModalOpen && userMediaId && (
+        <BackdropPickerModal
+          mediaId={mediaId}
+          userMediaId={userMediaId}
+          currentUrl={currentBackdropUrl ?? null}
+          defaultUrl={defaultBackdropUrl ?? null}
+          onClose={() => setBackdropModalOpen(false)}
+          onSaved={() => {
+            setBackdropModalOpen(false);
             router.refresh();
           }}
         />

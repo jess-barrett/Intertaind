@@ -16,12 +16,36 @@ import { createClient } from "@/lib/supabase/server";
 const MAX_RESULTS = 20;
 
 /**
+ * Lowercase + strip diacritics + flatten ornamental punctuation that
+ * users won't type. Lets "wall e" match TMDb's "WALL·E", "pokemon" match
+ * "Pokémon", "spider man" match "Spider-Man", etc.
+ */
+function normalizeForSearch(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    // Strip combining diacritics (the second half of decomposed chars).
+    .replace(/[\u0300-\u036f]/g, "")
+    // Middle dots, bullets, interpuncts → space.
+    .replace(/[·•∙]/g, " ")
+    // Em / en dashes → hyphen so "spider–man" still matches "spider-man".
+    .replace(/[—–]/g, "-")
+    // Hyphens between words → space so "spider-man" matches "spider man".
+    .replace(/-+/g, " ")
+    // Smart quotes → straight quotes.
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Compute a relevance score for a title against a query.
  * Returns 0 if the query doesn't appear in the title at all (filter out).
  */
 function relevanceScore(title: string, query: string): number {
-  const t = title.trim().toLowerCase();
-  const q = query.trim().toLowerCase();
+  const t = normalizeForSearch(title);
+  const q = normalizeForSearch(query);
   if (!q) return 0;
 
   const tNoArticle = stripLeadingArticle(t);
@@ -194,10 +218,35 @@ function rankRaw<T>(
 type ScoredResult = { result: SearchResult; score: number };
 type SearchFn = (query: string) => Promise<ScoredResult[]>;
 
+/**
+ * Build query variants to send to TMDb. A multi-word query also gets a
+ * compacted (no-space) variant so TMDb's tokenizer surfaces titles where
+ * a non-word character (`·`, `:`, `&`) joins what users normally type as
+ * separate words — e.g. "wall e" → also tries "walle" → matches WALL·E.
+ */
+function tmdbQueryVariants(q: string): string[] {
+  const compact = q.replace(/\s+/g, "");
+  if (compact !== q && compact.length >= 3) return [q, compact];
+  return [q];
+}
+
 const searchers: Record<MediaType, SearchFn> = {
   movie: async (q) => {
-    const res = await searchMovies(q);
-    const ranked = rankRaw<TMDBMovie>(res.results, q, {
+    const variants = tmdbQueryVariants(q);
+    const responses = await Promise.all(variants.map((v) => searchMovies(v)));
+    // Merge unique by TMDb id so the same movie returned by both variants
+    // doesn't get double-scored.
+    const seen = new Set<number>();
+    const merged: TMDBMovie[] = [];
+    for (const r of responses) {
+      for (const m of r.results) {
+        if (!seen.has(m.id)) {
+          seen.add(m.id);
+          merged.push(m);
+        }
+      }
+    }
+    const ranked = rankRaw<TMDBMovie>(merged, q, {
       getTitle: (m) => m.title,
       getPopularity: (m) => m.vote_count,
       hasCover: (m) => !!m.poster_path,
@@ -209,8 +258,19 @@ const searchers: Record<MediaType, SearchFn> = {
   },
 
   tv_show: async (q) => {
-    const res = await searchTVShows(q);
-    const ranked = rankRaw<TMDBTVShow>(res.results, q, {
+    const variants = tmdbQueryVariants(q);
+    const responses = await Promise.all(variants.map((v) => searchTVShows(v)));
+    const seen = new Set<number>();
+    const merged: TMDBTVShow[] = [];
+    for (const r of responses) {
+      for (const t of r.results) {
+        if (!seen.has(t.id)) {
+          seen.add(t.id);
+          merged.push(t);
+        }
+      }
+    }
+    const ranked = rankRaw<TMDBTVShow>(merged, q, {
       getTitle: (t) => t.name,
       getPopularity: (t) => t.vote_count,
       hasCover: (t) => !!t.poster_path,

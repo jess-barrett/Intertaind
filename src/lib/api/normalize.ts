@@ -15,6 +15,7 @@ export function normalizeTMDBMovie(raw: TMDBMovie): SearchResult {
     title: raw.title,
     description: raw.overview || null,
     cover_image_url: tmdbImageUrl(raw.poster_path),
+    backdrop_url: tmdbImageUrl(raw.backdrop_path, "original"),
     release_date: raw.release_date || null,
     metadata: {
       genre_ids: raw.genre_ids,
@@ -30,6 +31,7 @@ export function normalizeTMDBTV(raw: TMDBTVShow): SearchResult {
     title: raw.name,
     description: raw.overview || null,
     cover_image_url: tmdbImageUrl(raw.poster_path),
+    backdrop_url: tmdbImageUrl(raw.backdrop_path, "original"),
     release_date: raw.first_air_date || null,
     metadata: {
       genre_ids: raw.genre_ids,
@@ -54,6 +56,8 @@ export function normalizeGoogleBook(raw: GoogleBooksVolume): SearchResult {
     title: info.title + (info.subtitle ? `: ${info.subtitle}` : ""),
     description: info.description || null,
     cover_image_url: bookCoverUrl(raw),
+    // Google Books has no landscape art equivalent — books get no hero.
+    backdrop_url: null,
     release_date: toFullDate(info.publishedDate),
     metadata: {
       authors: info.authors ?? [],
@@ -74,6 +78,10 @@ export function normalizeIGDBGame(raw: IGDBGame): SearchResult {
   const platforms = raw.platforms?.map((p) => p.name) ?? [];
   const genres = raw.genres?.map((g) => g.name) ?? [];
 
+  // Prefer curated artwork over gameplay screenshots for the backdrop.
+  const backdropId =
+    raw.artworks?.[0]?.image_id ?? raw.screenshots?.[0]?.image_id ?? null;
+
   return {
     media_type: "video_game",
     title: raw.name,
@@ -81,6 +89,7 @@ export function normalizeIGDBGame(raw: IGDBGame): SearchResult {
     cover_image_url: raw.cover
       ? igdbImageUrl(raw.cover.image_id)
       : null,
+    backdrop_url: backdropId ? igdbImageUrl(backdropId, "t_1080p") : null,
     release_date: raw.first_release_date
       ? new Date(raw.first_release_date * 1000).toISOString().split("T")[0]
       : null,

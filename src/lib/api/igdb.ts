@@ -47,12 +47,12 @@ export async function searchGames(
   query: string,
   limit = 20
 ): Promise<IGDBGame[]> {
-  const body = `search "${query}"; fields name,summary,cover.image_id,first_release_date,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,rating,rating_count; limit ${limit};`;
+  const body = `search "${query}"; fields name,summary,cover.image_id,artworks.image_id,screenshots.image_id,first_release_date,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,rating,rating_count; limit ${limit};`;
   return igdbFetch("games", body) as Promise<IGDBGame[]>;
 }
 
 export async function getGameDetails(igdbId: number): Promise<IGDBGame | null> {
-  const body = `where id = ${igdbId}; fields name,summary,cover.image_id,first_release_date,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,rating,rating_count; limit 1;`;
+  const body = `where id = ${igdbId}; fields name,summary,cover.image_id,artworks.image_id,screenshots.image_id,first_release_date,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,rating,rating_count; limit 1;`;
   const results = (await igdbFetch("games", body)) as IGDBGame[];
   return results[0] ?? null;
 }

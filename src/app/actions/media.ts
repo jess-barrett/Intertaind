@@ -2,7 +2,11 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { SearchResult, TrackingStatus } from "@/lib/types";
-import { getMovieDetails, getTVDetails } from "@/lib/api/tmdb";
+import {
+  getMovieDetails,
+  getTVDetails,
+  fetchBestTMDBBackdrop,
+} from "@/lib/api/tmdb";
 import { findCanonicalBookEdition } from "@/lib/api/google-books";
 import { normalizeGoogleBook } from "@/lib/api/normalize";
 
@@ -13,6 +17,115 @@ async function getAuthUser() {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
   return { supabase, user };
+}
+
+// --- Phase 1 enrichment helpers ---
+
+const KEY_CREW_JOBS = [
+  "Director",
+  "Screenplay",
+  "Writer",
+  "Story",
+  "Director of Photography",
+  "Original Music Composer",
+  "Producer",
+  "Executive Producer",
+  "Editor",
+];
+
+interface RawCast {
+  name: string;
+  character: string;
+  order: number;
+  profile_path: string | null;
+}
+interface RawCrew {
+  name: string;
+  job: string;
+  department: string;
+  profile_path: string | null;
+}
+
+function pickCast(cast: RawCast[]) {
+  return [...cast]
+    .sort((a, b) => a.order - b.order)
+    .slice(0, 12)
+    .map((c) => ({
+      name: c.name,
+      character: c.character,
+      profile_path: c.profile_path,
+    }));
+}
+
+function pickKeyCrew(crew: RawCrew[]) {
+  // Group named-roles into rows of `{ job, names[] }` so we can render
+  // "Director: Shawn Levy" or "Producer: A, B, C" without listing the
+  // hundreds of "Visual Effects Artist" entries TMDb returns.
+  const out: { job: string; names: string[] }[] = [];
+  for (const job of KEY_CREW_JOBS) {
+    const names = crew
+      .filter((c) => c.job === job)
+      .map((c) => c.name);
+    const unique = Array.from(new Set(names));
+    if (unique.length > 0) out.push({ job, names: unique.slice(0, 4) });
+  }
+  return out;
+}
+
+const RELEASE_TYPE_LABELS: Record<number, string> = {
+  1: "premiere",
+  2: "theatrical_limited",
+  3: "theatrical",
+  4: "digital",
+  5: "physical",
+  6: "tv",
+};
+
+function pickReleaseDates(
+  results:
+    | {
+        iso_3166_1: string;
+        release_dates: { type: number; release_date: string }[];
+      }[]
+    | undefined,
+  region = "US"
+): Record<string, string> | null {
+  if (!results?.length) return null;
+  const target = results.find((r) => r.iso_3166_1 === region);
+  if (!target) return null;
+  const out: Record<string, string> = {};
+  for (const rd of target.release_dates) {
+    const label = RELEASE_TYPE_LABELS[rd.type];
+    if (!label) continue;
+    // Multiple release dates of the same type → keep the earliest.
+    if (!out[label] || new Date(rd.release_date) < new Date(out[label])) {
+      out[label] = rd.release_date;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+function pickAlternativeTitles(
+  titles: { iso_3166_1: string; title: string; type: string }[] | undefined
+) {
+  if (!titles?.length) return [];
+  // Drop empties, prefer up to 8 distinctive entries.
+  return titles
+    .filter((t) => t.title && t.title.trim().length > 0)
+    .slice(0, 8)
+    .map((t) => ({ country: t.iso_3166_1, title: t.title }));
+}
+
+function pickProductionCompanies(
+  cos:
+    | { id: number; name: string; logo_path: string | null }[]
+    | undefined
+) {
+  return (cos ?? []).slice(0, 6).map((c) => ({
+    id: c.id,
+    name: c.name,
+    logo_path: c.logo_path,
+  }));
 }
 
 async function enrichTMDBMetadata(
@@ -26,12 +139,36 @@ async function enrichTMDBMetadata(
   if (mediaType === "movie") {
     try {
       const details = await getMovieDetails(tmdbId);
-      const director = details.credits?.crew.find((c) => c.job === "Director")?.name ?? null;
+      const cast = pickCast(details.credits?.cast ?? []);
+      const key_crew = pickKeyCrew(details.credits?.crew ?? []);
+      const director =
+        key_crew.find((r) => r.job === "Director")?.names[0] ?? null;
       return {
         ...existingMetadata,
         director,
         runtime: details.runtime,
+        tagline: details.tagline || null,
         genres: details.genres.map((g) => g.name),
+        // TMDb keywords double as themes — "post-apocalyptic", "robots",
+        // "based on novel", etc.
+        keywords:
+          details.keywords?.keywords?.map((k) => k.name) ?? [],
+        cast,
+        key_crew,
+        production_companies: pickProductionCompanies(
+          details.production_companies
+        ),
+        production_countries: (details.production_countries ?? []).map((c) => ({
+          code: c.iso_3166_1,
+          name: c.name,
+        })),
+        spoken_languages: (details.spoken_languages ?? []).map(
+          (l) => l.english_name
+        ),
+        release_dates: pickReleaseDates(details.release_dates?.results),
+        alternative_titles: pickAlternativeTitles(
+          details.alternative_titles?.titles
+        ),
       };
     } catch {
       return null;
@@ -41,16 +178,53 @@ async function enrichTMDBMetadata(
   if (mediaType === "tv_show") {
     try {
       const details = await getTVDetails(tmdbId);
-      // Count only aired seasons (exclude specials and unaired seasons with 0 episodes)
-      const aired = details.seasons
-        ? details.seasons.filter((s) => s.season_number > 0 && s.episode_count > 0)
-        : [];
-      const realSeasons = aired.length || details.number_of_seasons;
+      const today = new Date().toISOString().split("T")[0];
+      const allSeasons = details.seasons ?? [];
+      // Aired = real season number, has an air_date in the past, with at
+      // least one episode listed. Anything else is either a "specials"
+      // season (number 0), a placeholder (no air_date), or future content.
+      const aired = allSeasons.filter(
+        (s) =>
+          s.season_number > 0 &&
+          s.episode_count > 0 &&
+          s.air_date !== null &&
+          s.air_date <= today
+      );
+      // Upcoming = announced with a future air_date. We keep these out of
+      // season counts and the log-modal pickers, then surface them as a
+      // separate callout.
+      const upcoming = allSeasons
+        .filter(
+          (s) =>
+            s.season_number > 0 &&
+            s.air_date !== null &&
+            s.air_date > today
+        )
+        .sort((a, b) => (a.air_date! < b.air_date! ? -1 : 1))
+        .map((s) => ({
+          season_number: s.season_number,
+          name: s.name,
+          air_date: s.air_date,
+          episode_count: s.episode_count,
+          poster_path: s.poster_path,
+        }));
+
+      const realSeasons = aired.length;
       // Per-season episode counts: { "1": 9, "2": 10 }
       const seasonEpisodes: Record<string, number> = {};
       for (const s of aired) {
         seasonEpisodes[String(s.season_number)] = s.episode_count;
       }
+      // Full per-season detail for the "Seasons" tab — poster, synopsis,
+      // episode count, air date.
+      const seasonDetails = aired.map((s) => ({
+        season_number: s.season_number,
+        name: s.name,
+        episode_count: s.episode_count,
+        air_date: s.air_date,
+        poster_path: s.poster_path,
+        overview: s.overview || null,
+      }));
       return {
         ...existingMetadata,
         creator: details.created_by.map((c) => c.name).join(", ") || null,
@@ -58,8 +232,33 @@ async function enrichTMDBMetadata(
         number_of_seasons: realSeasons,
         number_of_episodes: details.number_of_episodes,
         season_episodes: seasonEpisodes,
+        season_details: seasonDetails,
+        upcoming_seasons: upcoming,
+        tagline: details.tagline || null,
         genres: details.genres.map((g) => g.name),
+        // TV's keywords endpoint nests under `.results` instead of `.keywords`.
+        keywords:
+          details.keywords?.results?.map((k) => k.name) ?? [],
         status: details.status,
+        cast: pickCast(details.credits?.cast ?? []),
+        key_crew: pickKeyCrew(details.credits?.crew ?? []),
+        // TV gets `networks` (the broadcaster) AND `production_companies`
+        // (the studio that made it). Both render as separate sections.
+        networks: pickProductionCompanies(details.networks),
+        production_companies: pickProductionCompanies(
+          details.production_companies
+        ),
+        production_countries: (details.production_countries ?? []).map((c) => ({
+          code: c.iso_3166_1,
+          name: c.name,
+        })),
+        spoken_languages: (details.spoken_languages ?? []).map(
+          (l) => l.english_name
+        ),
+        // TV's alternative_titles uses `results` instead of `titles`.
+        alternative_titles: pickAlternativeTitles(
+          details.alternative_titles?.results
+        ),
       };
     } catch {
       return null;
@@ -67,6 +266,93 @@ async function enrichTMDBMetadata(
   }
 
   return null;
+}
+
+/**
+ * Returns true when a row's stored metadata is missing fields that the
+ * current enrichment pipeline produces. Shared between `upsertMediaItem`
+ * (insert/track flow) and `ensureMediaItemEnriched` (detail-page lazy
+ * refresh) so both paths use the same staleness criteria.
+ */
+function isMetadataStale(
+  mediaType: string,
+  meta: Record<string, unknown> | null
+): boolean {
+  // upcoming_seasons lacked poster_path before the schema bump — detect
+  // older entries so they get re-fetched with the new field.
+  const upcomingArr = meta?.upcoming_seasons as
+    | Array<Record<string, unknown>>
+    | undefined;
+  const upcomingMissingPoster =
+    Array.isArray(upcomingArr) &&
+    upcomingArr.length > 0 &&
+    !("poster_path" in upcomingArr[0]);
+
+  if (mediaType === "movie") {
+    return (
+      !meta?.director ||
+      meta?.tagline === undefined ||
+      meta?.cast === undefined ||
+      meta?.keywords === undefined
+    );
+  }
+  if (mediaType === "tv_show") {
+    return (
+      !meta?.creator ||
+      !meta?.season_episodes ||
+      meta?.tagline === undefined ||
+      meta?.cast === undefined ||
+      meta?.upcoming_seasons === undefined ||
+      meta?.season_details === undefined ||
+      meta?.keywords === undefined ||
+      upcomingMissingPoster
+    );
+  }
+  return false;
+}
+
+/**
+ * Lazy-refresh a media item's metadata if it's stale. Returns the
+ * (possibly updated) metadata blob. Safe to call on every detail-page
+ * load — the staleness check short-circuits when the row is current.
+ *
+ * Doesn't require auth — the row update relies on RLS allowing writes
+ * to media_items (which is a globally-shared table). If RLS blocks the
+ * update we silently return the original metadata.
+ */
+export async function ensureMediaItemEnriched(
+  mediaId: string
+): Promise<Record<string, unknown> | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("media_items")
+    .select("media_type, metadata, external_ids")
+    .eq("id", mediaId)
+    .single();
+  if (!data) return null;
+
+  const meta = (data.metadata as Record<string, unknown> | null) ?? null;
+  if (!isMetadataStale(data.media_type, meta)) return meta;
+
+  const externalIds =
+    (data.external_ids as Record<string, string | number> | null) ?? null;
+  if (!externalIds) return meta;
+
+  try {
+    const enriched = await enrichTMDBMetadata(
+      data.media_type,
+      externalIds,
+      meta ?? {}
+    );
+    if (!enriched) return meta;
+    await supabase
+      .from("media_items")
+      .update({ metadata: enriched })
+      .eq("id", mediaId);
+    return enriched;
+  } catch {
+    return meta;
+  }
 }
 
 export async function upsertMediaItem(
@@ -100,7 +386,7 @@ export async function upsertMediaItem(
 
   const { data: existing } = await supabase
     .from("media_items")
-    .select("id, metadata, cover_image_url")
+    .select("id, metadata, cover_image_url, backdrop_url")
     .contains("external_ids", { [externalKey]: externalValue })
     .limit(1)
     .single();
@@ -108,9 +394,7 @@ export async function upsertMediaItem(
   if (existing) {
     // Re-enrich if metadata is missing key fields (director, genres, etc.)
     const meta = existing.metadata as Record<string, unknown> | null;
-    const needsEnrichment =
-      (result.media_type === "movie" && !meta?.director) ||
-      (result.media_type === "tv_show" && (!meta?.creator || !meta?.season_episodes));
+    const needsEnrichment = isMetadataStale(result.media_type, meta);
 
     const updates: Record<string, unknown> = {};
 
@@ -126,6 +410,28 @@ export async function upsertMediaItem(
       updates.cover_image_url = result.cover_image_url;
     }
 
+    // Backfill / upgrade backdrop. Rows inserted before migration 014 have
+    // null here; earlier inserts used TMDb's w1280 size. Either way, when
+    // we need to (re)populate we now rank TMDb's /images list to get the
+    // highest-voted, text-free backdrop — much better than the default.
+    const existingIsLowRes =
+      typeof existing.backdrop_url === "string" &&
+      existing.backdrop_url.includes("/t/p/w1280/");
+    const needsBackdrop = !existing.backdrop_url || existingIsLowRes;
+    if (needsBackdrop && result.backdrop_url) {
+      const tmdbId = result.external_ids.tmdb_id as number | undefined;
+      const isTMDB =
+        (result.media_type === "movie" || result.media_type === "tv_show") &&
+        tmdbId != null;
+      updates.backdrop_url = isTMDB
+        ? await fetchBestTMDBBackdrop(
+            result.media_type as "movie" | "tv_show",
+            tmdbId!,
+            result.backdrop_url
+          )
+        : result.backdrop_url;
+    }
+
     if (Object.keys(updates).length > 0) {
       await supabase.from("media_items").update(updates).eq("id", existing.id);
     }
@@ -133,11 +439,26 @@ export async function upsertMediaItem(
     return existing.id;
   }
 
-  // Enrich TMDB items with full details before inserting
-  const enrichedMetadata =
-    (await enrichTMDBMetadata(result.media_type, result.external_ids, result.metadata ?? {})) ??
-    result.metadata ??
-    {};
+  // Enrich TMDB items (metadata + best backdrop) in parallel before inserting.
+  const tmdbId = result.external_ids.tmdb_id as number | undefined;
+  const isTMDB =
+    (result.media_type === "movie" || result.media_type === "tv_show") &&
+    tmdbId != null;
+  const [enrichedMetadataResult, bestBackdrop] = await Promise.all([
+    enrichTMDBMetadata(
+      result.media_type,
+      result.external_ids,
+      result.metadata ?? {}
+    ),
+    isTMDB
+      ? fetchBestTMDBBackdrop(
+          result.media_type as "movie" | "tv_show",
+          tmdbId!,
+          result.backdrop_url
+        )
+      : Promise.resolve(result.backdrop_url),
+  ]);
+  const enrichedMetadata = enrichedMetadataResult ?? result.metadata ?? {};
 
   // Insert new media item
   const { data: inserted, error } = await supabase
@@ -147,6 +468,7 @@ export async function upsertMediaItem(
       title: result.title,
       description: result.description,
       cover_image_url: result.cover_image_url,
+      backdrop_url: bestBackdrop,
       release_date: result.release_date,
       metadata: enrichedMetadata,
       external_ids: result.external_ids,
@@ -559,4 +881,114 @@ export async function setCustomCover(
     .eq("user_id", user.id);
 
   if (error) throw new Error(`Failed to save cover: ${error.message}`);
+}
+
+/**
+ * Set a custom backdrop override for a user's tracked item. Persisted in
+ * the user_media.progress JSONB so it's per-user. Pass null to clear and
+ * fall back to the shared `media_items.backdrop_url` default.
+ */
+export async function setCustomBackdrop(
+  userMediaId: string,
+  backdropUrl: string | null
+): Promise<void> {
+  const { supabase, user } = await getAuthUser();
+
+  const { data: current } = await supabase
+    .from("user_media")
+    .select("progress")
+    .eq("id", userMediaId)
+    .eq("user_id", user.id)
+    .single();
+
+  const progress = (current?.progress as Record<string, unknown> | null) ?? {};
+  if (backdropUrl) {
+    progress.custom_backdrop_url = backdropUrl;
+  } else {
+    delete progress.custom_backdrop_url;
+  }
+
+  const { error } = await supabase
+    .from("user_media")
+    .update({ progress })
+    .eq("id", userMediaId)
+    .eq("user_id", user.id);
+
+  if (error) throw new Error(`Failed to save backdrop: ${error.message}`);
+}
+
+/**
+ * Return all available backdrop candidate URLs for a media item so the
+ * "Change backdrop" picker can display them. Movies/TV pull from TMDb's
+ * /images endpoint (ranked by our language + vote heuristic). Games pull
+ * from IGDB's artworks + screenshots. Books have none.
+ */
+export async function listMediaBackdrops(
+  mediaId: string
+): Promise<string[]> {
+  const { supabase } = await getAuthUser();
+
+  const { data: media } = await supabase
+    .from("media_items")
+    .select("media_type, external_ids")
+    .eq("id", mediaId)
+    .single();
+  if (!media) return [];
+
+  const mediaType = media.media_type as string;
+  const externalIds = (media.external_ids as Record<string, unknown> | null) ?? {};
+
+  if (mediaType === "movie" || mediaType === "tv_show") {
+    const tmdbId = externalIds.tmdb_id as number | undefined;
+    if (!tmdbId) return [];
+    try {
+      const { getMovieImages, getTVImages, tmdbImageUrl } = await import(
+        "@/lib/api/tmdb"
+      );
+      const res =
+        mediaType === "movie"
+          ? await getMovieImages(tmdbId)
+          : await getTVImages(tmdbId);
+      // Rank same way `pickBestTMDBBackdrop` does — language-neutral > en,
+      // then by vote_average, then vote_count — so the picker presents
+      // the best candidates first.
+      const langScore = (lang: string | null): number => {
+        if (lang === null) return 2;
+        if (lang === "en") return 1;
+        return 0;
+      };
+      const ranked = [...res.backdrops].sort((a, b) => {
+        const l = langScore(b.iso_639_1) - langScore(a.iso_639_1);
+        if (l !== 0) return l;
+        if (b.vote_average !== a.vote_average)
+          return b.vote_average - a.vote_average;
+        return b.vote_count - a.vote_count;
+      });
+      return ranked
+        .map((img) => tmdbImageUrl(img.file_path, "original"))
+        .filter((u): u is string => !!u);
+    } catch {
+      return [];
+    }
+  }
+
+  if (mediaType === "video_game") {
+    const igdbId = externalIds.igdb_id as number | undefined;
+    if (!igdbId) return [];
+    try {
+      const { getGameDetails, igdbImageUrl } = await import("@/lib/api/igdb");
+      const game = await getGameDetails(igdbId);
+      if (!game) return [];
+      const artworkUrls =
+        game.artworks?.map((a) => igdbImageUrl(a.image_id, "t_1080p")) ?? [];
+      const screenshotUrls =
+        game.screenshots?.map((s) => igdbImageUrl(s.image_id, "t_1080p")) ?? [];
+      // Artworks first (curated key art), then screenshots (gameplay frames).
+      return [...artworkUrls, ...screenshotUrls];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
 }

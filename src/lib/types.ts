@@ -17,6 +17,7 @@ export interface MediaItem {
   title: string;
   description: string | null;
   cover_image_url: string | null;
+  backdrop_url: string | null;
   release_date: string | null;
   metadata: Record<string, unknown> | null;
   external_ids: Record<string, unknown> | null;
@@ -33,6 +34,7 @@ export interface SearchResult {
   title: string;
   description: string | null;
   cover_image_url: string | null;
+  backdrop_url: string | null;
   release_date: string | null;
   metadata: Record<string, unknown> | null;
   external_ids: Record<string, string | number>;
