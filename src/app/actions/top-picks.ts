@@ -125,6 +125,40 @@ export async function removeTopPick(
   });
 }
 
+/**
+ * Reorder the user's top picks for a media type. Accepts the media IDs in
+ * their new display order and rewrites the shelf_items `position` column.
+ * Only the owner can reorder — enforced by the user_id check on the shelf.
+ */
+export async function reorderTopPicks(
+  mediaType: MediaType,
+  mediaIds: string[]
+): Promise<void> {
+  const { supabase, user } = await getAuthUser();
+  const shelfName = TOP_4_SHELF_NAMES[mediaType];
+
+  const { data: shelf } = await supabase
+    .from("shelves")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("name", shelfName)
+    .limit(1)
+    .single();
+
+  if (!shelf) return;
+
+  // Batch the updates in parallel — small N (max 4) makes this trivial.
+  await Promise.all(
+    mediaIds.map((mediaId, idx) =>
+      supabase
+        .from("shelf_items")
+        .update({ position: idx + 1 })
+        .eq("shelf_id", shelf.id)
+        .eq("media_id", mediaId)
+    )
+  );
+}
+
 /** Fetch the user's tracked media for a given type (for the picker modal) */
 export async function getUserLibrary(
   mediaType: MediaType

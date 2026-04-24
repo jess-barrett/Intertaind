@@ -5,7 +5,7 @@ import Link from "next/link";
 import { BookOpen, Film, Tv, Gamepad2, Plus, X } from "lucide-react";
 import type { MediaItem, MediaType, UserMedia } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
-import { removeTopPick } from "@/app/actions/top-picks";
+import { removeTopPick, reorderTopPicks } from "@/app/actions/top-picks";
 import TopPickModal from "@/components/modals/top-pick-modal";
 import MediaCardActions from "@/components/media-card-actions";
 
@@ -36,6 +36,14 @@ export default function TopFourGrid({
 }) {
   const [topFours, setTopFours] = useState(initialTopFours);
   const [pickerType, setPickerType] = useState<MediaType | null>(null);
+  const [dragging, setDragging] = useState<{
+    type: MediaType;
+    id: string;
+  } | null>(null);
+  const [dropTarget, setDropTarget] = useState<{
+    type: MediaType;
+    id: string;
+  } | null>(null);
 
   function handleAdded(type: MediaType, item: MediaItem) {
     setTopFours((prev) => ({
@@ -51,6 +59,34 @@ export default function TopFourGrid({
       [type]: prev[type].filter((i) => i.id !== mediaId),
     }));
     removeTopPick(type, mediaId);
+  }
+
+  function handleDrop(type: MediaType, targetId: string) {
+    if (!dragging || dragging.type !== type || dragging.id === targetId) {
+      setDragging(null);
+      setDropTarget(null);
+      return;
+    }
+    const items = topFours[type];
+    const from = items.findIndex((i) => i.id === dragging.id);
+    const to = items.findIndex((i) => i.id === targetId);
+    if (from < 0 || to < 0) {
+      setDragging(null);
+      setDropTarget(null);
+      return;
+    }
+    const reordered = [...items];
+    const [moved] = reordered.splice(from, 1);
+    reordered.splice(to, 0, moved);
+    setTopFours((prev) => ({ ...prev, [type]: reordered }));
+    setDragging(null);
+    setDropTarget(null);
+    // Fire-and-forget server sync. If it fails the UI rolls back on next
+    // full refresh; optimistic update keeps the drag feeling instant.
+    reorderTopPicks(
+      type,
+      reordered.map((i) => i.id)
+    );
   }
 
   return (
@@ -85,16 +121,61 @@ export default function TopFourGrid({
                     unknown
                   >;
                   const viewerUm = viewerTracking?.[item.id];
+                  const isDragging =
+                    dragging?.type === type && dragging.id === item.id;
+                  const isDropTarget =
+                    dropTarget?.type === type &&
+                    dropTarget.id === item.id &&
+                    dragging?.id !== item.id;
                   return (
                     <div
                       key={item.id}
-                      className="group group/pick relative flex-1"
+                      draggable={isOwner}
+                      onDragStart={() => {
+                        if (!isOwner) return;
+                        setDragging({ type, id: item.id });
+                      }}
+                      onDragEnd={() => {
+                        setDragging(null);
+                        setDropTarget(null);
+                      }}
+                      onDragOver={(e) => {
+                        if (!dragging || dragging.type !== type) return;
+                        e.preventDefault();
+                        if (dropTarget?.id !== item.id) {
+                          setDropTarget({ type, id: item.id });
+                        }
+                      }}
+                      onDragLeave={() => {
+                        if (dropTarget?.id === item.id) setDropTarget(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleDrop(type, item.id);
+                      }}
+                      className={`group group/pick relative flex-1 transition-opacity ${
+                        isOwner ? "cursor-grab active:cursor-grabbing" : ""
+                      } ${isDragging ? "opacity-40" : ""}`}
                     >
                       <Link
                         href={`/media/${item.id}`}
                         className="shelf-item block"
+                        onClick={(e) => {
+                          // Swallow click after a drag-and-drop — the browser
+                          // fires a final click on the source element after
+                          // dragend, which would navigate unexpectedly.
+                          if (dragging || isDragging) {
+                            e.preventDefault();
+                          }
+                        }}
                       >
-                        <div className="relative aspect-2/3 overflow-hidden rounded-lg border border-surface-border bg-surface-overlay">
+                        <div
+                          className={`relative aspect-2/3 overflow-hidden rounded-lg border bg-surface-overlay ${
+                            isDropTarget
+                              ? "border-brand"
+                              : "border-surface-border"
+                          }`}
+                        >
                           {item.cover_image_url ? (
                             <img
                               src={item.cover_image_url}
