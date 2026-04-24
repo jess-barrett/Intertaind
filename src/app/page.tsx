@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { MediaItem, List, Profile } from "@/lib/types";
 import LandingPage from "@/components/landing-page";
 import DiscoveryFeed from "@/components/discovery-feed";
+import { fetchViewerTracking } from "@/lib/viewer-tracking";
 
 export default async function Home() {
   const supabase = await createClient();
@@ -53,16 +54,34 @@ export default async function Home() {
         .limit(3),
     ]);
 
+  const popularMovies = (moviesRes.data as MediaItem[]) ?? [];
+  const popularShows = (showsRes.data as MediaItem[]) ?? [];
+  const popularBooks = (booksRes.data as MediaItem[]) ?? [];
+  const popularGames = (gamesRes.data as MediaItem[]) ?? [];
+
+  // Fetch the viewer's tracking rows for all popular items in one round-trip
+  // so the MediaCard hover slideout and three-dots popup reflect the viewer's
+  // own state (watched/loved/rated, current_page/season/episode for in-
+  // progress items).
+  const allIds = [
+    ...popularMovies.map((i) => i.id),
+    ...popularShows.map((i) => i.id),
+    ...popularBooks.map((i) => i.id),
+    ...popularGames.map((i) => i.id),
+  ];
+  const viewerTracking = await fetchViewerTracking(supabase, user.id, allIds);
+
   return (
     <DiscoveryFeed
       displayName={displayName}
-      popularMovies={(moviesRes.data as MediaItem[]) ?? []}
-      popularShows={(showsRes.data as MediaItem[]) ?? []}
-      popularBooks={(booksRes.data as MediaItem[]) ?? []}
-      popularGames={(gamesRes.data as MediaItem[]) ?? []}
+      popularMovies={popularMovies}
+      popularShows={popularShows}
+      popularBooks={popularBooks}
+      popularGames={popularGames}
       popularLists={
         (listsRes.data as (List & { profiles: Profile })[]) ?? []
       }
+      viewerTracking={viewerTracking}
     />
   );
 }

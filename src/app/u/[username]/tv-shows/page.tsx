@@ -85,13 +85,11 @@ export default async function TVShowsShelfPage({
 
   return (
     <div className="pt-8">
-      {isOwner && (
-        <div className="mb-6">
-          <ShelfSearch mediaType="tv_show" />
-        </div>
-      )}
-
-      <ShelfTabs tabs={TABS} activeTab={activeTab.key} />
+      <ShelfTabs
+        tabs={TABS}
+        activeTab={activeTab.key}
+        rightSlot={isOwner ? <ShelfSearch mediaType="tv_show" /> : null}
+      />
 
       <MediaFilterBar
         genres={GENRES_BY_TYPE.tv_show}

@@ -30,8 +30,15 @@ export default function CurrentReadingModal({
   const initialDateStarted = initial?.started_at?.split("T")[0] ?? today;
   const initialCurrentPage = (initial?.progress?.current_page as number) ?? 0;
   const initialIsReread = (initial?.progress?.is_reread as boolean) ?? false;
+  // Prefer the user's saved override; otherwise fall back to the book's
+  // Google Books metadata count so re-opening the modal on an in-progress
+  // book shows both fields populated without the user having to retype.
+  const savedTotalPages = initial?.progress?.total_pages as
+    | number
+    | null
+    | undefined;
   const initialTotalPages =
-    (initial?.progress?.total_pages as number | undefined) ?? null;
+    savedTotalPages != null ? savedTotalPages : totalPagesDefault;
 
   const [dateStarted, setDateStarted] = useState(initialDateStarted);
   const [currentPage, setCurrentPage] = useState(initialCurrentPage);

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BookOpen, Film, Tv, Gamepad2, Heart, User, ArrowRight } from "lucide-react";
-import type { MediaItem, MediaType, List, Profile } from "@/lib/types";
+import type { MediaItem, MediaType, List, Profile, UserMedia } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
 import MediaCard from "@/components/media-card";
 
@@ -45,6 +45,7 @@ export default function DiscoveryFeed({
   popularBooks,
   popularGames,
   popularLists,
+  viewerTracking,
 }: {
   displayName: string;
   popularMovies: MediaItem[];
@@ -52,7 +53,16 @@ export default function DiscoveryFeed({
   popularBooks: MediaItem[];
   popularGames: MediaItem[];
   popularLists: (List & { profiles: Profile })[];
+  viewerTracking?: Record<string, UserMedia>;
 }) {
+  function cardProps(item: MediaItem) {
+    const um = viewerTracking?.[item.id];
+    return {
+      userMedia: um ?? null,
+      userRating: um?.rating ?? null,
+      userFavorite: um?.is_favorite ?? false,
+    };
+  }
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8">
       {/* Welcome */}
@@ -112,7 +122,7 @@ export default function DiscoveryFeed({
             />
             <div className="grid grid-cols-4 gap-2">
               {popularMovies.slice(0, 4).map((item) => (
-                <MediaCard key={item.id} item={item} compact />
+                <MediaCard key={item.id} item={item} compact {...cardProps(item)} />
               ))}
             </div>
           </section>
@@ -128,7 +138,7 @@ export default function DiscoveryFeed({
             />
             <div className="grid grid-cols-4 gap-2">
               {popularBooks.slice(0, 4).map((item) => (
-                <MediaCard key={item.id} item={item} compact />
+                <MediaCard key={item.id} item={item} compact {...cardProps(item)} />
               ))}
             </div>
           </section>
@@ -144,7 +154,7 @@ export default function DiscoveryFeed({
             />
             <div className="grid grid-cols-4 gap-2">
               {popularShows.slice(0, 4).map((item) => (
-                <MediaCard key={item.id} item={item} compact />
+                <MediaCard key={item.id} item={item} compact {...cardProps(item)} />
               ))}
             </div>
           </section>
@@ -160,7 +170,7 @@ export default function DiscoveryFeed({
             />
             <div className="grid grid-cols-4 gap-2">
               {popularGames.slice(0, 4).map((item) => (
-                <MediaCard key={item.id} item={item} compact />
+                <MediaCard key={item.id} item={item} compact {...cardProps(item)} />
               ))}
             </div>
           </section>

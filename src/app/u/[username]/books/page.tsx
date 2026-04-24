@@ -87,13 +87,11 @@ export default async function BooksShelfPage({
 
   return (
     <div className="pt-8">
-      {isOwner && (
-        <div className="mb-6">
-          <ShelfSearch mediaType="book" />
-        </div>
-      )}
-
-      <ShelfTabs tabs={TABS} activeTab={activeTab.key} />
+      <ShelfTabs
+        tabs={TABS}
+        activeTab={activeTab.key}
+        rightSlot={isOwner ? <ShelfSearch mediaType="book" /> : null}
+      />
 
       <MediaFilterBar
         genres={GENRES_BY_TYPE.book}

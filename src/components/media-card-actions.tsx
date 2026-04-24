@@ -218,11 +218,25 @@ export default function MediaCardActions({
           setStatus(null);
           setFavorite(false);
           setRating(null);
+          setGameStatus("");
         } else {
           const id = await ensureMediaId();
-          const umId = await trackMedia(id, "completed");
+          // Games don't have a generic "completed" — the sidebar dropdown
+          // expects a sub_status. Default the quick-add icon to "played"
+          // so the game lands on the Played shelf instead of an ambiguous
+          // Completed-with-no-sub-status state.
+          const isGame = mediaType === "video_game";
+          const umId = await trackMedia(id, "completed", {
+            ...(isGame
+              ? { progress: { ...progress, sub_status: "played" } }
+              : {}),
+          });
           setUserMediaId(umId);
           setStatus("completed");
+          if (isGame) {
+            setGameStatus("played");
+            setProgress((p) => ({ ...p, sub_status: "played" }));
+          }
         }
         router.refresh();
       } catch (err) {

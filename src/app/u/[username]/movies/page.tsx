@@ -81,13 +81,11 @@ export default async function MoviesShelfPage({
 
   return (
     <div className="pt-8">
-      {isOwner && (
-        <div className="mb-6">
-          <ShelfSearch mediaType="movie" />
-        </div>
-      )}
-
-      <ShelfTabs tabs={TABS} activeTab={activeTab.key} />
+      <ShelfTabs
+        tabs={TABS}
+        activeTab={activeTab.key}
+        rightSlot={isOwner ? <ShelfSearch mediaType="movie" /> : null}
+      />
 
       <MediaFilterBar
         genres={GENRES_BY_TYPE.movie}

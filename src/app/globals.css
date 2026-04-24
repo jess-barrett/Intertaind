@@ -79,3 +79,31 @@ body {
   transform: translate3d(0, -4px, 0);
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
 }
+
+/* Thin gray scrollbar — used on scrollable panels like the shelf search
+   results. Hides the default chunky browser scrollbar in favor of a
+   slim thumb that matches the dark theme. */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-muted) transparent;
+  /* Hint to the browser that the UA scrollbar should use dark colors — some
+     browsers (notably Chromium on Windows) render a light track otherwise. */
+  color-scheme: dark;
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-track-piece,
+.custom-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--text-muted);
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-secondary);
+}

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Lock } from "lucide-react";
+import { UserPlus, Lock } from "lucide-react";
 import { searchUsers, type UserSearchHit } from "@/app/actions/social";
 
 export default function UserSearchBar() {
@@ -10,10 +10,17 @@ export default function UserSearchBar() {
   const [results, setResults] = useState<UserSearchHit[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  // Close on outside click
+  // Stay expanded while the user is interacting or has typed something —
+  // collapsing mid-edit would feel broken.
+  const expanded = hovered || focused || query.trim().length > 0;
+
+  // Close dropdown on outside click
   useEffect(() => {
     function onDoc(e: MouseEvent) {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
@@ -28,6 +35,7 @@ export default function UserSearchBar() {
     if (q.length < 2) {
       setResults([]);
       setLoading(false);
+      setOpen(false);
       return;
     }
     setLoading(true);
@@ -50,26 +58,50 @@ export default function UserSearchBar() {
   }
 
   return (
-    <div ref={rootRef} className="relative w-64">
-      <Search
-        size={14}
-        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
-      />
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onFocus={() => query.trim().length >= 2 && setOpen(true)}
-        placeholder="Find users…"
-        className="w-full rounded-sm border border-surface-border bg-surface-overlay py-1.5 pl-8 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
-      />
+    <div
+      ref={rootRef}
+      className="relative"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div
+        className={`flex h-8 items-center overflow-hidden rounded-sm border border-surface-border bg-surface-overlay transition-[width] duration-200 ease-out ${
+          expanded ? "w-48" : "w-8"
+        }`}
+      >
+        <button
+          type="button"
+          aria-label="Find users"
+          onClick={() => inputRef.current?.focus()}
+          className="flex h-8 w-8 shrink-0 items-center justify-center text-text-muted transition-colors hover:text-text-primary"
+        >
+          <UserPlus size={14} />
+        </button>
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => {
+            setFocused(true);
+            if (query.trim().length >= 2) setOpen(true);
+          }}
+          onBlur={() => setFocused(false)}
+          placeholder="Find users…"
+          tabIndex={expanded ? 0 : -1}
+          className="h-full min-w-0 flex-1 bg-transparent pr-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
+        />
+      </div>
+
       {open && (
-        <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-sm border border-surface-border bg-surface-raised shadow-xl shadow-black/40">
+        <div className="absolute right-0 top-full z-30 mt-1 w-48 overflow-hidden rounded-sm border border-surface-border bg-surface-raised shadow-xl shadow-black/40">
           {loading && results.length === 0 && (
             <div className="px-3 py-2 text-xs text-text-muted">Searching…</div>
           )}
           {!loading && results.length === 0 && query.trim().length >= 2 && (
-            <div className="px-3 py-2 text-xs text-text-muted">No users found.</div>
+            <div className="px-3 py-2 text-xs text-text-muted">
+              No users found.
+            </div>
           )}
           {results.map((hit) => (
             <button

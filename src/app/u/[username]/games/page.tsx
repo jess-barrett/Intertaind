@@ -110,13 +110,11 @@ export default async function GamesShelfPage({
 
   return (
     <div className="pt-8">
-      {isOwner && (
-        <div className="mb-6">
-          <ShelfSearch mediaType="video_game" />
-        </div>
-      )}
-
-      <ShelfTabs tabs={TABS} activeTab={activeTab.key} />
+      <ShelfTabs
+        tabs={TABS}
+        activeTab={activeTab.key}
+        rightSlot={isOwner ? <ShelfSearch mediaType="video_game" /> : null}
+      />
 
       <MediaFilterBar
         genres={GENRES_BY_TYPE.video_game}
