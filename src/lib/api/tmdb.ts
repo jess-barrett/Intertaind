@@ -6,6 +6,10 @@ import type {
   TMDBSearchResponse,
   TMDBImage,
   TMDBImagesResponse,
+  TMDBPerson,
+  TMDBPersonCombinedCredits,
+  TMDBCompany,
+  TMDBNetwork,
 } from "./types";
 
 const BASE_URL = "https://api.themoviedb.org/3";
@@ -102,6 +106,157 @@ export function pickBestTMDBBackdrop(
     return b.vote_count - a.vote_count;
   });
   return tmdbImageUrl(ranked[0].file_path, "original");
+}
+
+// Person bios and filmographies barely change — let Next cache them on
+// the data layer so popular people don't hammer TMDb. 24h is conservative;
+// if a person updates their bio it'll surface within a day.
+const PERSON_CACHE_SECONDS = 86_400;
+
+export async function getPersonDetails(personId: number): Promise<TMDBPerson> {
+  const url = `${BASE_URL}/person/${personId}`;
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: PERSON_CACHE_SECONDS },
+  });
+  if (!res.ok) throw new Error(`TMDB person details failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getPersonCombinedCredits(
+  personId: number
+): Promise<TMDBPersonCombinedCredits> {
+  const url = `${BASE_URL}/person/${personId}/combined_credits`;
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: PERSON_CACHE_SECONDS },
+  });
+  if (!res.ok) throw new Error(`TMDB person credits failed: ${res.status}`);
+  return res.json();
+}
+
+// TMDb's published genre IDs — combined movie + TV map. Centralized
+// here so any consumer (filmography, entity pages, search) can resolve
+// raw genre_ids → display names without re-deriving the table.
+export const TMDB_GENRES: Record<number, string> = {
+  // Movies
+  28: "Action",
+  12: "Adventure",
+  16: "Animation",
+  35: "Comedy",
+  80: "Crime",
+  99: "Documentary",
+  18: "Drama",
+  10751: "Family",
+  14: "Fantasy",
+  36: "History",
+  27: "Horror",
+  10402: "Music",
+  9648: "Mystery",
+  10749: "Romance",
+  878: "Science Fiction",
+  10770: "TV Movie",
+  53: "Thriller",
+  10752: "War",
+  37: "Western",
+  // TV-only
+  10759: "Action & Adventure",
+  10762: "Kids",
+  10763: "News",
+  10764: "Reality",
+  10765: "Sci-Fi & Fantasy",
+  10766: "Soap",
+  10767: "Talk",
+  10768: "War & Politics",
+};
+
+// Studio / network bios and filmographies are similarly stable.
+const ENTITY_CACHE_SECONDS = 86_400;
+
+export async function getCompanyDetails(
+  companyId: number
+): Promise<TMDBCompany> {
+  const url = `${BASE_URL}/company/${companyId}`;
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: ENTITY_CACHE_SECONDS },
+  });
+  if (!res.ok) throw new Error(`TMDB company details failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getNetworkDetails(
+  networkId: number
+): Promise<TMDBNetwork> {
+  const url = `${BASE_URL}/network/${networkId}`;
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: ENTITY_CACHE_SECONDS },
+  });
+  if (!res.ok) throw new Error(`TMDB network details failed: ${res.status}`);
+  return res.json();
+}
+
+export async function discoverMoviesByCompany(
+  companyId: number,
+  page = 1
+): Promise<TMDBSearchResponse<TMDBMovie>> {
+  const url = `${BASE_URL}/discover/movie?with_companies=${companyId}&page=${page}&include_adult=false&sort_by=popularity.desc`;
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: ENTITY_CACHE_SECONDS },
+  });
+  if (!res.ok) throw new Error(`TMDB discover movies failed: ${res.status}`);
+  return res.json();
+}
+
+export async function discoverTVByCompany(
+  companyId: number,
+  page = 1
+): Promise<TMDBSearchResponse<TMDBTVShow>> {
+  const url = `${BASE_URL}/discover/tv?with_companies=${companyId}&page=${page}&include_adult=false&sort_by=popularity.desc`;
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: ENTITY_CACHE_SECONDS },
+  });
+  if (!res.ok) throw new Error(`TMDB discover TV failed: ${res.status}`);
+  return res.json();
+}
+
+export async function discoverTVByNetwork(
+  networkId: number,
+  page = 1
+): Promise<TMDBSearchResponse<TMDBTVShow>> {
+  const url = `${BASE_URL}/discover/tv?with_networks=${networkId}&page=${page}&include_adult=false&sort_by=popularity.desc`;
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: ENTITY_CACHE_SECONDS },
+  });
+  if (!res.ok) throw new Error(`TMDB discover TV failed: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Pull up to ~3 pages (60 results) of discover output for a given fetcher.
+ * Big studios have hundreds of titles; we cap server-side pagination so
+ * the page-load stays fast and rely on filters/sort to surface what
+ * matters. If we ever need exhaustive lists we can swap in a
+ * client-driven Load More that hits the API directly.
+ */
+export async function discoverAllPages<T>(
+  fetcher: (page: number) => Promise<TMDBSearchResponse<T>>,
+  maxPages = 3
+): Promise<T[]> {
+  const first = await fetcher(1);
+  const total = Math.min(first.total_pages, maxPages);
+  if (total <= 1) return first.results;
+  const rest = await Promise.all(
+    Array.from({ length: total - 1 }, (_, i) => fetcher(i + 2))
+  );
+  return [
+    ...first.results,
+    ...rest.flatMap((r) => r.results),
+  ];
 }
 
 /**

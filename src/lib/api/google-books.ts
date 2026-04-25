@@ -32,6 +32,81 @@ export async function getBookDetails(
 }
 
 /**
+ * Find a Google Books volume by ISBN. Used to bind an Open Library work
+ * (which gives us a canonical bibliography) to a Google Books volume
+ * (which gives us cover, description, page count). The ISBN is the
+ * cross-reference glue between both vendors.
+ */
+export async function findVolumeByISBN(
+  isbn: string
+): Promise<GoogleBooksVolume | null> {
+  const params = new URLSearchParams({
+    q: `isbn:${isbn}`,
+    maxResults: "1",
+    printType: "books",
+    key: apiKey(),
+  });
+  const res = await fetch(`${BASE_URL}?${params}`);
+  if (!res.ok) return null;
+  const data: GoogleBooksSearchResponse = await res.json();
+  return data.items?.[0] ?? null;
+}
+
+/**
+ * Find the best Google Books volume matching a specific title + author.
+ * Used by author pages: OL gives us a complete bibliography, then we
+ * resolve each work to a Google Books volume so cards render with clean
+ * covers and descriptions instead of OL's user-uploaded scans.
+ *
+ * Cached at the fetch layer for 24h — Sanderson's bibliography won't
+ * change minute-to-minute, and the per-title call count adds up fast on
+ * cold visits otherwise.
+ */
+export async function findVolumeByTitleAndAuthor(
+  title: string,
+  author: string
+): Promise<GoogleBooksVolume | null> {
+  // No `country=US` filter here — Google's localization is over-eager
+  // and excludes valid US editions of some books entirely (Elantris,
+  // The Way of Kings, etc.). Edition origin is detected via publisher
+  // name + ISBN-13 prefix in `scoreEdition` instead, which is reliable
+  // without dropping books from the result set.
+  const params = new URLSearchParams({
+    q: `intitle:"${title}" inauthor:"${author}"`,
+    maxResults: "10",
+    printType: "books",
+    key: apiKey(),
+  });
+  try {
+    const res = await fetch(`${BASE_URL}?${params}`, {
+      next: { revalidate: 86_400 },
+    });
+    if (!res.ok) return null;
+    const data: GoogleBooksSearchResponse = await res.json();
+    const items = data.items ?? [];
+    if (items.length === 0) return null;
+    // Sort + pick instead of single-pass max so ties resolve
+    // deterministically. Without tiebreakers, near-tie scores produce
+    // different "best" picks across calls because Google Books' result
+    // ordering isn't stable.
+    const sorted = [...items].sort((a, b) => {
+      const sb = scoreEdition(b);
+      const sa = scoreEdition(a);
+      if (sb !== sa) return sb - sa;
+      // Earliest publishedDate wins — original edition over reissues.
+      const da = a.volumeInfo.publishedDate ?? "9999";
+      const db = b.volumeInfo.publishedDate ?? "9999";
+      if (da !== db) return da.localeCompare(db);
+      // Final tiebreaker: volume id alphabetic, for full determinism.
+      return a.id.localeCompare(b.id);
+    });
+    return sorted[0];
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Search for alternative editions of a book by title (+ optional author).
  * Returns raw volumes with cover images, for letting users pick from
  * available cover art.
@@ -149,6 +224,162 @@ export async function findCanonicalBookEdition(
   const coverFromHelper = bookCoverUrl(winner);
   console.log(`[CANONICAL EDITION] Resolved cover URL: ${coverFromHelper}`);
   return winner;
+}
+
+/**
+ * Fetch the bibliography of an author by name. Google Books returns a
+ * lot of editions (paperback, hardcover, e-book, illustrated), so we
+ * dedupe by cleaned title and prefer the highest-quality edition for
+ * each work — same shape as `findCanonicalBookEdition`'s scoring.
+ *
+ * `maxRaw` controls how many raw volumes we pull before dedupe. 200 (5
+ * pages of 40) catches most prolific authors' catalogs after dedupe
+ * collapses the edition spam.
+ */
+export async function getBooksByAuthor(
+  authorName: string,
+  maxRaw = 200
+): Promise<GoogleBooksVolume[]> {
+  const q = `inauthor:"${authorName}"`;
+  const pageSize = 40;
+  const pages = Math.ceil(maxRaw / pageSize);
+  const all: GoogleBooksVolume[] = [];
+  for (let p = 0; p < pages; p++) {
+    const params = new URLSearchParams({
+      q,
+      startIndex: String(p * pageSize),
+      maxResults: String(pageSize),
+      printType: "books",
+      orderBy: "relevance",
+      key: apiKey(),
+    });
+    const res = await fetch(`${BASE_URL}?${params}`);
+    if (!res.ok) break;
+    const data: GoogleBooksSearchResponse = await res.json();
+    const items = data.items ?? [];
+    if (items.length === 0) break;
+    all.push(...items);
+    if (items.length < pageSize) break;
+  }
+  return dedupeAuthorBibliography(all, authorName);
+}
+
+/**
+ * Collapse Google Books' edition spam to one volume per title. Picks
+ * the "best" edition: English, has cover + ISBN + non-empty description,
+ * highest ratings_count tiebreaker. Books missing any of those fall
+ * through to runner-up. Author name is matched loosely so co-authored
+ * works still surface (some volumes credit just the primary author).
+ */
+function dedupeAuthorBibliography(
+  volumes: GoogleBooksVolume[],
+  authorName: string
+): GoogleBooksVolume[] {
+  const target = authorName.trim().toLowerCase();
+  const byTitle = new Map<string, GoogleBooksVolume>();
+
+  for (const v of volumes) {
+    const info = v.volumeInfo;
+    if (!info.title) continue;
+    // Require the queried author to appear somewhere in the credits.
+    // Google's `inauthor:` operator is fuzzy — without this filter the
+    // page can fill with unrelated books from collaborators.
+    const credited = info.authors ?? [];
+    const matches = credited.some((a) => a.toLowerCase().includes(target));
+    if (!matches) continue;
+
+    const cleanTitle = info.title.split(":")[0].trim().toLowerCase();
+    if (!cleanTitle) continue;
+
+    const incumbent = byTitle.get(cleanTitle);
+    if (!incumbent || scoreEdition(v) > scoreEdition(incumbent)) {
+      byTitle.set(cleanTitle, v);
+    }
+  }
+  return Array.from(byTitle.values());
+}
+
+// ISBN-13 prefixes registered to UK publisher blocks. Not exhaustive —
+// covers the main genre/SFF imprints we see slipping through. Each
+// entry is a prefix on the full 13-digit ISBN (no hyphens).
+//
+// The test is "starts with this prefix", so longer prefixes are more
+// specific. We match against the longest prefix first via
+// `Array.some`.
+const UK_ISBN_PREFIXES = [
+  "978074", // Bloomsbury, Headline, Hodder reissues
+  "9780340", // Hodder & Stoughton
+  "9780571", // Faber & Faber
+  "9780575", // Gollancz / Orion
+  "9780747", // Bloomsbury (older)
+  "9780753", // Various UK trade
+  "9781407", // Hachette UK
+  "9781408", // Hachette UK
+  "9781409", // Hachette UK / Quercus
+  "9781447", // Pan Macmillan / Tor UK
+  "9781473", // Hodder & Stoughton
+  "9781529", // Various UK
+  "9781780", // Bloomsbury (recent)
+  "9781784", // Penguin Random House UK
+  "9781785", // Penguin Random House UK
+  "9781787", // Penguin Random House UK
+];
+
+function looksLikeUKEditionISBN(isbn: string | null | undefined): boolean {
+  if (!isbn) return false;
+  const cleaned = isbn.replace(/[^\d]/g, "");
+  return UK_ISBN_PREFIXES.some((p) => cleaned.startsWith(p));
+}
+
+function scoreEdition(v: GoogleBooksVolume): number {
+  const info = v.volumeInfo;
+  let s = 0;
+  if (info.language === "en") s += 50;
+  else if (info.language) s -= 100;
+  if (info.imageLinks?.thumbnail) s += 30;
+  const hasISBN = info.industryIdentifiers?.some(
+    (id) => id.type === "ISBN_10" || id.type === "ISBN_13"
+  );
+  if (hasISBN) s += 20;
+  if ((info.description ?? "").length >= 200) s += 30;
+  if ((info.pageCount ?? 0) >= 50) s += 10;
+  if (info.maturityRating === "MATURE") s -= 80;
+  s += Math.min(100, info.ratingsCount ?? 0);
+
+  // Canonical editions have short, descriptive subtitles ("Book Three
+  // of Mistborn"). UK marketing reissues stuff a sales pitch into the
+  // subtitle ("The first book of the breathtaking epic..."). Length
+  // bands let us hit the worst offenders hardest.
+  const subtitleLen = (info.subtitle ?? "").length;
+  if (subtitleLen > 80) s -= 150;
+  else if (subtitleLen > 60) s -= 80;
+  else if (subtitleLen > 40) s -= 30;
+
+  // Publisher-name penalty for known UK imprints. Matches the obvious
+  // "Hachette UK" string plus other UK SFF imprints.
+  const pub = (info.publisher ?? "").toLowerCase();
+  const ukPublisher =
+    pub.includes("hachette uk") ||
+    pub.includes("gollancz") ||
+    pub.includes("orion publishing") ||
+    pub.includes("hodder") ||
+    pub.includes("pan macmillan") ||
+    pub.includes("tor uk") ||
+    pub.includes("headline") ||
+    pub.includes("quercus") ||
+    pub.includes("bloomsbury") ||
+    pub.endsWith(" uk");
+  if (ukPublisher) s -= 80;
+
+  // ISBN-13 prefix penalty for UK publisher registration blocks. This
+  // catches editions with US-sounding publisher names (e.g. just
+  // "Macmillan") that are actually the UK arm.
+  const isbn13 = info.industryIdentifiers?.find(
+    (id) => id.type === "ISBN_13"
+  )?.identifier;
+  if (looksLikeUKEditionISBN(isbn13)) s -= 80;
+
+  return s;
 }
 
 export function bookCoverUrl(volume: GoogleBooksVolume): string | null {

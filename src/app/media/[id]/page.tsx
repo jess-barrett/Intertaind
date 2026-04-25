@@ -7,6 +7,7 @@ import { tmdbImageUrl } from "@/lib/api/tmdb";
 import MediaDetailClient from "./media-detail-client";
 import { MediaCastSection } from "@/components/media/media-info-sections";
 import MediaInfoTabs from "@/components/media/media-info-tabs";
+import AboutTheAuthor from "@/components/media/about-the-author";
 import RatingsHistogram from "@/components/media/ratings-histogram";
 import CoverImage from "@/components/cover-image";
 import BackButton from "@/components/back-button";
@@ -38,8 +39,15 @@ function getAttribution(
       return authors?.length ? `by ${authors.join(", ")}` : null;
     }
     case "video_game": {
-      const devs = metadata.developers as string[] | undefined;
-      return devs?.length ? `Developed by ${devs.join(", ")}` : null;
+      // Developers may be the legacy `string[]` shape or the new
+      // `{id,name}[]` — accept either so the byline renders before
+      // `ensureMediaItemEnriched` migrates the row to the linked shape.
+      const raw = metadata.developers as
+        | (string | { id?: number; name: string })[]
+        | undefined;
+      const names =
+        raw?.map((d) => (typeof d === "string" ? d : d.name)) ?? [];
+      return names.length ? `Developed by ${names.join(", ")}` : null;
     }
   }
 }
@@ -58,12 +66,12 @@ function getSecondaryDetails(
     details.push(String(metadata.publisher));
   if (mediaType === "tv_show" && metadata.seasons)
     details.push(`${metadata.seasons} seasons`);
-  if (mediaType === "video_game") {
-    const platforms = metadata.platforms as string[] | undefined;
-    if (platforms?.length) details.push(platforms.join(", "));
+  // Note: video game platforms + genres render in their own tabs below,
+  // not here. Other media types still show genres inline.
+  if (mediaType !== "video_game") {
+    const genres = metadata.genres as string[] | undefined;
+    if (genres?.length) details.push(genres.join(", "));
   }
-  const genres = metadata.genres as string[] | undefined;
-  if (genres?.length) details.push(genres.join(", "));
   return details;
 }
 
@@ -403,6 +411,16 @@ export default async function MediaDetailPage({
                 mediaType={media.media_type}
                 metadata={metadata}
               />
+
+              {/* Books: pull author bio + photo from Open Library. We
+                  only show the primary author — multi-author books would
+                  clutter the column. */}
+              {media.media_type === "book" &&
+                (() => {
+                  const authors = metadata?.authors as string[] | undefined;
+                  const primary = authors?.[0];
+                  return primary ? <AboutTheAuthor name={primary} /> : null;
+                })()}
 
               {/* Tabbed crew / details / releases / alternative titles —
                   same width as the cast slider. */}

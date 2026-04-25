@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Tv } from "lucide-react";
 import { tmdbImageUrl } from "@/lib/api/tmdb";
 import type { MediaType } from "@/lib/types";
@@ -35,6 +36,9 @@ interface Company {
   name: string;
   logo_path: string | null;
 }
+
+/** IGDB studio shape: legacy rows store `string[]` so we accept both. */
+type GameStudio = string | { id: number; name: string };
 
 interface Country {
   code: string;
@@ -79,6 +83,7 @@ type TabKey =
   | "crew"
   | "details"
   | "genres"
+  | "platforms"
   | "releases"
   | "alt_titles";
 
@@ -106,12 +111,26 @@ export default function MediaInfoTabs({
     (metadata?.release_dates as Record<string, string> | undefined) ?? null;
   const altTitles =
     (metadata?.alternative_titles as AltTitle[] | undefined) ?? [];
+  const platforms =
+    mediaType === "video_game"
+      ? (metadata?.platforms as string[] | undefined) ?? []
+      : [];
+  const gameDevelopers =
+    mediaType === "video_game"
+      ? (metadata?.developers as GameStudio[] | undefined) ?? []
+      : [];
+  const gamePublishers =
+    mediaType === "video_game"
+      ? (metadata?.publishers as GameStudio[] | undefined) ?? []
+      : [];
 
   const hasDetails =
     networks.length > 0 ||
     studios.length > 0 ||
     countries.length > 0 ||
-    languages.length > 0;
+    languages.length > 0 ||
+    gameDevelopers.length > 0 ||
+    gamePublishers.length > 0;
   const hasReleases =
     !!releases && Object.keys(releases).some((k) => releases[k]);
 
@@ -125,6 +144,11 @@ export default function MediaInfoTabs({
       key: "genres",
       label: "Genres",
       show: genres.length > 0 || themes.length > 0,
+    },
+    {
+      key: "platforms",
+      label: "Platforms",
+      show: platforms.length > 0,
     },
     { key: "releases", label: "Releases", show: hasReleases },
     {
@@ -175,10 +199,15 @@ export default function MediaInfoTabs({
           studios={studios}
           countries={countries}
           languages={languages}
+          gameDevelopers={gameDevelopers}
+          gamePublishers={gamePublishers}
         />
       )}
       {active === "genres" && (
         <GenresPanel genres={genres} themes={themes} />
+      )}
+      {active === "platforms" && (
+        <PlatformsPanel platforms={platforms} />
       )}
       {active === "releases" && releases && <ReleasesPanel releases={releases} />}
       {active === "alt_titles" && <AltTitlesPanel titles={altTitles} />}
@@ -208,6 +237,7 @@ function SeasonCard({ s }: { s: SeasonDetail }) {
           <img
             src={tmdbImageUrl(s.poster_path, "w185") ?? ""}
             alt={s.name}
+            loading="lazy"
             className="h-full w-full object-cover"
           />
         ) : (
@@ -268,6 +298,49 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * A row whose value is a comma-separated list of clickable entity links.
+ * Falls back to plain text when an entry has no id (legacy data).
+ */
+function LinkedRow({
+  label,
+  entries,
+  entityType,
+}: {
+  label: string;
+  entries: { id?: number; name: string }[];
+  entityType: "tmdb_company" | "tmdb_network" | "igdb_company";
+}) {
+  return (
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wider text-text-muted">
+        {label}
+      </dt>
+      <dd className="mt-1 text-sm text-text-secondary">
+        {entries.map((e, i) => (
+          <span key={`${e.name}-${i}`}>
+            {i > 0 && ", "}
+            {e.id ? (
+              <Link
+                href={`/entity/${entityType}/${e.id}`}
+                className="text-text-secondary transition-colors hover:text-brand"
+              >
+                {e.name}
+              </Link>
+            ) : (
+              e.name
+            )}
+          </span>
+        ))}
+      </dd>
+    </div>
+  );
+}
+
+function normalizeStudio(s: GameStudio): { id?: number; name: string } {
+  return typeof s === "string" ? { name: s } : s;
+}
+
 function CrewPanel({ crew }: { crew: CrewRow[] }) {
   return (
     <dl className="grid gap-4 sm:grid-cols-2">
@@ -284,25 +357,48 @@ function DetailsPanel({
   studios,
   countries,
   languages,
+  gameDevelopers,
+  gamePublishers,
 }: {
   mediaType: MediaType;
   networks: Company[];
   studios: Company[];
   countries: Country[];
   languages: string[];
+  gameDevelopers: GameStudio[];
+  gamePublishers: GameStudio[];
 }) {
+  const devs = gameDevelopers.map(normalizeStudio);
+  const pubs = gamePublishers.map(normalizeStudio);
   return (
     <dl className="grid gap-4 sm:grid-cols-2">
       {mediaType === "tv_show" && networks.length > 0 && (
-        <Row
+        <LinkedRow
           label={networks.length > 1 ? "Networks" : "Network"}
-          value={networks.map((n) => n.name).join(", ")}
+          entries={networks}
+          entityType="tmdb_network"
         />
       )}
-      {studios.length > 0 && (
-        <Row
-          label={studios.length > 1 ? "Studios" : "Studio"}
-          value={studios.map((s) => s.name).join(", ")}
+      {(mediaType === "movie" || mediaType === "tv_show") &&
+        studios.length > 0 && (
+          <LinkedRow
+            label={studios.length > 1 ? "Studios" : "Studio"}
+            entries={studios}
+            entityType="tmdb_company"
+          />
+        )}
+      {mediaType === "video_game" && devs.length > 0 && (
+        <LinkedRow
+          label={devs.length > 1 ? "Developers" : "Developer"}
+          entries={devs}
+          entityType="igdb_company"
+        />
+      )}
+      {mediaType === "video_game" && pubs.length > 0 && (
+        <LinkedRow
+          label={pubs.length > 1 ? "Publishers" : "Publisher"}
+          entries={pubs}
+          entityType="igdb_company"
         />
       )}
       {countries.length > 0 && (
@@ -362,6 +458,16 @@ function GenresPanel({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function PlatformsPanel({ platforms }: { platforms: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {platforms.map((p) => (
+        <Chip key={p}>{p}</Chip>
+      ))}
     </div>
   );
 }

@@ -51,6 +51,12 @@ function toFullDate(date: string | null | undefined): string | null {
 
 export function normalizeGoogleBook(raw: GoogleBooksVolume): SearchResult {
   const info = raw.volumeInfo;
+  // ISBN-13 is the canonical book identifier — both OL and Google Books
+  // emit it, so it's the bridge for cross-referencing author-page books
+  // (OL-sourced) to library books (Google-sourced).
+  const isbn13 = info.industryIdentifiers?.find(
+    (id) => id.type === "ISBN_13"
+  )?.identifier;
   return {
     media_type: "book",
     title: info.title + (info.subtitle ? `: ${info.subtitle}` : ""),
@@ -65,15 +71,27 @@ export function normalizeGoogleBook(raw: GoogleBooksVolume): SearchResult {
       publisher: info.publisher ?? null,
       categories: info.categories ?? [],
     },
-    external_ids: { google_books_id: raw.id },
+    external_ids: {
+      google_books_id: raw.id,
+      ...(isbn13 ? { isbn_13: isbn13 } : {}),
+    },
   };
 }
 
 export function normalizeIGDBGame(raw: IGDBGame): SearchResult {
-  const developers =
+  // IGDB returns one row per role per company — a single company can be
+  // credited as both developer and publisher on the same game. Dedupe by
+  // company id so the entity-link list doesn't render twice.
+  const developers = uniqueByCompanyId(
     raw.involved_companies
       ?.filter((c) => c.developer)
-      .map((c) => c.company.name) ?? [];
+      .map((c) => ({ id: c.company.id, name: c.company.name })) ?? []
+  );
+  const publishers = uniqueByCompanyId(
+    raw.involved_companies
+      ?.filter((c) => c.publisher)
+      .map((c) => ({ id: c.company.id, name: c.company.name })) ?? []
+  );
 
   const platforms = raw.platforms?.map((p) => p.name) ?? [];
   const genres = raw.genres?.map((g) => g.name) ?? [];
@@ -95,9 +113,23 @@ export function normalizeIGDBGame(raw: IGDBGame): SearchResult {
       : null,
     metadata: {
       developers,
+      publishers,
       platforms,
       genres,
     },
     external_ids: { igdb_id: raw.id },
   };
+}
+
+function uniqueByCompanyId(
+  list: { id: number; name: string }[]
+): { id: number; name: string }[] {
+  const seen = new Set<number>();
+  const out: { id: number; name: string }[] = [];
+  for (const c of list) {
+    if (seen.has(c.id)) continue;
+    seen.add(c.id);
+    out.push(c);
+  }
+  return out;
 }

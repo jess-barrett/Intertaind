@@ -7,14 +7,12 @@ import { listMediaBackdrops, setCustomBackdrop } from "@/app/actions/media";
 
 export default function BackdropPickerModal({
   mediaId,
-  userMediaId,
   currentUrl,
   defaultUrl,
   onClose,
   onSaved,
 }: {
   mediaId: string;
-  userMediaId: string;
   /** The URL currently being used (user override OR shared default). */
   currentUrl: string | null;
   /** The shared default backdrop — rendered with a "Default" badge and
@@ -39,7 +37,7 @@ export default function BackdropPickerModal({
   function pick(url: string | null) {
     startTransition(async () => {
       try {
-        await setCustomBackdrop(userMediaId, url);
+        await setCustomBackdrop(mediaId, url);
         onSaved();
       } catch (err) {
         console.error(err);

@@ -51,6 +51,7 @@ export default function CoverImage({
       src={url}
       alt={alt}
       className={className}
+      loading="lazy"
       onError={handleError}
       onLoad={handleLoad}
       referrerPolicy="no-referrer"

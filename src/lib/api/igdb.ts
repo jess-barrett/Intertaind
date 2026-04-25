@@ -1,4 +1,4 @@
-import type { IGDBGame } from "./types";
+import type { IGDBGame, IGDBCompany } from "./types";
 
 const API_URL = "https://api.igdb.com/v4";
 
@@ -43,18 +43,52 @@ async function igdbFetch(endpoint: string, body: string): Promise<unknown> {
   return res.json();
 }
 
+// Field list used by both search and detail queries — keeping them in
+// sync ensures the normalizer always has the same shape to work with.
+const GAME_FIELDS =
+  "name,summary,cover.image_id,artworks.image_id,screenshots.image_id,first_release_date,genres.name,platforms.name,involved_companies.company.id,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,rating,rating_count";
+
 export async function searchGames(
   query: string,
   limit = 20
 ): Promise<IGDBGame[]> {
-  const body = `search "${query}"; fields name,summary,cover.image_id,artworks.image_id,screenshots.image_id,first_release_date,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,rating,rating_count; limit ${limit};`;
+  const body = `search "${query}"; fields ${GAME_FIELDS}; limit ${limit};`;
   return igdbFetch("games", body) as Promise<IGDBGame[]>;
 }
 
 export async function getGameDetails(igdbId: number): Promise<IGDBGame | null> {
-  const body = `where id = ${igdbId}; fields name,summary,cover.image_id,artworks.image_id,screenshots.image_id,first_release_date,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,rating,rating_count; limit 1;`;
+  const body = `where id = ${igdbId}; fields ${GAME_FIELDS}; limit 1;`;
   const results = (await igdbFetch("games", body)) as IGDBGame[];
   return results[0] ?? null;
+}
+
+export async function getCompanyDetailsIGDB(
+  companyId: number
+): Promise<IGDBCompany | null> {
+  const body = `where id = ${companyId}; fields name,description,country,logo.image_id,start_date,url,websites.url,websites.category; limit 1;`;
+  const results = (await igdbFetch("companies", body)) as IGDBCompany[];
+  return results[0] ?? null;
+}
+
+/**
+ * Fetch games involving a specific company. `role` filters to only the
+ * games where the company was credited as developer or publisher;
+ * `"any"` returns both. IGDB caps responses at 500 — for v1 we sort by
+ * rating_count desc to surface the studio's flagship titles first.
+ */
+export async function getGamesByCompany(
+  companyId: number,
+  role: "developer" | "publisher" | "any" = "any",
+  limit = 200
+): Promise<IGDBGame[]> {
+  const roleClause =
+    role === "developer"
+      ? `& involved_companies.developer = true`
+      : role === "publisher"
+        ? `& involved_companies.publisher = true`
+        : "";
+  const body = `where involved_companies.company = ${companyId} ${roleClause}; fields ${GAME_FIELDS}; sort rating_count desc; limit ${limit};`;
+  return igdbFetch("games", body) as Promise<IGDBGame[]>;
 }
 
 export function igdbImageUrl(imageId: string, size = "t_cover_big"): string {

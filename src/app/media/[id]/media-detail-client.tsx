@@ -604,9 +604,11 @@ export default function MediaDetailClient({
           </button>
         )}
 
-        {/* Change backdrop — movies, TV, and games. Requires the item to be
-            tracked (so we have a user_media row to store the override on). */}
-        {mediaType !== "book" && userMediaId && (
+        {/* Change backdrop — movies, TV, and games. Saving will lazy-
+            create a user_media row (status: "want") if the viewer isn't
+            already tracking the title, since the override lives on
+            user_media.progress. */}
+        {mediaType !== "book" && (
           <button
             onClick={() => setBackdropModalOpen(true)}
             className="flex w-full items-center gap-2.5 rounded-sm px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary"
@@ -798,10 +800,9 @@ export default function MediaDetailClient({
         />
       )}
 
-      {backdropModalOpen && userMediaId && (
+      {backdropModalOpen && (
         <BackdropPickerModal
           mediaId={mediaId}
-          userMediaId={userMediaId}
           currentUrl={currentBackdropUrl ?? null}
           defaultUrl={defaultBackdropUrl ?? null}
           onClose={() => setBackdropModalOpen(false)}

@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { User } from "lucide-react";
 import { tmdbImageUrl } from "@/lib/api/tmdb";
 import type { MediaType } from "@/lib/types";
 
 interface CastMember {
+  tmdb_id?: number;
   name: string;
   character: string;
   profile_path: string | null;
@@ -138,29 +140,46 @@ function CastSection({ cast }: { cast: CastMember[] }) {
     <section className="mt-6">
       <SectionHeader title="Cast" />
       <div className="custom-scrollbar flex gap-3 overflow-x-auto pb-2">
-        {cast.map((c) => (
-          <div key={`${c.name}-${c.character}`} className="w-24 shrink-0">
-            <div className="aspect-2/3 overflow-hidden rounded-sm border border-surface-border bg-surface-overlay">
-              {c.profile_path ? (
-                <img
-                  src={tmdbImageUrl(c.profile_path, "w185") ?? ""}
-                  alt={c.name}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center text-text-muted">
-                  <User size={20} />
-                </div>
+        {cast.map((c) => {
+          const inner = (
+            <>
+              <div className="aspect-2/3 overflow-hidden rounded-sm border border-surface-border bg-surface-overlay">
+                {c.profile_path ? (
+                  <img
+                    src={tmdbImageUrl(c.profile_path, "w185") ?? ""}
+                    alt={c.name}
+                    loading="lazy"
+                    className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-text-muted">
+                    <User size={20} />
+                  </div>
+                )}
+              </div>
+              <p className="mt-1.5 truncate text-xs font-medium text-text-primary group-hover:text-brand">
+                {c.name}
+              </p>
+              {c.character && (
+                <p className="truncate text-xs text-text-muted">{c.character}</p>
               )}
+            </>
+          );
+          const key = `${c.name}-${c.character}-${c.tmdb_id ?? ""}`;
+          return c.tmdb_id ? (
+            <Link
+              key={key}
+              href={`/person/${c.tmdb_id}`}
+              className="group w-24 shrink-0 overflow-hidden"
+            >
+              {inner}
+            </Link>
+          ) : (
+            <div key={key} className="w-24 shrink-0">
+              {inner}
             </div>
-            <p className="mt-1.5 truncate text-xs font-medium text-text-primary">
-              {c.name}
-            </p>
-            {c.character && (
-              <p className="truncate text-xs text-text-muted">{c.character}</p>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

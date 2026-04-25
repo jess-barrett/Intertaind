@@ -36,6 +36,7 @@ export interface TMDBMovieDetails extends TMDBMovie {
       profile_path: string | null;
     }[];
     cast: {
+      id: number;
       name: string;
       character: string;
       order: number;
@@ -114,6 +115,7 @@ export interface TMDBTVDetails extends TMDBTVShow {
       profile_path: string | null;
     }[];
     cast: {
+      id: number;
       name: string;
       character: string;
       order: number;
@@ -152,6 +154,67 @@ export interface TMDBImagesResponse {
   backdrops: TMDBImage[];
   posters: TMDBImage[];
   logos: TMDBImage[];
+}
+
+export interface TMDBPerson {
+  id: number;
+  name: string;
+  biography: string;
+  profile_path: string | null;
+  birthday: string | null;
+  deathday: string | null;
+  place_of_birth: string | null;
+  known_for_department: string;
+  popularity: number;
+  also_known_as: string[];
+}
+
+/**
+ * Single credit returned from `/person/{id}/combined_credits` — shape is
+ * a union of movie and TV fields. `media_type` tells us which.
+ */
+export interface TMDBPersonCredit {
+  id: number;
+  media_type: "movie" | "tv";
+  title?: string;        // movie
+  name?: string;         // TV
+  overview: string;
+  release_date?: string; // movie
+  first_air_date?: string; // TV
+  poster_path: string | null;
+  character: string;
+  order?: number;
+  vote_count: number;
+  vote_average: number;
+  genre_ids: number[];
+}
+
+export interface TMDBPersonCombinedCredits {
+  id: number;
+  cast: TMDBPersonCredit[];
+  crew: (TMDBPersonCredit & { job: string; department: string })[];
+}
+
+export interface TMDBCompany {
+  id: number;
+  name: string;
+  description: string;
+  headquarters: string;
+  homepage: string;
+  logo_path: string | null;
+  origin_country: string;
+  parent_company:
+    | { id: number; name: string; logo_path: string | null }
+    | null;
+}
+
+export interface TMDBNetwork {
+  id: number;
+  name: string;
+  headquarters: string;
+  homepage: string;
+  logo_path: string | null;
+  origin_country: string;
 }
 
 // Google Books raw response types
@@ -209,10 +272,24 @@ export interface IGDBGame {
   genres?: { name: string }[];
   platforms?: { name: string }[];
   involved_companies?: {
-    company: { name: string };
+    company: { id: number; name: string };
     developer: boolean;
     publisher: boolean;
   }[];
   rating?: number;
   rating_count?: number;
+}
+
+export interface IGDBCompany {
+  id: number;
+  name: string;
+  description?: string;
+  /** ISO numeric country code (e.g. 840 = US). IGDB doesn't expose
+      ISO-2 directly. */
+  country?: number;
+  logo?: { image_id: string };
+  /** Unix timestamp — company founding date. */
+  start_date?: number;
+  url?: string;
+  websites?: { url: string; category?: number }[];
 }

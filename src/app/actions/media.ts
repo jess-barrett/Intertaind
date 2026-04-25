@@ -7,8 +7,17 @@ import {
   getTVDetails,
   fetchBestTMDBBackdrop,
 } from "@/lib/api/tmdb";
-import { findCanonicalBookEdition } from "@/lib/api/google-books";
-import { normalizeGoogleBook } from "@/lib/api/normalize";
+import { getGameDetails } from "@/lib/api/igdb";
+import {
+  findCanonicalBookEdition,
+  findVolumeByISBN,
+  getBookDetails,
+} from "@/lib/api/google-books";
+import {
+  findISBNForWork,
+  findWorkByISBN,
+} from "@/lib/api/openlibrary";
+import { normalizeGoogleBook, normalizeIGDBGame } from "@/lib/api/normalize";
 
 async function getAuthUser() {
   const supabase = await createClient();
@@ -34,6 +43,7 @@ const KEY_CREW_JOBS = [
 ];
 
 interface RawCast {
+  id: number;
   name: string;
   character: string;
   order: number;
@@ -51,6 +61,7 @@ function pickCast(cast: RawCast[]) {
     .sort((a, b) => a.order - b.order)
     .slice(0, 12)
     .map((c) => ({
+      tmdb_id: c.id,
       name: c.name,
       character: c.character,
       profile_path: c.profile_path,
@@ -269,6 +280,136 @@ async function enrichTMDBMetadata(
 }
 
 /**
+ * Books are the only media type without a single-vendor canonical source —
+ * Google Books is best for covers/descriptions/search, Open Library is
+ * best for bibliographies/author bios. We bridge both by storing all
+ * three identifiers (`google_books_id`, `isbn_13`, `openlibrary_work_id`)
+ * on every book row, so a card surfaced from any source can match the
+ * same library entry.
+ *
+ * Returns a merged external_ids object with whatever new identifiers
+ * could be resolved, or null if no progress was made (no ISBN reachable).
+ */
+async function enrichBookCrossReferences(
+  externalIds: Record<string, unknown>
+): Promise<Record<string, unknown> | null> {
+  const hasOL = typeof externalIds.openlibrary_work_id === "string";
+  const hasISBN = typeof externalIds.isbn_13 === "string";
+  const hasGB = typeof externalIds.google_books_id === "string";
+  if (hasOL && hasISBN && hasGB) return null;
+
+  let isbn = externalIds.isbn_13 as string | undefined;
+  const gbId = externalIds.google_books_id as string | undefined;
+
+  // ISBN backfill — older rows were inserted before we extracted it.
+  if (!isbn && gbId) {
+    try {
+      const volume = await getBookDetails(gbId);
+      isbn = volume.volumeInfo.industryIdentifiers?.find(
+        (id) => id.type === "ISBN_13"
+      )?.identifier;
+    } catch {
+      // fall through — without ISBN we can't bridge to OL.
+    }
+  }
+
+  let olWorkId = externalIds.openlibrary_work_id as string | undefined;
+  if (!olWorkId && isbn) {
+    olWorkId = (await findWorkByISBN(isbn)) ?? undefined;
+  }
+
+  // Resolve a Google Books id from ISBN when missing — important for
+  // Hardcover-sourced rows that arrive without one. Lets the standard
+  // Google-Books-keyed search flow find the same row later.
+  let resolvedGbId = gbId;
+  if (!resolvedGbId && isbn) {
+    try {
+      const volume = await findVolumeByISBN(isbn);
+      if (volume) resolvedGbId = volume.id;
+    } catch {
+      // best-effort
+    }
+  }
+
+  if (!isbn && !olWorkId && !resolvedGbId) return null;
+
+  return {
+    ...externalIds,
+    ...(isbn ? { isbn_13: isbn } : {}),
+    ...(olWorkId ? { openlibrary_work_id: olWorkId } : {}),
+    ...(resolvedGbId ? { google_books_id: resolvedGbId } : {}),
+  };
+}
+
+/**
+ * Resolve an Open Library work id to a full SearchResult by going
+ * OL work → ISBN → Google Books volume → normalize. Used when a user
+ * clicks an unmatched card on an author page (where the only identifier
+ * we have is the OL work id) and needs a complete media_items row.
+ *
+ * Returns null when the OL work has no ISBN or Google Books has no
+ * matching volume — those rare cases fall through to a Google Books
+ * title/author search as a last resort.
+ */
+async function resolveOLWorkToBook(
+  workId: string,
+  fallbackTitle?: string,
+  fallbackAuthor?: string
+): Promise<SearchResult | null> {
+  const isbn = await findISBNForWork(`/works/${workId}`);
+  if (isbn) {
+    const volume = await findVolumeByISBN(isbn);
+    if (volume) {
+      const sr = normalizeGoogleBook(volume);
+      sr.external_ids = {
+        ...sr.external_ids,
+        openlibrary_work_id: workId,
+      };
+      return sr;
+    }
+  }
+  // Last-resort: try a title+author canonical-edition search. Better than
+  // nothing for works whose ISBNs aren't indexed by Google Books.
+  if (fallbackTitle && fallbackAuthor) {
+    const volume = await findCanonicalBookEdition(fallbackTitle, fallbackAuthor);
+    if (volume) {
+      const sr = normalizeGoogleBook(volume);
+      sr.external_ids = {
+        ...sr.external_ids,
+        openlibrary_work_id: workId,
+      };
+      return sr;
+    }
+  }
+  return null;
+}
+
+/**
+ * Re-fetch from IGDB and merge in the new {id,name} company shape.
+ * Old rows stored `developers` as a flat string[] which can't be linked
+ * to entity pages — re-normalizing through the current pipeline upgrades
+ * them in place.
+ */
+async function enrichIGDBMetadata(
+  externalIds: Record<string, string | number>,
+  existingMetadata: Record<string, unknown>
+): Promise<Record<string, unknown> | null> {
+  const igdbId = externalIds.igdb_id as number | undefined;
+  if (!igdbId) return null;
+  try {
+    const game = await getGameDetails(igdbId);
+    if (!game) return null;
+    const fresh = normalizeIGDBGame(game);
+    return {
+      ...existingMetadata,
+      ...(fresh.metadata ?? {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Returns true when a row's stored metadata is missing fields that the
  * current enrichment pipeline produces. Shared between `upsertMediaItem`
  * (insert/track flow) and `ensureMediaItemEnriched` (detail-page lazy
@@ -288,12 +429,20 @@ function isMetadataStale(
     upcomingArr.length > 0 &&
     !("poster_path" in upcomingArr[0]);
 
+  // Cast didn't carry tmdb_id originally — needed for /person links.
+  const castArr = meta?.cast as Array<Record<string, unknown>> | undefined;
+  const castMissingId =
+    Array.isArray(castArr) &&
+    castArr.length > 0 &&
+    !("tmdb_id" in castArr[0]);
+
   if (mediaType === "movie") {
     return (
       !meta?.director ||
       meta?.tagline === undefined ||
       meta?.cast === undefined ||
-      meta?.keywords === undefined
+      meta?.keywords === undefined ||
+      castMissingId
     );
   }
   if (mediaType === "tv_show") {
@@ -305,8 +454,17 @@ function isMetadataStale(
       meta?.upcoming_seasons === undefined ||
       meta?.season_details === undefined ||
       meta?.keywords === undefined ||
-      upcomingMissingPoster
+      upcomingMissingPoster ||
+      castMissingId
     );
+  }
+  if (mediaType === "video_game") {
+    // Old rows stored `developers` as string[]. New shape is {id,name}[]
+    // so the entity page can link by company id.
+    const devs = meta?.developers as unknown[] | undefined;
+    const devsAreStrings =
+      Array.isArray(devs) && devs.length > 0 && typeof devs[0] === "string";
+    return devsAreStrings || meta?.publishers === undefined;
   }
   return false;
 }
@@ -332,18 +490,42 @@ export async function ensureMediaItemEnriched(
   if (!data) return null;
 
   const meta = (data.metadata as Record<string, unknown> | null) ?? null;
-  if (!isMetadataStale(data.media_type, meta)) return meta;
-
   const externalIds =
-    (data.external_ids as Record<string, string | number> | null) ?? null;
+    (data.external_ids as Record<string, unknown> | null) ?? null;
+
+  // Books take a separate enrichment path — no TMDb/IGDB metadata to
+  // refresh, but they may need cross-reference identifiers backfilled.
+  if (data.media_type === "book") {
+    if (!externalIds) return meta;
+    try {
+      const enrichedIds = await enrichBookCrossReferences(externalIds);
+      if (enrichedIds) {
+        await supabase
+          .from("media_items")
+          .update({ external_ids: enrichedIds })
+          .eq("id", mediaId);
+      }
+    } catch {
+      // Non-fatal — the row stays as-is and we'll retry on the next visit.
+    }
+    return meta;
+  }
+
+  if (!isMetadataStale(data.media_type, meta)) return meta;
   if (!externalIds) return meta;
 
   try {
-    const enriched = await enrichTMDBMetadata(
-      data.media_type,
-      externalIds,
-      meta ?? {}
-    );
+    const enriched =
+      data.media_type === "video_game"
+        ? await enrichIGDBMetadata(
+            externalIds as Record<string, string | number>,
+            meta ?? {}
+          )
+        : await enrichTMDBMetadata(
+            data.media_type,
+            externalIds as Record<string, string | number>,
+            meta ?? {}
+          );
     if (!enriched) return meta;
     await supabase
       .from("media_items")
@@ -366,30 +548,84 @@ export async function upsertMediaItem(
   // canonical one, giving us consistent data regardless of how the user
   // discovered the book.
   if (result.media_type === "book") {
+    // OL-only input (from an author page click): resolve to a Google
+    // Books volume first so we have cover/description/page-count data.
+    if (
+      result.external_ids.openlibrary_work_id &&
+      !result.external_ids.google_books_id
+    ) {
+      const authors = (result.metadata as Record<string, unknown> | null)
+        ?.authors as string[] | undefined;
+      const olWorkId = String(result.external_ids.openlibrary_work_id);
+      const resolved = await resolveOLWorkToBook(
+        olWorkId,
+        result.title,
+        authors?.[0]
+      );
+      if (resolved) result = resolved;
+      // If we couldn't resolve, the row will still upsert with OL-only
+      // identifiers — better than nothing.
+    }
+
     const authors = (result.metadata as Record<string, unknown> | null)
       ?.authors as string[] | undefined;
     const firstAuthor = authors?.[0];
-    if (firstAuthor) {
+    if (firstAuthor && result.external_ids.google_books_id) {
       const canonical = await findCanonicalBookEdition(result.title, firstAuthor);
       // Always re-normalize from the canonical-query volume. Even when the ID
       // matches the input, this fetch carries fresh accessInfo which
       // bookCoverUrl uses to pick the right zoom level.
       if (canonical) {
-        result = normalizeGoogleBook(canonical);
+        const renormalized = normalizeGoogleBook(canonical);
+        // Preserve any OL work id we already resolved — re-normalizing
+        // from a fresh Google Books volume would otherwise drop it.
+        const olWorkId = result.external_ids.openlibrary_work_id;
+        if (olWorkId) {
+          renormalized.external_ids = {
+            ...renormalized.external_ids,
+            openlibrary_work_id: olWorkId,
+          };
+        }
+        result = renormalized;
       }
+    }
+
+    // Final cross-reference pass: ensure isbn_13 → openlibrary_work_id
+    // is filled in when missing. Cheap if both are already there.
+    const enrichedIds = await enrichBookCrossReferences(
+      result.external_ids as Record<string, unknown>
+    );
+    if (enrichedIds) {
+      result = {
+        ...result,
+        external_ids: enrichedIds as Record<string, string | number>,
+      };
     }
   }
 
-  // Check if media already exists by external_ids
-  const externalKey = Object.keys(result.external_ids)[0];
-  const externalValue = result.external_ids[externalKey];
-
-  const { data: existing } = await supabase
-    .from("media_items")
-    .select("id, metadata, cover_image_url, backdrop_url")
-    .contains("external_ids", { [externalKey]: externalValue })
-    .limit(1)
-    .single();
+  // Check if media already exists. We iterate every external id we have
+  // because rows may have been keyed by a different identifier in the
+  // past (e.g. an existing book has `google_books_id`; we're now adding
+  // it via Hardcover and want the row to match through `isbn_13`).
+  let existing: {
+    id: string;
+    metadata: unknown;
+    cover_image_url: string | null;
+    backdrop_url: string | null;
+    external_ids: unknown;
+  } | null = null;
+  for (const [key, value] of Object.entries(result.external_ids)) {
+    const { data } = await supabase
+      .from("media_items")
+      .select("id, metadata, cover_image_url, backdrop_url, external_ids")
+      .contains("external_ids", { [key]: value })
+      .limit(1)
+      .maybeSingle();
+    if (data) {
+      existing = data;
+      break;
+    }
+  }
 
   if (existing) {
     // Re-enrich if metadata is missing key fields (director, genres, etc.)
@@ -398,8 +634,28 @@ export async function upsertMediaItem(
 
     const updates: Record<string, unknown> = {};
 
+    // Merge any newly-resolved identifiers into the existing row's
+    // external_ids. Books pick up `isbn_13` and `openlibrary_work_id`
+    // here when first surfaced via an author page or search.
+    const existingExt =
+      (existing.external_ids as Record<string, unknown> | null) ?? {};
+    const mergedExt = { ...existingExt, ...result.external_ids };
+    const extChanged = Object.keys(mergedExt).some(
+      (k) => existingExt[k] !== mergedExt[k]
+    );
+    if (extChanged) {
+      updates.external_ids = mergedExt;
+    }
+
     if (needsEnrichment) {
-      const enriched = await enrichTMDBMetadata(result.media_type, result.external_ids, meta ?? {});
+      const enriched =
+        result.media_type === "video_game"
+          ? await enrichIGDBMetadata(result.external_ids, meta ?? {})
+          : await enrichTMDBMetadata(
+              result.media_type,
+              result.external_ids,
+              meta ?? {}
+            );
       if (enriched) {
         updates.metadata = enriched;
       }
@@ -850,6 +1106,176 @@ export async function updateBookPage(
 }
 
 /**
+ * Re-run the Google Books resolution for a media_items row whose
+ * `openlibrary_work_id` we already know, and overwrite the row's
+ * cover/title/description/external_ids in place. Used to refresh cached
+ * rows after we improve the edition-scoring heuristics.
+ *
+ * Skips rows that are tracked by anyone (preserves user state) and
+ * rows that lack an `openlibrary_work_id` cross-reference.
+ *
+ * Returns true when the row was updated, false when there was nothing
+ * to refresh.
+ */
+export async function reresolveBookFromOLWork(
+  mediaId: string,
+  authorName: string
+): Promise<boolean> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { data: row } = await supabase
+    .from("media_items")
+    .select("id, title, external_ids, metadata")
+    .eq("id", mediaId)
+    .eq("media_type", "book")
+    .single();
+  if (!row) return false;
+
+  const ext = (row.external_ids as Record<string, unknown> | null) ?? {};
+  const olWorkId = ext.openlibrary_work_id as string | undefined;
+  if (!olWorkId) return false;
+
+  const { findVolumeByTitleAndAuthor } = await import("@/lib/api/google-books");
+  const cleanedTitle = row.title
+    .replace(/\s*\([^)]*\)\s*$/g, "")
+    .replace(/,\s*(Vol\.?|Volume|Book|Bk\.)\s*\d+\s*$/i, "")
+    .trim();
+  const volume = await findVolumeByTitleAndAuthor(cleanedTitle, authorName);
+  if (!volume) return false;
+  if (
+    volume.volumeInfo.language &&
+    volume.volumeInfo.language !== "en"
+  ) {
+    return false;
+  }
+
+  const sr = normalizeGoogleBook(volume);
+  const newExt = {
+    ...ext, // preserve any cross-references we already collected
+    ...sr.external_ids,
+    openlibrary_work_id: olWorkId,
+  };
+
+  await supabase
+    .from("media_items")
+    .update({
+      title: sr.title,
+      description: sr.description,
+      cover_image_url: sr.cover_image_url,
+      release_date: sr.release_date,
+      metadata: sr.metadata,
+      external_ids: newExt,
+    })
+    .eq("id", mediaId);
+
+  return true;
+}
+
+/**
+ * Resolve an Open Library work to a media_items row, caching the result
+ * permanently. Used by author pages so we make a single Google Books
+ * API call per work *ever*, instead of per-render. Subsequent visits
+ * (by anyone) hit the cached row.
+ *
+ * Returns the media_items row id, or null when the work can't be
+ * resolved to an English Google Books volume.
+ *
+ * Auth-only: anonymous users can't write to media_items, so we only
+ * cache when an authenticated viewer is the first to load the page.
+ * Subsequent anonymous viewers benefit from the cached rows.
+ */
+export async function resolveAndCacheBookFromOLWork(
+  olWorkId: string,
+  workTitle: string,
+  authorName: string
+): Promise<string | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Already cached? Return the existing id with no API calls.
+  const { data: existing } = await supabase
+    .from("media_items")
+    .select("id")
+    .contains("external_ids", { openlibrary_work_id: olWorkId })
+    .eq("media_type", "book")
+    .limit(1)
+    .maybeSingle();
+  if (existing) return existing.id;
+
+  // No cached row. We need to call Google Books — but that requires
+  // network IO and a write. Skip the write path for unauthenticated
+  // viewers (RLS blocks the insert anyway).
+  if (!user) return null;
+
+  const cleanedTitle = workTitle
+    .replace(/\s*\([^)]*\)\s*$/g, "")
+    .replace(/,\s*(Vol\.?|Volume|Book|Bk\.)\s*\d+\s*$/i, "")
+    .trim();
+
+  const { findVolumeByTitleAndAuthor } = await import("@/lib/api/google-books");
+  const volume = await findVolumeByTitleAndAuthor(cleanedTitle, authorName);
+  if (!volume) return null;
+  if (
+    volume.volumeInfo.language &&
+    volume.volumeInfo.language !== "en"
+  ) {
+    return null;
+  }
+
+  const sr = normalizeGoogleBook(volume);
+  sr.external_ids = {
+    ...sr.external_ids,
+    openlibrary_work_id: olWorkId,
+  };
+
+  // Use the same cross-reference enrichment as the user-driven upsert
+  // path so the cached row has all available identifiers.
+  const enrichedIds = await enrichBookCrossReferences(
+    sr.external_ids as Record<string, unknown>
+  );
+  if (enrichedIds) {
+    sr.external_ids = enrichedIds as Record<string, string | number>;
+  }
+
+  // INSERT, but if a concurrent render beat us to it, fetch the winner.
+  const { data: inserted, error } = await supabase
+    .from("media_items")
+    .insert({
+      media_type: sr.media_type,
+      title: sr.title,
+      description: sr.description,
+      cover_image_url: sr.cover_image_url,
+      backdrop_url: sr.backdrop_url,
+      release_date: sr.release_date,
+      metadata: sr.metadata,
+      external_ids: sr.external_ids,
+    })
+    .select("id")
+    .single();
+
+  if (inserted) return inserted.id;
+  // Race-loss fallback — re-read the row that the concurrent insert
+  // created. Treats RLS denials as terminal too (returns null).
+  if (error) {
+    const { data: retry } = await supabase
+      .from("media_items")
+      .select("id")
+      .contains("external_ids", { openlibrary_work_id: olWorkId })
+      .eq("media_type", "book")
+      .limit(1)
+      .maybeSingle();
+    return retry?.id ?? null;
+  }
+  return null;
+}
+
+/**
  * Set a custom cover for a user's tracked item. Stored in progress JSONB
  * so it's per-user. Pass null to clear the override.
  */
@@ -884,24 +1310,46 @@ export async function setCustomCover(
 }
 
 /**
- * Set a custom backdrop override for a user's tracked item. Persisted in
- * the user_media.progress JSONB so it's per-user. Pass null to clear and
- * fall back to the shared `media_items.backdrop_url` default.
+ * Set a custom backdrop override for a media item. Stored per-user on
+ * the user_media row's `progress` JSONB. Pass null to clear and fall
+ * back to the shared `media_items.backdrop_url` default.
+ *
+ * If the viewer doesn't have a user_media row for this title yet, one
+ * is created with `status: "want"` so the override has somewhere to
+ * live. Lets the user customize backdrops on titles they discover via
+ * a person page or search without having to track first.
  */
 export async function setCustomBackdrop(
-  userMediaId: string,
+  mediaId: string,
   backdropUrl: string | null
 ): Promise<void> {
   const { supabase, user } = await getAuthUser();
 
-  const { data: current } = await supabase
+  const { data: existing } = await supabase
     .from("user_media")
-    .select("progress")
-    .eq("id", userMediaId)
+    .select("id, progress")
     .eq("user_id", user.id)
-    .single();
+    .eq("media_id", mediaId)
+    .maybeSingle();
 
-  const progress = (current?.progress as Record<string, unknown> | null) ?? {};
+  if (!existing) {
+    // Lazy-create a wishlist row so the override has a place to live.
+    // Activity log isn't fired (we only log via trackMedia) — this is a
+    // quiet side effect of the backdrop save.
+    const initialProgress = backdropUrl
+      ? { custom_backdrop_url: backdropUrl }
+      : {};
+    const { error } = await supabase.from("user_media").insert({
+      user_id: user.id,
+      media_id: mediaId,
+      status: "want",
+      progress: initialProgress,
+    });
+    if (error) throw new Error(`Failed to save backdrop: ${error.message}`);
+    return;
+  }
+
+  const progress = (existing.progress as Record<string, unknown> | null) ?? {};
   if (backdropUrl) {
     progress.custom_backdrop_url = backdropUrl;
   } else {
@@ -911,7 +1359,7 @@ export async function setCustomBackdrop(
   const { error } = await supabase
     .from("user_media")
     .update({ progress })
-    .eq("id", userMediaId)
+    .eq("id", existing.id)
     .eq("user_id", user.id);
 
   if (error) throw new Error(`Failed to save backdrop: ${error.message}`);
