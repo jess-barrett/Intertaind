@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { BookOpen, Film, Tv, Gamepad2, Heart, User, ArrowRight } from "lucide-react";
+import { BookOpen, Film, Tv, Gamepad2, ArrowRight } from "lucide-react";
 import type { MediaItem, MediaType, List, Profile, UserMedia } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
 import MediaCard from "@/components/media-card";
+import ListCard from "@/components/lists/list-card";
 
 const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
   movie: Film,
@@ -45,6 +46,7 @@ export default function DiscoveryFeed({
   popularBooks,
   popularGames,
   popularLists,
+  coversByList,
   viewerTracking,
 }: {
   displayName: string;
@@ -53,6 +55,9 @@ export default function DiscoveryFeed({
   popularBooks: MediaItem[];
   popularGames: MediaItem[];
   popularLists: (List & { profiles: Profile })[];
+  /** First-N item covers per list, keyed by list id. Drives the
+      layered preview stack on each ListCard. */
+  coversByList: Record<string, { src: string | null; title: string }[]>;
   viewerTracking?: Record<string, UserMedia>;
 }) {
   function cardProps(item: MediaItem) {
@@ -73,38 +78,18 @@ export default function DiscoveryFeed({
         <p className="mt-2 text-text-secondary">Discover something new</p>
       </div>
 
-      {/* Popular Lists */}
+      {/* Popular Lists — same layered-preview ListCard as /lists */}
       {popularLists.length > 0 && (
         <section className="mb-12">
           <SectionHeader title="Popular Lists" href="/lists" />
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {popularLists.slice(0, 3).map((list) => (
-              <Link
+          <div className="grid gap-4 sm:grid-cols-2">
+            {popularLists.slice(0, 4).map((list) => (
+              <ListCard
                 key={list.id}
-                href={`/lists/${list.id}`}
-                className="glass block p-4 transition-colors hover:border-brand/30"
-              >
-                <h3 className="font-semibold text-text-primary">
-                  {list.title}
-                </h3>
-                {list.description && (
-                  <p className="mt-1 line-clamp-2 text-sm text-text-secondary">
-                    {list.description}
-                  </p>
-                )}
-                <div className="mt-2 flex items-center gap-3 text-xs text-text-muted">
-                  {list.profiles && (
-                    <span className="flex items-center gap-1">
-                      <User size={10} />
-                      {list.profiles.display_name || list.profiles.username}
-                    </span>
-                  )}
-                  <span className="flex items-center gap-1">
-                    <Heart size={10} />
-                    {list.like_count}
-                  </span>
-                </div>
-              </Link>
+                list={list}
+                profile={list.profiles}
+                covers={coversByList[list.id] ?? []}
+              />
             ))}
           </div>
         </section>

@@ -280,6 +280,26 @@ async function enrichTMDBMetadata(
 }
 
 /**
+ * Lenient title-equality check used when verifying that a "canonical
+ * edition" lookup returned the same book the user clicked on. Strips
+ * subtitles (after `:`), parentheticals, and punctuation, so:
+ *   "Assassin's Apprentice"             ↔ "Assassin's Apprentice: A Novel"  ✓
+ *   "Mistborn"                          ↔ "Mistborn (Mistborn, #1)"          ✓
+ *   "Assassin's Apprentice"             ↔ "Assassin's Apprentice Volume 2"   ✗
+ *   "Assassin's Apprentice (Graphic..)" ↔ "Assassin's Apprentice"            ✓
+ */
+function bookTitlesMatch(a: string, b: string): boolean {
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .split(/[:(]/)[0]
+      .replace(/[^a-z0-9 ]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  return norm(a) === norm(b);
+}
+
+/**
  * Books are the only media type without a single-vendor canonical source —
  * Google Books is best for covers/descriptions/search, Open Library is
  * best for bibliographies/author bios. We bridge both by storing all
@@ -570,15 +590,34 @@ export async function upsertMediaItem(
     const authors = (result.metadata as Record<string, unknown> | null)
       ?.authors as string[] | undefined;
     const firstAuthor = authors?.[0];
-    if (firstAuthor && result.external_ids.google_books_id) {
+
+    // Only re-canonicalize when the input clearly *needs* it. Search
+    // results from /api/search go through our own scoring layer that
+    // already picks a canonical edition; re-running findCanonicalBook-
+    // Edition here can return a *different* book that happens to score
+    // higher (e.g. a graphic-novel adaptation outscoring the original
+    // novel), which then misroutes the user. Skip if we already have
+    // enough signals that the input is a real edition.
+    const meta = (result.metadata as Record<string, unknown> | null) ?? {};
+    const inputHasReliableData =
+      !!result.external_ids.isbn_13 ||
+      ((result.description?.length ?? 0) >= 200 &&
+        !!result.cover_image_url &&
+        typeof meta.page_count === "number" &&
+        (meta.page_count as number) > 0);
+
+    if (
+      firstAuthor &&
+      result.external_ids.google_books_id &&
+      !inputHasReliableData
+    ) {
       const canonical = await findCanonicalBookEdition(result.title, firstAuthor);
-      // Always re-normalize from the canonical-query volume. Even when the ID
-      // matches the input, this fetch carries fresh accessInfo which
-      // bookCoverUrl uses to pick the right zoom level.
-      if (canonical) {
+      // Defense-in-depth: only swap to the canonical when its main
+      // title (before any subtitle / parenthetical) actually matches
+      // the input. Google's `intitle:` is fuzzy and can return books
+      // whose title merely *contains* the query.
+      if (canonical && bookTitlesMatch(result.title, canonical.volumeInfo.title)) {
         const renormalized = normalizeGoogleBook(canonical);
-        // Preserve any OL work id we already resolved — re-normalizing
-        // from a fresh Google Books volume would otherwise drop it.
         const olWorkId = result.external_ids.openlibrary_work_id;
         if (olWorkId) {
           renormalized.external_ids = {

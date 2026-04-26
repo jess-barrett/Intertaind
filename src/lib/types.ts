@@ -24,6 +24,10 @@ export interface MediaItem {
   avg_rating: number | null;
   rating_count: number;
   tracking_count: number;
+  /** Denormalized count of user_media rows with status='completed'. */
+  completed_count: number;
+  /** Denormalized count of user_media rows with status='in_progress'. */
+  in_progress_count: number;
   favorites_count: number;
   lists_count: number;
   created_at: string;
@@ -98,7 +102,10 @@ export type ActivityType =
   | "logged_season"
   | "started_reading"
   | "added_to_top"
-  | "removed_from_top";
+  | "removed_from_top"
+  | "created_list"
+  | "liked_list"
+  | "saved_list";
 
 export interface Activity {
   id: string;
@@ -128,15 +135,91 @@ export interface UserMedia {
   media_items?: MediaItem;
 }
 
+export type ListType =
+  | "curated"
+  | "if_you_liked"
+  | "genre"
+  | "vibe"
+  | "mood"
+  | "cross_media";
+
+/** Source-media is required for these list types — the list is anchored
+    on a specific title and doesn't make sense without one. */
+export const LIST_TYPES_REQUIRING_SOURCE: ListType[] = ["if_you_liked", "vibe"];
+
+/** Types the user can pick on the create form. `cross_media` is hidden
+    (deprecated by the `media_types[]` field) but kept in the enum for
+    older rows. */
+export const SELECTABLE_LIST_TYPES: ListType[] = [
+  "curated",
+  "if_you_liked",
+  "genre",
+  "vibe",
+  "mood",
+];
+
+export const LIST_TYPE_LABELS: Record<ListType, string> = {
+  curated: "General",
+  if_you_liked: "If you liked…",
+  genre: "Genre",
+  vibe: "Vibe",
+  mood: "Mood",
+  cross_media: "Cross-media",
+};
+
+export type ListVisibility =
+  | "public"
+  | "unlisted"
+  | "friends_unlisted"
+  | "private";
+
+export const LIST_VISIBILITY_OPTIONS: {
+  value: ListVisibility;
+  label: string;
+  help: string;
+}[] = [
+  {
+    value: "public",
+    label: "Anyone (Public List)",
+    help: "Discoverable on /lists and in search; anyone can view.",
+  },
+  {
+    value: "unlisted",
+    label: "Anyone with the share link",
+    help: "Hidden from discovery; anyone with the URL can view.",
+  },
+  {
+    value: "friends_unlisted",
+    label: "Friends (people you follow) with share link",
+    help: "Hidden from discovery; viewable only by people you follow.",
+  },
+  {
+    value: "private",
+    label: "You (Private List)",
+    help: "Only you can see this list.",
+  },
+];
+
 export interface List {
   id: string;
   user_id: string;
   title: string;
   description: string | null;
-  is_public: boolean;
+  visibility: ListVisibility;
+  list_type: ListType;
+  media_types: MediaType[];
+  source_media_id: string | null;
+  tags: string[];
   like_count: number;
+  saves_count: number;
+  /** Denormalized count of list_items rows. */
+  item_count: number;
+  /** Toggled manually for editorial picks. Surfaces in Featured. */
+  featured: boolean;
   created_at: string;
+  updated_at: string;
   profiles?: Profile;
+  source_media?: MediaItem | null;
 }
 
 export interface ListItem {
@@ -145,7 +228,21 @@ export interface ListItem {
   media_id: string;
   position: number;
   note: string | null;
+  reason: string | null;
+  created_at: string;
   media_items?: MediaItem;
+}
+
+export interface ListLike {
+  user_id: string;
+  list_id: string;
+  created_at: string;
+}
+
+export interface ListSave {
+  user_id: string;
+  list_id: string;
+  created_at: string;
 }
 
 export interface Shelf {

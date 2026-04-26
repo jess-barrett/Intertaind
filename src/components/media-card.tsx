@@ -1,4 +1,14 @@
-import { BookOpen, Film, Tv, Gamepad2, Heart, List, Eye } from "lucide-react";
+import {
+  BookOpen,
+  BookOpenCheck,
+  Film,
+  Tv,
+  TvMinimalPlay,
+  Gamepad2,
+  Heart,
+  List,
+  Eye,
+} from "lucide-react";
 import type {
   MediaItem,
   MediaType,
@@ -61,6 +71,8 @@ export default function MediaCard({
         metadata: item.metadata,
         avg_rating: item.avg_rating,
         tracking_count: item.tracking_count,
+        completed_count: item.completed_count,
+        in_progress_count: item.in_progress_count,
         favorites_count: item.favorites_count,
         lists_count: item.lists_count,
         release_date: item.release_date,
@@ -74,6 +86,8 @@ export default function MediaCard({
           metadata: searchResult.metadata,
           avg_rating: null,
           tracking_count: 0,
+          completed_count: 0,
+          in_progress_count: 0,
           favorites_count: 0,
           lists_count: 0,
           release_date: searchResult.release_date,
@@ -147,19 +161,34 @@ export default function MediaCard({
           className="block"
         >
           {showStats && (
-            <div className="flex items-center justify-around px-2 py-1.5 text-[10px] text-text-muted">
-              <span className="flex items-center gap-1">
-                <Eye size={10} />
-                {(display.tracking_count ?? 0).toLocaleString()}
-              </span>
-              <span className="flex items-center gap-1">
-                <List size={10} />
-                {(display.lists_count ?? 0).toLocaleString()}
-              </span>
-              <span className="flex items-center gap-1">
-                <Heart size={10} />
-                {(display.favorites_count ?? 0).toLocaleString()}
-              </span>
+            <div className="flex items-center justify-around gap-y-1 px-2 py-1.5 text-[10px] text-text-muted">
+              {/* Completed-status icon varies by media type:
+                    movies/TV → Eye   (watched)
+                    books     → BookOpenCheck (read)
+                    games     → Gamepad2 (played)
+                  TV + books also get a second "currently watching/
+                  reading" indicator. Movies and games don't (you don't
+                  partially-watch a movie or partially-play a game in a
+                  way that needs surfacing on a card). */}
+              <Stat
+                icon={completedIcon(display.media_type)}
+                count={display.completed_count ?? 0}
+              />
+              {display.media_type === "tv_show" && (
+                <Stat
+                  icon={TvMinimalPlay}
+                  count={display.in_progress_count ?? 0}
+                  iconClassName="-translate-y-px"
+                />
+              )}
+              {display.media_type === "book" && (
+                <Stat
+                  icon={BookOpen}
+                  count={display.in_progress_count ?? 0}
+                />
+              )}
+              <Stat icon={List} count={display.lists_count ?? 0} />
+              <Stat icon={Heart} count={display.favorites_count ?? 0} />
             </div>
           )}
 
@@ -186,5 +215,35 @@ export default function MediaCard({
         </MediaCardLink>
       )}
     </div>
+  );
+}
+
+function completedIcon(mediaType: MediaType): React.ElementType {
+  switch (mediaType) {
+    case "book":
+      return BookOpenCheck;
+    case "video_game":
+      return Gamepad2;
+    case "movie":
+    case "tv_show":
+    default:
+      return Eye;
+  }
+}
+
+function Stat({
+  icon: Icon,
+  count,
+  iconClassName,
+}: {
+  icon: React.ElementType;
+  count: number;
+  iconClassName?: string;
+}) {
+  return (
+    <span className="flex items-center gap-1">
+      <Icon size={10} className={iconClassName} />
+      {count.toLocaleString()}
+    </span>
   );
 }
