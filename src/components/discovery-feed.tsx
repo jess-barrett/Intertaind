@@ -78,23 +78,6 @@ export default function DiscoveryFeed({
         <p className="mt-2 text-text-secondary">Discover something new</p>
       </div>
 
-      {/* Popular Lists — same layered-preview ListCard as /lists */}
-      {popularLists.length > 0 && (
-        <section className="mb-12">
-          <SectionHeader title="Popular Lists" href="/lists" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            {popularLists.slice(0, 4).map((list) => (
-              <ListCard
-                key={list.id}
-                list={list}
-                profile={list.profiles}
-                covers={coversByList[list.id] ?? []}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* Popular media — 2x2 grid */}
       <div className="mb-12 grid grid-cols-1 gap-6 sm:grid-cols-2">
         {popularMovies.length > 0 && (
@@ -161,6 +144,25 @@ export default function DiscoveryFeed({
           </section>
         )}
       </div>
+
+      {/* Popular Lists — same layered-preview ListCard as /lists. Below
+          the 2x2 popular-media grid so the cross-media bridge surfaces
+          after the per-medium discovery rails. */}
+      {popularLists.length > 0 && (
+        <section className="mb-12">
+          <SectionHeader title="Popular Lists" href="/lists" />
+          <div className="grid gap-4 sm:grid-cols-2">
+            {popularLists.slice(0, 4).map((list) => (
+              <ListCard
+                key={list.id}
+                list={list}
+                profile={list.profiles}
+                covers={coversByList[list.id] ?? []}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Empty state if nothing is popular yet */}
       {popularMovies.length === 0 &&

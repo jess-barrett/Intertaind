@@ -86,6 +86,25 @@ export default async function ProfilePage({
     ? await fetchViewerTracking(supabase, user?.id ?? null, topFourMediaIds)
     : undefined;
 
+  // Owner's per-item custom covers — so a profile owner's chosen cover
+  // shows on their Top 4 to ANYONE viewing the page, not just to them.
+  // The cover override lives on user_media.progress.custom_cover_url
+  // and is per-user; here we read the OWNER's rows specifically.
+  const ownerCustomCovers: Record<string, string> = {};
+  if (topFourMediaIds.length > 0) {
+    const { data: ownerRows } = await supabase
+      .from("user_media")
+      .select("media_id, progress")
+      .eq("user_id", profile.id)
+      .in("media_id", topFourMediaIds);
+    for (const row of (ownerRows as
+      | { media_id: string; progress: Record<string, unknown> | null }[]
+      | null) ?? []) {
+      const url = row.progress?.custom_cover_url;
+      if (typeof url === "string") ownerCustomCovers[row.media_id] = url;
+    }
+  }
+
   return (
     <>
       <section className="mt-8">
@@ -94,6 +113,7 @@ export default async function ProfilePage({
           displayName={displayName}
           isOwner={isOwner}
           viewerTracking={viewerTracking}
+          ownerCustomCovers={ownerCustomCovers}
         />
       </section>
 

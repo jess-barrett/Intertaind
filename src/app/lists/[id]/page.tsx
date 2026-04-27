@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Pencil, User } from "lucide-react";
+import BackButton from "@/components/back-button";
 import MediaCard from "@/components/media-card";
 import ListSidebarActions from "@/components/lists/list-sidebar-actions";
 import { fetchViewerTracking } from "@/lib/viewer-tracking";
@@ -116,8 +117,15 @@ export default async function ListDetailPage({
 
   return (
     <>
+      {/* Back button — sits above the backdrop (or the plain header
+          when no backdrop) so it's always the first thing in the page
+          content area. Falls back to /lists when there's no history. */}
+      <div className="mx-auto w-full max-w-6xl px-4 pt-4">
+        <BackButton fallbackHref="/lists" />
+      </div>
+
       {backdropUrl && (
-        <div className="mx-auto w-full max-w-7xl px-4">
+        <div className="mx-auto mt-4 w-full max-w-7xl px-4">
           <div className="relative h-96 w-full overflow-hidden md:h-128 lg:h-160">
             <img
               src={backdropUrl}

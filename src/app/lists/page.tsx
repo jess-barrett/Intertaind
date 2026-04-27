@@ -158,7 +158,7 @@ export default async function ListsPage() {
           <SectionHeader
             title="Popular this week"
             actionLabel="More"
-            actionHref="/lists/browse"
+            actionHref="/lists/browse?sort=popular_week"
           />
           <div className="grid gap-x-4 gap-y-6 sm:grid-cols-2 md:grid-cols-3">
             {popular.map((list) => (

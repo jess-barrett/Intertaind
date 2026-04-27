@@ -15,6 +15,15 @@ import InlineMediaPicker from "@/components/lists/inline-media-picker";
 import TagInput from "@/components/lists/tag-input";
 import MediaTypeMultiSelect from "@/components/lists/media-type-multiselect";
 import VisibilitySelect from "@/components/lists/visibility-select";
+import FilterDropdown from "@/components/filter-dropdown";
+import {
+  GENRE_OPTIONS,
+  genreToTag,
+  tagToGenre,
+  moodToTag,
+  tagToMood,
+  isMoodTag,
+} from "@/components/lists/genre-options";
 import {
   updateList,
   addItemsToList,
@@ -23,6 +32,7 @@ import {
   updateListItemReason,
   deleteList,
 } from "@/app/actions/lists";
+import { toast } from "@/lib/toast";
 import {
   LIST_TYPE_LABELS,
   LIST_TYPES_REQUIRING_SOURCE,
@@ -36,6 +46,22 @@ import {
   type SearchResult,
 } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
+
+function pickerPlaceholder(mediaTypes: MediaType[]): string {
+  const labels: Record<MediaType, string> = {
+    movie: "movies",
+    tv_show: "shows",
+    book: "books",
+    video_game: "games",
+  };
+  if (mediaTypes.length === 0 || mediaTypes.length === 4) {
+    return "Search movies, TV, books, or games…";
+  }
+  const names = mediaTypes.map((t) => labels[t]);
+  if (names.length === 1) return `Search ${names[0]}…`;
+  if (names.length === 2) return `Search ${names[0]} and ${names[1]}…`;
+  return `Search ${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}…`;
+}
 
 const TYPE_HINTS: Record<ListType, string> = {
   curated: "A general 'things I love' list — anything goes",
@@ -72,7 +98,21 @@ export default function ListEditForm({
     list.media_types ?? []
   );
   const [listType, setListType] = useState<ListType>(list.list_type);
-  const [tags, setTags] = useState<string[]>(list.tags ?? []);
+  // Strip the type-specific tags (genre / mood) out of the editable
+  // tags array so the dedicated form fields own them; we re-fold both
+  // back in at submit time. Display tags = everything else.
+  const allInitialTags = list.tags ?? [];
+  const initialGenre = tagToGenre(allInitialTags);
+  const initialMood = tagToMood(allInitialTags);
+  const [tags, setTags] = useState<string[]>(
+    allInitialTags.filter((t) => {
+      if (initialGenre && t === genreToTag(initialGenre)) return false;
+      if (isMoodTag(t)) return false;
+      return true;
+    })
+  );
+  const [genre, setGenre] = useState<string | null>(initialGenre);
+  const [mood, setMood] = useState<string>(initialMood ?? "");
   const [visibility, setVisibility] = useState<ListVisibility>(list.visibility);
   const [picked, setPicked] = useState<MediaItem | null>(sourceMedia);
 
@@ -87,18 +127,34 @@ export default function ListEditForm({
     setError(null);
     startMetadataTransition(async () => {
       try {
+        // Re-fold the type-specific dropdown / textbox values back into
+        // the tag set. Mirror of the create-form path.
+        let tagsForSave = tags;
+        if (listType === "genre" && genre) {
+          tagsForSave = Array.from(
+            new Set([genreToTag(genre), ...tagsForSave])
+          );
+        }
+        if (listType === "mood" && mood.trim().length > 0) {
+          tagsForSave = Array.from(
+            new Set([moodToTag(mood), ...tagsForSave])
+          );
+        }
         await updateList(list.id, {
           title,
           description,
           list_type: listType,
           source_media_id: picked?.id ?? null,
           media_types: mediaTypes,
-          tags,
+          tags: tagsForSave,
           visibility,
         });
+        toast("Changes saved", { variant: "success" });
         router.refresh();
       } catch (err) {
-        setError((err as Error).message);
+        const message = (err as Error).message;
+        setError(message);
+        toast(`Couldn't save changes: ${message}`, { variant: "error" });
       }
     });
   }
@@ -153,10 +209,13 @@ export default function ListEditForm({
     startMetadataTransition(async () => {
       try {
         await deleteList(list.id);
+        toast("List deleted", { variant: "success" });
         router.push("/lists");
         router.refresh();
       } catch (err) {
-        setError((err as Error).message);
+        const message = (err as Error).message;
+        setError(message);
+        toast(`Couldn't delete list: ${message}`, { variant: "error" });
       }
     });
   }
@@ -169,34 +228,10 @@ export default function ListEditForm({
         </div>
       )}
 
-      {/* Metadata form */}
+      {/* Metadata form. Field order matches the create form so users
+          have a consistent flow: list type first (drives downstream
+          fields like source media), then title/description/media-types. */}
       <form onSubmit={handleSaveMetadata} className="space-y-6">
-        <Field label="Title" required>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            maxLength={200}
-            className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none"
-          />
-        </Field>
-
-        <Field label="Description">
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            className="w-full resize-y rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none"
-          />
-        </Field>
-
-        <Field
-          label="Media types"
-          help="Which kinds of media this list contains."
-        >
-          <MediaTypeMultiSelect value={mediaTypes} onChange={setMediaTypes} />
-        </Field>
-
         <Field label="List type" help={TYPE_HINTS[listType]}>
           <div className="flex flex-wrap gap-2">
             {/* Render the existing list_type even if it's no longer in the
@@ -221,6 +256,46 @@ export default function ListEditForm({
               );
             })}
           </div>
+        </Field>
+
+        {listType === "genre" && (
+          <Field
+            label="Genre"
+            help="The primary genre this list is about (TMDb's published list)."
+          >
+            <FilterDropdown
+              value={genre ?? ""}
+              placeholder="Pick a genre"
+              onChange={(v) => setGenre(v || null)}
+              options={[
+                { value: "", label: "Pick a genre" },
+                ...GENRE_OPTIONS.map((g) => ({ value: g, label: g })),
+              ]}
+            />
+          </Field>
+        )}
+
+        {listType === "mood" && (
+          <Field
+            label="Primary mood"
+            help="What mood does this list capture? Free-form."
+          >
+            <input
+              type="text"
+              value={mood}
+              onChange={(e) => setMood(e.target.value)}
+              maxLength={60}
+              placeholder="e.g. cozy melancholy"
+              className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+            />
+          </Field>
+        )}
+
+        <Field
+          label="Media types"
+          help="Which kinds of media this list contains."
+        >
+          <MediaTypeMultiSelect value={mediaTypes} onChange={setMediaTypes} />
         </Field>
 
         {requiresSource && (
@@ -262,6 +337,25 @@ export default function ListEditForm({
           </Field>
         )}
 
+        <Field label="Title" required>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            maxLength={200}
+            className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none"
+          />
+        </Field>
+
+        <Field label="Description">
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            className="w-full resize-y rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none"
+          />
+        </Field>
+
         <Field label="Tags">
           <TagInput tags={tags} onChange={setTags} />
         </Field>
@@ -301,7 +395,10 @@ export default function ListEditForm({
         </h2>
 
         <InlineMediaPicker
-          placeholder="Search to add a movie, show, book, or game…"
+          placeholder={pickerPlaceholder(mediaTypes)}
+          // Same multi-type restriction as the create form — search
+          // results stay scoped to the list's chosen media types.
+          scope={mediaTypes}
           excludeMediaIds={items.map((i) => i.media_id)}
           onPick={handleAddItem}
         />

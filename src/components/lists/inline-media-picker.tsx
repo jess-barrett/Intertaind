@@ -8,10 +8,12 @@ import type { MediaType, SearchResult } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
 
 interface PickerOption {
-  /** "all" for cross-media picker, or a single MediaType to lock the
-      filter (used for source-media picker on if-you-liked / vibe lists
-      where users probably want to anchor on a specific medium first). */
-  scope?: MediaType | "all";
+  /** Restrict search results by media type:
+      - `"all"` or empty array → all four types
+      - single `MediaType` → only that type (legacy single-scope picker)
+      - `MediaType[]` with 1-3 entries → those types only (multi-select
+        from the list create form's "Media types" field). */
+  scope?: MediaType | "all" | MediaType[];
 }
 
 /**
@@ -43,6 +45,18 @@ export default function InlineMediaPicker({
   const [adding, setAdding] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Resolve the prop's many shapes down to a stable types-or-all
+  // signal. Empty arrays and the literal "all" both mean unrestricted;
+  // a single string and a single-element array both mean that one type.
+  const types: MediaType[] | "all" = (() => {
+    if (scope === "all" || scope == null) return "all";
+    if (Array.isArray(scope)) {
+      return scope.length === 0 || scope.length === 4 ? "all" : scope;
+    }
+    return [scope];
+  })();
+  const typesKey = Array.isArray(types) ? types.join(",") : types;
+
   const doSearch = useCallback(
     async (q: string) => {
       if (q.length < 2) {
@@ -51,19 +65,48 @@ export default function InlineMediaPicker({
       }
       setLoading(true);
       try {
-        const url = `/api/search?q=${encodeURIComponent(q)}&type=${scope}`;
-        const res = await fetch(url);
-        if (res.ok) {
-          const data = (await res.json()) as SearchResult[];
-          setResults(data);
+        let merged: SearchResult[];
+        if (types === "all") {
+          const res = await fetch(
+            `/api/search?q=${encodeURIComponent(q)}&type=all`
+          );
+          merged = res.ok ? ((await res.json()) as SearchResult[]) : [];
+        } else if (types.length === 1) {
+          const res = await fetch(
+            `/api/search?q=${encodeURIComponent(q)}&type=${types[0]}`
+          );
+          merged = res.ok ? ((await res.json()) as SearchResult[]) : [];
+        } else {
+          // Multi-type filtered: hit each per-type endpoint in parallel
+          // (each returns its own ranked top-N) and interleave by index
+          // so the dropdown shows a balanced mix instead of every movie
+          // before any book.
+          const responses = await Promise.all(
+            types.map((t) =>
+              fetch(`/api/search?q=${encodeURIComponent(q)}&type=${t}`).then(
+                async (r) => (r.ok ? ((await r.json()) as SearchResult[]) : [])
+              )
+            )
+          );
+          merged = [];
+          const maxLen = Math.max(...responses.map((r) => r.length), 0);
+          for (let i = 0; i < maxLen; i++) {
+            for (const list of responses) {
+              if (list[i]) merged.push(list[i]);
+            }
+          }
         }
+        setResults(merged);
       } catch {
         // silent — empty results is the right UX
       } finally {
         setLoading(false);
       }
     },
-    [scope]
+    // typesKey collapses the array into a stable string so the callback
+    // identity doesn't change every render due to a fresh array ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [typesKey]
   );
 
   useEffect(() => {

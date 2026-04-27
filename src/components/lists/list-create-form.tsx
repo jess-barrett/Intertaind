@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDown,
@@ -15,7 +15,14 @@ import InlineMediaPicker from "@/components/lists/inline-media-picker";
 import TagInput from "@/components/lists/tag-input";
 import MediaTypeMultiSelect from "@/components/lists/media-type-multiselect";
 import VisibilitySelect from "@/components/lists/visibility-select";
+import FilterDropdown from "@/components/filter-dropdown";
+import {
+  GENRE_OPTIONS,
+  genreToTag,
+  moodToTag,
+} from "@/components/lists/genre-options";
 import { createList } from "@/app/actions/lists";
+import { toast } from "@/lib/toast";
 import {
   LIST_TYPE_LABELS,
   LIST_TYPES_REQUIRING_SOURCE,
@@ -33,6 +40,50 @@ interface PickedItem {
   cover: string | null;
   mediaType: MediaType;
   reason: string;
+}
+
+/**
+ * Compose the auto-suggested title for "If you liked…" lists from the
+ * source media's title plus the chosen media types:
+ *   1 type:  "If you liked Severance try these Books"
+ *   2 types: "If you liked Severance try these Books and Movies"
+ *   3+:      "If you liked Severance try these Books, Movies, and TV Shows"
+ */
+function buildIfYouLikedTitle(
+  sourceTitle: string,
+  types: MediaType[]
+): string {
+  const labels = types.map((t) => MEDIA_TYPE_CONFIG[t].label);
+  let mediaPart: string;
+  if (labels.length === 1) {
+    mediaPart = labels[0];
+  } else if (labels.length === 2) {
+    mediaPart = `${labels[0]} and ${labels[1]}`;
+  } else {
+    mediaPart = `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+  }
+  return `If you liked ${sourceTitle} try these ${mediaPart}`;
+}
+
+/**
+ * Build a search placeholder that names the media types the curator
+ * picked. Reads "Search movies and books…" when restricted, falls back
+ * to the full menu when the user hasn't selected anything.
+ */
+function pickerPlaceholder(mediaTypes: MediaType[]): string {
+  const labels: Record<MediaType, string> = {
+    movie: "movies",
+    tv_show: "shows",
+    book: "books",
+    video_game: "games",
+  };
+  if (mediaTypes.length === 0 || mediaTypes.length === 4) {
+    return "Search movies, TV, books, or games…";
+  }
+  const names = mediaTypes.map((t) => labels[t]);
+  if (names.length === 1) return `Search ${names[0]}…`;
+  if (names.length === 2) return `Search ${names[0]} and ${names[1]}…`;
+  return `Search ${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}…`;
 }
 
 const TYPE_HINTS: Record<ListType, string> = {
@@ -54,6 +105,12 @@ export default function ListCreateForm() {
   const [error, setError] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
+  // Tracks whether the title is currently the auto-suggested string
+  // (true = we own it, can keep updating it as inputs change). Flips to
+  // false the moment the user types something into the title input —
+  // their edit is sacred and won't be overwritten. Resets back to true
+  // when they clear the field, so they can grab the suggestion again.
+  const [titleAutoFilled, setTitleAutoFilled] = useState(true);
   const [description, setDescription] = useState("");
   const [mediaTypes, setMediaTypes] = useState<MediaType[]>([]);
   const [listType, setListType] = useState<ListType>("curated");
@@ -64,6 +121,15 @@ export default function ListCreateForm() {
     mediaType: MediaType;
   } | null>(null);
   const [tags, setTags] = useState<string[]>([]);
+  // Optional genre selection for list_type === "genre". Stored as a
+  // tag at submit time so it slots into the existing tag GIN index
+  // for discovery filters without a new schema column.
+  const [genre, setGenre] = useState<string | null>(null);
+  // Free-form primary mood for list_type === "mood". Same storage
+  // approach (folded into tags), but with a `mood:` prefix on the
+  // stored tag so the edit form can extract it unambiguously from
+  // user-entered tags.
+  const [mood, setMood] = useState("");
   const [visibility, setVisibility] = useState<ListVisibility>("public");
   const [items, setItems] = useState<PickedItem[]>([]);
 
@@ -71,6 +137,25 @@ export default function ListCreateForm() {
   const titleValid = title.trim().length > 0;
   const sourceValid = !requiresSource || !!sourceMedia;
   const canSubmit = titleValid && sourceValid && !pending;
+
+  // Auto-suggest title for "If you liked…" lists: flows source title +
+  // chosen media types into a sentence the curator probably wants
+  // anyway. Stops as soon as the user types over it.
+  useEffect(() => {
+    if (!titleAutoFilled) return;
+    if (listType !== "if_you_liked") return;
+    if (!sourceMedia) return;
+    if (mediaTypes.length === 0) return;
+    setTitle(buildIfYouLikedTitle(sourceMedia.title, mediaTypes));
+  }, [titleAutoFilled, listType, sourceMedia, mediaTypes]);
+
+  function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const next = e.target.value;
+    setTitle(next);
+    // Clearing the field re-arms the auto-suggester. Anything else
+    // counts as a manual edit and locks it.
+    setTitleAutoFilled(next === "");
+  }
 
   function handleAddItem(result: SearchResult, mediaId: string) {
     if (items.some((i) => i.mediaId === mediaId)) return;
@@ -114,24 +199,37 @@ export default function ListCreateForm() {
     setError(null);
     setPending(true);
     try {
+      // Fold the type-specific extra (genre / mood) into the tag set so
+      // discovery filters (which run on the tags GIN index) treat them
+      // like any other tag. Dedupe in case the user also typed them.
+      let tagsForSave = tags;
+      if (listType === "genre" && genre) {
+        tagsForSave = Array.from(new Set([genreToTag(genre), ...tagsForSave]));
+      }
+      if (listType === "mood" && mood.trim().length > 0) {
+        tagsForSave = Array.from(new Set([moodToTag(mood), ...tagsForSave]));
+      }
       const id = await createList({
         title,
         description,
         list_type: listType,
         source_media_id: sourceMedia?.mediaId ?? null,
         media_types: mediaTypes,
-        tags,
+        tags: tagsForSave,
         visibility,
         initial_items: items.map((i) => ({
           media_id: i.mediaId,
           reason: i.reason,
         })),
       });
+      toast(`List “${title.trim()}” created`, { variant: "success" });
       router.push(`/lists/${id}`);
       // Note: we don't reset `pending` on success because the component
       // unmounts during navigation. Reset only on error.
     } catch (err) {
-      setError((err as Error).message);
+      const message = (err as Error).message;
+      setError(message);
+      toast(`Couldn't create list: ${message}`, { variant: "error" });
       setPending(false);
     }
   }
@@ -144,37 +242,9 @@ export default function ListCreateForm() {
         </div>
       )}
 
-      <Field label="Title" required>
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={200}
-          placeholder="e.g. Slow-burn cozy mysteries"
-          className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none"
-        />
-      </Field>
-
-      <Field
-        label="Description"
-        help="What ties this list together? Why should someone read it?"
-      >
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={3}
-          placeholder="A few sentences of context…"
-          className="w-full resize-y rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none"
-        />
-      </Field>
-
-      <Field
-        label="Media types"
-        help="Which kinds of media this list contains. Multi-select."
-      >
-        <MediaTypeMultiSelect value={mediaTypes} onChange={setMediaTypes} />
-      </Field>
-
+      {/* List type leads the form — picking it changes which fields
+          appear (e.g., source media for if-you-liked / vibe), so it's
+          easier to set this first than backtrack to it. */}
       <Field label="List type" help={TYPE_HINTS[listType]}>
         <div className="flex flex-wrap gap-2">
           {SELECTABLE_LIST_TYPES.map((t) => {
@@ -195,6 +265,52 @@ export default function ListCreateForm() {
             );
           })}
         </div>
+      </Field>
+
+      {/* Genre dropdown — only when list_type is "genre". Gets folded
+          into tags at submit time so it participates in discovery
+          filters alongside the user's free-text tags. */}
+      {listType === "genre" && (
+        <Field
+          label="Genre"
+          help="The primary genre this list is about (TMDb's published list)."
+        >
+          <FilterDropdown
+            value={genre ?? ""}
+            placeholder="Pick a genre"
+            onChange={(v) => setGenre(v || null)}
+            options={[
+              { value: "", label: "Pick a genre" },
+              ...GENRE_OPTIONS.map((g) => ({ value: g, label: g })),
+            ]}
+          />
+        </Field>
+      )}
+
+      {/* Primary mood — free-form so users can name moods we'd never
+          enumerate in a fixed list ("nostalgic comfort", "dread", "hyped
+          up", etc.). Same fold-into-tags-at-submit pattern as Genre. */}
+      {listType === "mood" && (
+        <Field
+          label="Primary mood"
+          help="What mood does this list capture? Free-form."
+        >
+          <input
+            type="text"
+            value={mood}
+            onChange={(e) => setMood(e.target.value)}
+            maxLength={60}
+            placeholder="e.g. cozy melancholy"
+            className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand focus:outline-none"
+          />
+        </Field>
+      )}
+
+      <Field
+        label="Media types"
+        help="Which kinds of media this list contains. Multi-select."
+      >
+        <MediaTypeMultiSelect value={mediaTypes} onChange={setMediaTypes} />
       </Field>
 
       {requiresSource && (
@@ -230,6 +346,30 @@ export default function ListCreateForm() {
         </Field>
       )}
 
+      <Field label="Title" required>
+        <input
+          type="text"
+          value={title}
+          onChange={handleTitleChange}
+          maxLength={200}
+          placeholder="e.g. Slow-burn cozy mysteries"
+          className="w-full rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none"
+        />
+      </Field>
+
+      <Field
+        label="Description"
+        help="What ties this list together? Why should someone read it?"
+      >
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={3}
+          placeholder="A few sentences of context…"
+          className="w-full resize-y rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none"
+        />
+      </Field>
+
       <Field
         label="Tags"
         help="Free text. Type a tag, press Enter to add. Click × to remove."
@@ -247,7 +387,12 @@ export default function ListCreateForm() {
         </h2>
 
         <InlineMediaPicker
-          placeholder="Search to add a movie, show, book, or game…"
+          placeholder={pickerPlaceholder(mediaTypes)}
+          // Restrict search to the media types the curator picked above.
+          // Empty array = unrestricted (resolved to "all" inside the
+          // picker), so the form is forgiving when the user hasn't
+          // touched the multi-select yet.
+          scope={mediaTypes}
           excludeMediaIds={items.map((i) => i.mediaId)}
           onPick={handleAddItem}
         />

@@ -25,6 +25,7 @@ export default function TopFourGrid({
   displayName,
   isOwner,
   viewerTracking,
+  ownerCustomCovers,
 }: {
   topFours: Record<MediaType, MediaItem[]>;
   displayName: string;
@@ -33,6 +34,10 @@ export default function TopFourGrid({
       MediaCardActions slideout on non-owner views so the viewer can
       add the profile owner's favorites to their own library. */
   viewerTracking?: Record<string, UserMedia>;
+  /** The profile owner's per-item custom cover overrides, keyed by
+      media_id. When present, the override replaces the global
+      cover_image_url for everyone viewing the profile. */
+  ownerCustomCovers?: Record<string, string>;
 }) {
   const [topFours, setTopFours] = useState(initialTopFours);
   const [pickerType, setPickerType] = useState<MediaType | null>(null);
@@ -127,6 +132,10 @@ export default function TopFourGrid({
                     dropTarget?.type === type &&
                     dropTarget.id === item.id &&
                     dragging?.id !== item.id;
+                  // Profile owner's custom cover beats the global one.
+                  // Visible to anyone viewing the profile.
+                  const displayCover =
+                    ownerCustomCovers?.[item.id] ?? item.cover_image_url;
                   return (
                     <div
                       key={item.id}
@@ -176,9 +185,9 @@ export default function TopFourGrid({
                               : "border-surface-border"
                           }`}
                         >
-                          {item.cover_image_url ? (
+                          {displayCover ? (
                             <img
-                              src={item.cover_image_url}
+                              src={displayCover}
                               alt={item.title}
                               className="h-full w-full object-cover"
                             />

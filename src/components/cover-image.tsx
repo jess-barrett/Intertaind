@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * Cover image with a Google Books fallback: if the zoom=3 URL fails (common
@@ -20,6 +20,15 @@ export default function CoverImage({
 }) {
   const [url, setUrl] = useState(src);
   const [failed, setFailed] = useState(false);
+
+  // Re-sync the internal state when the `src` prop changes — without
+  // this, a router.refresh() that flows a new cover URL down (e.g.
+  // after the cover-picker modal saves a custom cover) would render
+  // with the new prop but keep showing the stale state's URL.
+  useEffect(() => {
+    setUrl(src);
+    setFailed(false);
+  }, [src]);
 
   function tryZoomFallback(current: string): boolean {
     if (/books\.google\.com.+zoom=3/.test(current)) {
