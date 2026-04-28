@@ -11,7 +11,13 @@ import AboutTheAuthor from "@/components/media/about-the-author";
 import RatingsHistogram from "@/components/media/ratings-histogram";
 import CoverImage from "@/components/cover-image";
 import BackButton from "@/components/back-button";
+import RecommendButton from "@/components/recommendations/recommend-button";
+import MediaRecommendationsSection from "@/components/recommendations/media-recommendations-section";
 import { ensureMediaItemEnriched } from "@/app/actions/media";
+import {
+  fetchRecommendationsForSource,
+  fetchRecommendationsForTarget,
+} from "@/app/actions/recommendations";
 
 const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
   book: BookOpen,
@@ -173,6 +179,14 @@ export default async function MediaDetailPage({
     favorites: favoriteCountRes.count ?? 0,
     lists: listCountRes.count ?? 0,
   };
+
+  // Top-5 recommendations in each direction. Both queries hit narrow
+  // single-column indexes (recommendations_source_idx + _target_idx),
+  // so this is two cheap reads regardless of total community volume.
+  const [pairsWithRes, recommendedForRes] = await Promise.all([
+    fetchRecommendationsForSource(id, 5, 0),
+    fetchRecommendationsForTarget(id, 5, 0),
+  ]);
 
   // Build the 10-bucket rating histogram (1..10 → 0.5..5.0 stars).
   const ratingValues =
@@ -428,6 +442,18 @@ export default async function MediaDetailPage({
                 mediaType={media.media_type}
                 metadata={metadata}
               />
+
+              {/* Community recommendations — two-direction toggle. The
+                  totals come from denormalized columns on media_items
+                  (`recommendations_count` / `recommended_for_count`) so
+                  no extra aggregate query is needed. */}
+              <MediaRecommendationsSection
+                mediaId={media.id}
+                pairsWith={pairsWithRes.items}
+                pairsWithTotal={media.recommendations_count ?? 0}
+                recommendedFor={recommendedForRes.items}
+                recommendedForTotal={media.recommended_for_count ?? 0}
+              />
             </div>
 
             {/* Actions sidebar */}
@@ -449,6 +475,19 @@ export default async function MediaDetailPage({
                 defaultBackdropUrl={media.backdrop_url}
                 currentBackdropUrl={backdropUrl}
               />
+
+              {/* Recommend pairing — opens a modal that lets the viewer
+                  post an "if you liked THIS, try X" recommendation. */}
+              <div className="mt-3">
+                <RecommendButton
+                  source={{
+                    id: media.id,
+                    title: media.title,
+                    cover_image_url: media.cover_image_url,
+                  }}
+                  isLoggedIn={!!user}
+                />
+              </div>
 
               {/* Ratings histogram — sits beneath the action stack. Hides
                   itself when there are no ratings yet. */}

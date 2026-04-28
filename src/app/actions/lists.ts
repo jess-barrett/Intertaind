@@ -26,6 +26,7 @@ export interface CreateListInput {
   media_types?: MediaType[];
   tags?: string[];
   visibility?: ListVisibility;
+  ranked?: boolean;
   initial_items?: { media_id: string; reason?: string }[];
 }
 
@@ -37,6 +38,7 @@ export interface UpdateListInput {
   media_types?: MediaType[];
   tags?: string[];
   visibility?: ListVisibility;
+  ranked?: boolean;
 }
 
 /**
@@ -85,6 +87,7 @@ export async function createList(input: CreateListInput): Promise<string> {
       media_types: input.media_types ?? [],
       tags: normalizeTags(input.tags),
       visibility: input.visibility ?? "public",
+      ranked: input.ranked ?? false,
     })
     .select("id")
     .single();
@@ -150,6 +153,7 @@ export async function updateList(
   }
   if (input.tags !== undefined) updates.tags = normalizeTags(input.tags);
   if (input.visibility !== undefined) updates.visibility = input.visibility;
+  if (input.ranked !== undefined) updates.ranked = input.ranked;
 
   if (Object.keys(updates).length === 0) return;
 

@@ -3,8 +3,11 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Pencil, User } from "lucide-react";
 import BackButton from "@/components/back-button";
-import MediaCard from "@/components/media-card";
+import ListItemsGrid from "@/components/lists/list-items-grid";
 import ListSidebarActions from "@/components/lists/list-sidebar-actions";
+import ListComments from "@/components/lists/list-comments";
+import ListMediaIcons from "@/components/lists/list-media-icons";
+import { fetchCommentsPage } from "@/app/actions/list-comments";
 import { fetchViewerTracking } from "@/lib/viewer-tracking";
 import {
   LIST_TYPE_LABELS,
@@ -84,6 +87,11 @@ export default async function ListDetailPage({
     listItems.map((li) => li.media_items.id)
   );
 
+  // Initial comments fetched server-side so the page first-paints with
+  // the thread visible. The client component takes ownership after
+  // hydration and pages through older comments on demand.
+  const initialCommentsPage = await fetchCommentsPage(id, 0);
+
   const isOwner = !!user && user.id === typedList.user_id;
   const showSourceBlock =
     typedList.list_type === "if_you_liked" || typedList.list_type === "vibe";
@@ -142,30 +150,38 @@ export default async function ListDetailPage({
                 <h1 className="text-3xl font-bold text-white drop-shadow-md md:text-5xl">
                   {typedList.title}
                 </h1>
-                {curator && (
-                  <Link
-                    href={`/u/${curator.username}`}
-                    className="mt-3 inline-flex items-center gap-2 text-sm text-white/80 transition-colors hover:text-white"
-                  >
-                    {curator.avatar_url ? (
-                      <img
-                        src={curator.avatar_url}
-                        alt={curatorDisplay}
-                        className="h-7 w-7 rounded-full border border-white/20 object-cover"
-                      />
-                    ) : (
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-white/10">
-                        <User size={14} />
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  {curator && (
+                    <Link
+                      href={`/u/${curator.username}`}
+                      className="inline-flex items-center gap-2 text-sm text-white/80 transition-colors hover:text-white"
+                    >
+                      {curator.avatar_url ? (
+                        <img
+                          src={curator.avatar_url}
+                          alt={curatorDisplay}
+                          className="h-7 w-7 rounded-full border border-white/20 object-cover"
+                        />
+                      ) : (
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-white/10">
+                          <User size={14} />
+                        </span>
+                      )}
+                      <span>
+                        List created by{" "}
+                        <span className="font-medium text-white">
+                          {curatorDisplay}
+                        </span>
                       </span>
-                    )}
-                    <span>
-                      List created by{" "}
-                      <span className="font-medium text-white">
-                        {curatorDisplay}
-                      </span>
-                    </span>
-                  </Link>
-                )}
+                    </Link>
+                  )}
+                  <ListMediaIcons
+                    list={typedList}
+                    sourceMedia={typedList.source_media}
+                    iconSize={16}
+                    className="text-white/80"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -182,30 +198,37 @@ export default async function ListDetailPage({
             <h1 className="text-3xl font-bold text-text-primary">
               {typedList.title}
             </h1>
-            {curator && (
-              <Link
-                href={`/u/${curator.username}`}
-                className="mt-2 inline-flex items-center gap-2 text-sm text-text-secondary transition-colors hover:text-text-primary"
-              >
-                {curator.avatar_url ? (
-                  <img
-                    src={curator.avatar_url}
-                    alt={curatorDisplay}
-                    className="h-7 w-7 rounded-full border border-surface-border object-cover"
-                  />
-                ) : (
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full border border-surface-border bg-surface-overlay text-text-muted">
-                    <User size={14} />
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+              {curator && (
+                <Link
+                  href={`/u/${curator.username}`}
+                  className="inline-flex items-center gap-2 text-sm text-text-secondary transition-colors hover:text-text-primary"
+                >
+                  {curator.avatar_url ? (
+                    <img
+                      src={curator.avatar_url}
+                      alt={curatorDisplay}
+                      className="h-7 w-7 rounded-full border border-surface-border object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full border border-surface-border bg-surface-overlay text-text-muted">
+                      <User size={14} />
+                    </span>
+                  )}
+                  <span>
+                    List created by{" "}
+                    <span className="font-medium text-text-primary">
+                      {curatorDisplay}
+                    </span>
                   </span>
-                )}
-                <span>
-                  List created by{" "}
-                  <span className="font-medium text-text-primary">
-                    {curatorDisplay}
-                  </span>
-                </span>
-              </Link>
-            )}
+                </Link>
+              )}
+              <ListMediaIcons
+                list={typedList}
+                sourceMedia={typedList.source_media}
+                iconSize={16}
+              />
+            </div>
           </div>
         )}
 
@@ -313,29 +336,12 @@ export default async function ListDetailPage({
 
             <div className="mt-8">
               {listItems.length > 0 ? (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                  {listItems.map((item) => (
-                    <div key={item.id} className="space-y-2">
-                      <MediaCard
-                        item={item.media_items}
-                        showStats
-                        userMedia={viewerTracking[item.media_items.id] ?? null}
-                        userRating={
-                          viewerTracking[item.media_items.id]?.rating ?? null
-                        }
-                        userFavorite={
-                          viewerTracking[item.media_items.id]?.is_favorite ??
-                          false
-                        }
-                      />
-                      {item.reason && (
-                        <p className="px-1 text-xs leading-relaxed text-text-muted">
-                          {item.reason}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <ListItemsGrid
+                  items={listItems}
+                  viewerTracking={viewerTracking}
+                  isLoggedIn={!!user}
+                  isRanked={typedList.ranked}
+                />
               ) : (
                 <div className="flex flex-col items-center py-20 text-center">
                   <p className="text-lg text-text-secondary">
@@ -344,6 +350,15 @@ export default async function ListDetailPage({
                 </div>
               )}
             </div>
+
+            <ListComments
+              listId={typedList.id}
+              initialComments={initialCommentsPage.comments}
+              initialHasMore={initialCommentsPage.hasMore}
+              isLoggedIn={!!user}
+              isListOwner={isOwner}
+              viewerId={user?.id ?? null}
+            />
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Heart, User } from "lucide-react";
-import { LIST_TYPE_LABELS, type List, type Profile } from "@/lib/types";
+import ListMediaIcons from "@/components/lists/list-media-icons";
+import { LIST_TYPE_LABELS, type List, type MediaItem, type Profile } from "@/lib/types";
 
 export interface ListCardData {
   covers: { src: string | null; title: string }[];
@@ -20,10 +21,12 @@ export default function ListCard({
   list,
   profile,
   covers,
+  sourceMedia,
 }: {
   list: List;
   profile: Profile | null;
   covers: ListCardData["covers"];
+  sourceMedia?: Pick<MediaItem, "media_type"> | null;
 }) {
   const stackWidth =
     covers.length === 0
@@ -49,7 +52,7 @@ export default function ListCard({
             {list.description}
           </p>
         )}
-        <div className="mt-3 flex items-center gap-4 text-xs text-text-muted">
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted">
           {profile && (
             <span className="flex items-center gap-1">
               <User size={12} />
@@ -60,6 +63,8 @@ export default function ListCard({
             <Heart size={12} />
             {list.like_count}
           </span>
+          <span aria-hidden>·</span>
+          <ListMediaIcons list={list} sourceMedia={sourceMedia} iconSize={12} />
         </div>
       </div>
 

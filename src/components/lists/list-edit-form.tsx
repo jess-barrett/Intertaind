@@ -114,6 +114,7 @@ export default function ListEditForm({
   const [genre, setGenre] = useState<string | null>(initialGenre);
   const [mood, setMood] = useState<string>(initialMood ?? "");
   const [visibility, setVisibility] = useState<ListVisibility>(list.visibility);
+  const [ranked, setRanked] = useState<boolean>(list.ranked);
   const [picked, setPicked] = useState<MediaItem | null>(sourceMedia);
 
   const requiresSource = LIST_TYPES_REQUIRING_SOURCE.includes(listType);
@@ -148,6 +149,7 @@ export default function ListEditForm({
           media_types: mediaTypes,
           tags: tagsForSave,
           visibility,
+          ranked,
         });
         toast("Changes saved", { variant: "success" });
         router.refresh();
@@ -364,6 +366,13 @@ export default function ListEditForm({
           <VisibilitySelect value={visibility} onChange={setVisibility} />
         </Field>
 
+        <Field
+          label="Ranked list"
+          help="Number items from #1 (top) to #N. Sort controls are hidden on ranked lists since position is the order."
+        >
+          <RankedToggle value={ranked} onChange={setRanked} />
+        </Field>
+
         <div className="flex items-center justify-between gap-3 border-t border-surface-border pt-4">
           <button
             type="button"
@@ -410,7 +419,7 @@ export default function ListEditForm({
                 key={item.id}
                 className="flex items-start gap-3 rounded-sm border border-surface-border bg-surface-raised/40 p-3"
               >
-                <div className="flex shrink-0 flex-col gap-1">
+                <div className="flex shrink-0 flex-col self-stretch justify-between">
                   <button
                     type="button"
                     disabled={i === 0 || pendingItem}
@@ -430,6 +439,11 @@ export default function ListEditForm({
                     <ArrowDown size={12} />
                   </button>
                 </div>
+                {ranked && (
+                  <span className="flex w-8 shrink-0 self-stretch items-center justify-center text-lg font-bold text-brand tabular-nums">
+                    {i + 1}
+                  </span>
+                )}
                 <div className="aspect-2/3 w-12 shrink-0 overflow-hidden rounded-sm border border-surface-border bg-surface-overlay">
                   <CoverImage
                     src={item.media_items.cover_image_url}
@@ -524,6 +538,41 @@ function Field({
       </label>
       {children}
       {help && <p className="text-xs text-text-muted">{help}</p>}
+    </div>
+  );
+}
+
+function RankedToggle({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex gap-2">
+      <button
+        type="button"
+        onClick={() => onChange(false)}
+        className={`rounded-sm border px-3 py-1.5 text-xs transition-colors ${
+          !value
+            ? "border-brand bg-brand/10 text-brand"
+            : "border-surface-border bg-surface-overlay text-text-secondary"
+        }`}
+      >
+        Standard
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange(true)}
+        className={`rounded-sm border px-3 py-1.5 text-xs transition-colors ${
+          value
+            ? "border-brand bg-brand/10 text-brand"
+            : "border-surface-border bg-surface-overlay text-text-secondary"
+        }`}
+      >
+        Ranked
+      </button>
     </div>
   );
 }

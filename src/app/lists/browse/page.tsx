@@ -7,6 +7,7 @@ import {
   LIST_SORT_OPTIONS,
   type ListSortKey,
 } from "@/components/lists/list-sort-options";
+import { fetchListSourceMediaMap } from "@/lib/list-source-media";
 import type { List, Profile } from "@/lib/types";
 
 const PREVIEW_COUNT = 10;
@@ -61,6 +62,8 @@ export default async function BrowseListsPage({
     }
   }
 
+  const sourceMediaByList = await fetchListSourceMediaMap(supabase, lists);
+
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
       <div className="mb-6">
@@ -92,6 +95,7 @@ export default async function BrowseListsPage({
               list={list}
               profile={list.profiles}
               covers={coversByList[list.id] ?? []}
+              sourceMedia={sourceMediaByList[list.id] ?? null}
             />
           ))}
         </div>

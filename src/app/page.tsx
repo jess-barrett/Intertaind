@@ -3,6 +3,7 @@ import type { MediaItem, List, Profile } from "@/lib/types";
 import LandingPage from "@/components/landing-page";
 import DiscoveryFeed from "@/components/discovery-feed";
 import { fetchViewerTracking } from "@/lib/viewer-tracking";
+import { fetchListSourceMediaMap } from "@/lib/list-source-media";
 
 const LIST_PREVIEW_COUNT = 5;
 
@@ -106,6 +107,8 @@ export default async function Home() {
   ];
   const viewerTracking = await fetchViewerTracking(supabase, user.id, allIds);
 
+  const sourceMediaByList = await fetchListSourceMediaMap(supabase, popularLists);
+
   return (
     <DiscoveryFeed
       displayName={displayName}
@@ -115,6 +118,7 @@ export default async function Home() {
       popularGames={popularGames}
       popularLists={popularLists}
       coversByList={coversByList}
+      sourceMediaByList={sourceMediaByList}
       viewerTracking={viewerTracking}
     />
   );

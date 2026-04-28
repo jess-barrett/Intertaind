@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import FeaturedListCard from "@/components/lists/featured-list-card";
 import PopularListCard from "@/components/lists/popular-list-card";
 import RecentListRow from "@/components/lists/recent-list-row";
+import { fetchListSourceMediaMap } from "@/lib/list-source-media";
 import type { List, Profile } from "@/lib/types";
 
 const PREVIEW_COUNT = 5;
@@ -104,6 +105,12 @@ export default async function ListsPage() {
     }
   }
 
+  const sourceMediaByList = await fetchListSourceMediaMap(supabase, [
+    ...featured,
+    ...popular,
+    ...recent,
+  ]);
+
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
       {/* Centered banner — slogan, description, primary CTA. The slogan
@@ -135,7 +142,6 @@ export default async function ListsPage() {
         <section className="mb-12">
           <SectionHeader
             title="Featured Lists"
-            subtitle="A starter pack from the community and beyond."
             actionLabel="All"
             actionHref="/lists/featured"
           />
@@ -146,6 +152,7 @@ export default async function ListsPage() {
                 list={list}
                 profile={list.profiles}
                 covers={coversByList[list.id] ?? []}
+                sourceMedia={sourceMediaByList[list.id] ?? null}
               />
             ))}
           </div>
@@ -167,6 +174,7 @@ export default async function ListsPage() {
                 list={list}
                 profile={list.profiles}
                 covers={coversByList[list.id] ?? []}
+                sourceMedia={sourceMediaByList[list.id] ?? null}
               />
             ))}
           </div>
@@ -186,6 +194,7 @@ export default async function ListsPage() {
                     list={list}
                     profile={list.profiles}
                     covers={coversByList[list.id] ?? []}
+                    sourceMedia={sourceMediaByList[list.id] ?? null}
                   />
                 ))}
               </div>

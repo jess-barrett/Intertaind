@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Heart, User } from "lucide-react";
 import ListCoverStack from "@/components/lists/list-cover-stack";
-import type { List, Profile } from "@/lib/types";
+import ListMediaIcons from "@/components/lists/list-media-icons";
+import type { List, MediaItem, Profile } from "@/lib/types";
 
 /**
  * Popular-section card variant: same total stack width as Featured but
@@ -13,10 +14,12 @@ export default function PopularListCard({
   list,
   profile,
   covers,
+  sourceMedia,
 }: {
   list: List;
   profile: Profile | null;
   covers: { src: string | null; title: string }[];
+  sourceMedia?: Pick<MediaItem, "media_type"> | null;
 }) {
   const curatorDisplay = profile?.display_name || profile?.username || "—";
   return (
@@ -56,6 +59,8 @@ export default function PopularListCard({
           <Heart size={10} />
           {list.like_count}
         </span>
+        <span aria-hidden>·</span>
+        <ListMediaIcons list={list} sourceMedia={sourceMedia} iconSize={12} />
       </div>
     </Link>
   );

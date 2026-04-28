@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { BookOpen, Film, Tv, Gamepad2, History, MessageSquare, User } from "lucide-react";
+import { BookOpen, Film, Tv, Gamepad2, History, List, MessageSquare, User } from "lucide-react";
 import UserSearchBar from "@/components/user-search-bar";
 
 export default function ProfileNavTabs({ username }: { username: string }) {
@@ -17,6 +17,7 @@ export default function ProfileNavTabs({ username }: { username: string }) {
     { href: `${base}/tv-shows`, label: "Shows", icon: Tv, color: "text-accent-tv" },
     { href: `${base}/books`, label: "Books", icon: BookOpen, color: "text-accent-book" },
     { href: `${base}/games`, label: "Games", icon: Gamepad2, color: "text-accent-game" },
+    { href: `${base}/lists`, label: "Lists", icon: List, color: "text-text-secondary" },
     { href: `${base}/activity`, label: "Activity", icon: History, color: "text-text-secondary" },
     { href: `${base}/reviews`, label: "Reviews", icon: MessageSquare, color: "text-text-secondary" },
   ] as const;

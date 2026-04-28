@@ -30,6 +30,14 @@ export interface MediaItem {
   in_progress_count: number;
   favorites_count: number;
   lists_count: number;
+  /** Denormalized count of recommendations rows with this media as
+      `source_media_id` — i.e. how many users have recommended *something*
+      to fans of this. Maintained by trigger. */
+  recommendations_count: number;
+  /** Denormalized count of recommendations rows with this media as
+      `recommended_media_id` — i.e. how many users have recommended *this*
+      to fans of something else. Maintained by trigger. */
+  recommended_for_count: number;
   created_at: string;
 }
 
@@ -105,7 +113,8 @@ export type ActivityType =
   | "removed_from_top"
   | "created_list"
   | "liked_list"
-  | "saved_list";
+  | "saved_list"
+  | "recommended";
 
 export interface Activity {
   id: string;
@@ -214,8 +223,13 @@ export interface List {
   saves_count: number;
   /** Denormalized count of list_items rows. */
   item_count: number;
+  /** Denormalized count of list_comments rows. */
+  comments_count: number;
   /** Toggled manually for editorial picks. Surfaces in Featured. */
   featured: boolean;
+  /** When true, items render with a position-based rank badge and the
+      sort dropdown is suppressed (position IS the order). */
+  ranked: boolean;
   created_at: string;
   updated_at: string;
   profiles?: Profile;
@@ -237,6 +251,17 @@ export interface ListLike {
   user_id: string;
   list_id: string;
   created_at: string;
+}
+
+export interface ListComment {
+  id: string;
+  list_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  /** Author's profile, populated by joiner queries on the page. */
+  profiles?: Profile;
 }
 
 export interface ListSave {
@@ -263,6 +288,40 @@ export interface ShelfItem {
   note: string | null;
   media_items?: MediaItem;
 }
+
+/** A one-shot "if you liked X, try Y" pairing. Lighter than a list:
+    no title, no description, just a single source → target with an
+    optional 280-char note. Surfaced on each media page. */
+export interface Recommendation {
+  id: string;
+  user_id: string;
+  source_media_id: string;
+  recommended_media_id: string;
+  note: string | null;
+  created_at: string;
+  /** Recommender profile, populated by joiner queries. */
+  profiles?: Profile;
+  /** The other media item — which side it represents depends on the
+      query direction (target when listing recs FOR a source, source
+      when listing recs OF a target). The fetch helpers narrow this. */
+  source_media?: MediaItem;
+  recommended_media?: MediaItem;
+}
+
+/** Recommendation hydrated for "show recs for THIS media as the source"
+    — i.e. the target side is the interesting one. */
+export type RecommendationWithTarget = Recommendation & {
+  recommended_media: MediaItem;
+  profiles: Profile;
+};
+
+/** Recommendation hydrated for the inverse view — "show recs where
+    THIS media is the recommended target", so the source is what we
+    want to render. */
+export type RecommendationWithSource = Recommendation & {
+  source_media: MediaItem;
+  profiles: Profile;
+};
 
 // Shelf-name identifiers kept as-is (`__top5_*`) because they're stored in
 // the `shelves.name` column for existing rows. Renaming the string would

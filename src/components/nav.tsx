@@ -15,6 +15,7 @@ import {
   Gamepad2,
   Settings,
   History,
+  List,
   MessageSquare,
 } from "lucide-react";
 import SearchBar from "./search-bar";
@@ -144,6 +145,14 @@ export default function Nav() {
 
                     <div className="my-1 border-t border-surface-border" />
 
+                    <Link
+                      href={`/u/${username}/lists`}
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 rounded-sm px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                    >
+                      <List size={14} />
+                      Lists
+                    </Link>
                     <Link
                       href={`/u/${username}/activity`}
                       onClick={() => setMenuOpen(false)}

@@ -13,6 +13,7 @@ import {
   Trophy,
   RefreshCw,
   NotebookPen,
+  Share2,
 } from "lucide-react";
 import type { ActivityWithMedia, MediaType } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
@@ -167,6 +168,7 @@ function ActivityIcon({ activity }: { activity: ActivityWithMedia }) {
     return <Trophy size={13} className={cls} />;
   if (type === "status_changed")
     return <RefreshCw size={13} className={cls} />;
+  if (type === "recommended") return <Share2 size={13} className={cls} />;
 
   return null;
 }
@@ -491,6 +493,15 @@ export default function ActivityItem({
           Removed {TitleLink} from Top {t ? TYPE_PLURAL[t] : "Picks"}
         </>
       );
+      break;
+    }
+    case "recommended": {
+      // The activity row stores `media_id = recommended_media_id` (the
+      // target — what gets clicked through to). The source is in
+      // metadata.source_media_id but we don't hydrate its title at the
+      // feed level to avoid an N+1 join, so the message stays
+      // single-sided. Followers click through to see the pairing.
+      message = <>Recommended {TitleLink} as a pairing</>;
       break;
     }
   }

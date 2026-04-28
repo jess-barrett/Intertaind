@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Heart, User } from "lucide-react";
 import ListCoverStack from "@/components/lists/list-cover-stack";
-import type { List, Profile } from "@/lib/types";
+import ListMediaIcons from "@/components/lists/list-media-icons";
+import type { List, MediaItem, Profile } from "@/lib/types";
 
 /**
  * Wide one-per-row layout used on the /lists/browse page. The cover
@@ -16,10 +17,12 @@ export default function BrowseListRow({
   list,
   profile,
   covers,
+  sourceMedia,
 }: {
   list: List;
   profile: Profile | null;
   covers: { src: string | null; title: string }[];
+  sourceMedia?: Pick<MediaItem, "media_type"> | null;
 }) {
   const curatorDisplay = profile?.display_name || profile?.username || "—";
   return (
@@ -61,6 +64,8 @@ export default function BrowseListRow({
             <Heart size={10} />
             {list.like_count}
           </span>
+          <span aria-hidden>·</span>
+          <ListMediaIcons list={list} sourceMedia={sourceMedia} iconSize={14} />
         </div>
         {list.description && (
           <p className="mt-3 max-w-3xl text-sm leading-relaxed text-text-secondary">

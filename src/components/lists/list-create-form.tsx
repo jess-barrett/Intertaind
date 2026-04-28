@@ -131,6 +131,9 @@ export default function ListCreateForm() {
   // user-entered tags.
   const [mood, setMood] = useState("");
   const [visibility, setVisibility] = useState<ListVisibility>("public");
+  // Ranked lists number their items from #1 on the detail page and
+  // suppress the sort controls (position IS the order).
+  const [ranked, setRanked] = useState(false);
   const [items, setItems] = useState<PickedItem[]>([]);
 
   const requiresSource = LIST_TYPES_REQUIRING_SOURCE.includes(listType);
@@ -217,6 +220,7 @@ export default function ListCreateForm() {
         media_types: mediaTypes,
         tags: tagsForSave,
         visibility,
+        ranked,
         initial_items: items.map((i) => ({
           media_id: i.mediaId,
           reason: i.reason,
@@ -381,9 +385,21 @@ export default function ListCreateForm() {
         <VisibilitySelect value={visibility} onChange={setVisibility} />
       </Field>
 
+      <Field
+        label="Ranked list"
+        help="Number items from #1 (top) to #N. Sort controls are hidden on ranked lists since position is the order."
+      >
+        <RankedToggle value={ranked} onChange={setRanked} />
+      </Field>
+
       <div className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-text-muted">
           Items ({items.length})
+          {ranked && (
+            <span className="ml-2 text-xs font-normal normal-case text-brand">
+              ranked — drag to reorder
+            </span>
+          )}
         </h2>
 
         <InlineMediaPicker
@@ -404,7 +420,11 @@ export default function ListCreateForm() {
                 key={item.mediaId}
                 className="flex items-start gap-3 rounded-sm border border-surface-border bg-surface-raised/40 p-3"
               >
-                <div className="flex shrink-0 flex-col gap-1">
+                {/* Up + down arrows pinned to the top and bottom of
+                    the row via `self-stretch` + `justify-between` so
+                    the down arrow always sits flush with the bottom of
+                    the cover. */}
+                <div className="flex shrink-0 flex-col self-stretch justify-between">
                   <button
                     type="button"
                     disabled={i === 0}
@@ -424,6 +444,15 @@ export default function ListCreateForm() {
                     <ArrowDown size={12} />
                   </button>
                 </div>
+                {/* Rank number — only visible when the curator has
+                    flipped on the Ranked-list toggle. `self-stretch`
+                    fills the row height so `items-center` can center
+                    the digit vertically against the cover beside it. */}
+                {ranked && (
+                  <span className="flex w-8 shrink-0 self-stretch items-center justify-center text-lg font-bold text-brand tabular-nums">
+                    {i + 1}
+                  </span>
+                )}
                 <div className="aspect-2/3 w-12 shrink-0 overflow-hidden rounded-sm border border-surface-border bg-surface-overlay">
                   <CoverImage
                     src={item.cover}
@@ -513,6 +542,46 @@ function Field({
       </label>
       {children}
       {help && <p className="text-xs text-text-muted">{help}</p>}
+    </div>
+  );
+}
+
+/**
+ * Two-button toggle for the Ranked-list flag. Letterboxd-style: the
+ * inactive option stays visible so the user can flip back without
+ * hunting for it.
+ */
+function RankedToggle({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex gap-2">
+      <button
+        type="button"
+        onClick={() => onChange(false)}
+        className={`rounded-sm border px-3 py-1.5 text-xs transition-colors ${
+          !value
+            ? "border-brand bg-brand/10 text-brand"
+            : "border-surface-border bg-surface-overlay text-text-secondary"
+        }`}
+      >
+        Standard
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange(true)}
+        className={`rounded-sm border px-3 py-1.5 text-xs transition-colors ${
+          value
+            ? "border-brand bg-brand/10 text-brand"
+            : "border-surface-border bg-surface-overlay text-text-secondary"
+        }`}
+      >
+        Ranked
+      </button>
     </div>
   );
 }

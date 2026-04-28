@@ -47,6 +47,7 @@ export default function DiscoveryFeed({
   popularGames,
   popularLists,
   coversByList,
+  sourceMediaByList,
   viewerTracking,
 }: {
   displayName: string;
@@ -58,6 +59,10 @@ export default function DiscoveryFeed({
   /** First-N item covers per list, keyed by list id. Drives the
       layered preview stack on each ListCard. */
   coversByList: Record<string, { src: string | null; title: string }[]>;
+  /** Source-media `media_type` for each `if_you_liked` / `vibe` list,
+      keyed by list id. Lets ListCard show the source icon next to the
+      list's media-type icons. */
+  sourceMediaByList?: Record<string, Pick<MediaItem, "media_type">>;
   viewerTracking?: Record<string, UserMedia>;
 }) {
   function cardProps(item: MediaItem) {
@@ -158,6 +163,7 @@ export default function DiscoveryFeed({
                 list={list}
                 profile={list.profiles}
                 covers={coversByList[list.id] ?? []}
+                sourceMedia={sourceMediaByList?.[list.id] ?? null}
               />
             ))}
           </div>
