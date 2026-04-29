@@ -20,6 +20,7 @@ import { StarRatingDisplay } from "@/components/star-rating";
 import CoverImage from "@/components/cover-image";
 import MediaCardActions from "@/components/media-card-actions";
 import MediaCardLink from "@/components/media-card-link";
+import { yearFromDateString } from "@/lib/time";
 
 const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
   book: BookOpen,
@@ -207,7 +208,7 @@ export default function MediaCard({
                   <Heart size={10} className="fill-accent-movie text-accent-movie" />
                 )}
                 {display.release_date && (
-                  <span>{new Date(display.release_date).getFullYear()}</span>
+                  <span>{yearFromDateString(display.release_date)}</span>
                 )}
               </div>
             </div>

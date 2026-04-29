@@ -3,7 +3,11 @@ import type { NextRequest } from "next/server";
 import type { MediaType, SearchResult } from "@/lib/types";
 import type { TMDBMovie, TMDBTVShow, GoogleBooksVolume, IGDBGame } from "@/lib/api/types";
 import { searchMovies, searchTVShows } from "@/lib/api/tmdb";
-import { searchBooks } from "@/lib/api/google-books";
+import {
+  searchBooks,
+  looksLikeUKEdition,
+  findVolumeByTitleAndAuthor,
+} from "@/lib/api/google-books";
 import { searchGames } from "@/lib/api/igdb";
 import {
   normalizeTMDBMovie,
@@ -153,6 +157,15 @@ function bookEditionScore(b: GoogleBooksVolume, position: number): number {
     descriptionBonus = hasEnglishStopword ? 10 : -200;
   }
 
+  // UK-edition penalty — keeps the search bar consistent with the
+  // author-page bibliography logic, which already penalizes UK-imprint
+  // editions via the same helper. Without this, a US edition of e.g.
+  // "Howling Dark" loses to the UK edition with the longer "Book Two"
+  // subtitle (subtitle bonus + same language) even though the author
+  // page picks the US one. Sized to outweigh a typical subtitle bonus
+  // (60) so the US wins straightforwardly.
+  const ukPenalty = looksLikeUKEdition(b) ? -150 : 0;
+
   return (
     ratings * 10 +
     positionBonus +
@@ -160,6 +173,7 @@ function bookEditionScore(b: GoogleBooksVolume, position: number): number {
     languageBonus +
     stubPenalty +
     descriptionBonus +
+    ukPenalty +
     (pageCount > 100 && pageCount < 3000 ? 5 : 0)
   );
 }
@@ -301,7 +315,40 @@ const searchers: Record<MediaType, SearchFn> = {
 
     // Fetch more results so series entries with query only in subtitle still surface
     const res = await searchBooks(apiQuery, 0, 40);
-    const items = res.items ?? [];
+    const rawItems = res.items ?? [];
+
+    // Stub-rescue pass — Google sometimes returns thin records (no
+    // cover, no page count) for a title even though a fully-populated
+    // edition of the same book exists. The thin record's `volumeInfo`
+    // wouldn't pass the quality filter below, but it usually has
+    // strong identifiers (author + ISBN) we can use to fetch the
+    // canonical edition via the same `intitle:+inauthor:` lookup the
+    // author pages run. Cached at the fetch layer for 24h, so a
+    // repeat search doesn't re-pay the API cost.
+    //
+    // Prevented "Kingdoms of Death" returning zero results: the broad
+    // `intitle:` query surfaced a thin Ruocchio record (no cover) that
+    // got hard-rejected; this rescue re-resolves it to the full
+    // edition that the author page already shows.
+    const items = await Promise.all(
+      rawItems.map(async (b) => {
+        const info = b.volumeInfo;
+        const firstAuthor = info.authors?.[0];
+        const hasISBN = info.industryIdentifiers?.some(
+          (id) => id.type === "ISBN_10" || id.type === "ISBN_13"
+        );
+        const isStub =
+          !info.imageLinks?.thumbnail || (info.pageCount ?? 0) === 0;
+        if (firstAuthor && hasISBN && isStub) {
+          const better = await findVolumeByTitleAndAuthor(
+            info.title,
+            firstAuthor
+          );
+          if (better) return better;
+        }
+        return b;
+      })
+    );
 
     console.log(`\n[BOOK SEARCH] Query: "${q}"`);
     if (authorPart) {
@@ -367,14 +414,6 @@ const searchers: Record<MediaType, SearchFn> = {
         return false;
       }
 
-      // Stub bibliographic records have pageCount=0. They serve Google's
-      // "image not available" placeholder even though imageLinks claims a
-      // thumbnail. Real published books always have a page count.
-      if ((info.pageCount ?? 0) === 0) {
-        filterReasons[label] = "no page count (stub record)";
-        return false;
-      }
-
       if (!info.authors || info.authors.length === 0) {
         filterReasons[label] = "no authors";
         return false;
@@ -386,6 +425,23 @@ const searchers: Record<MediaType, SearchFn> = {
       );
       if (!hasISBN) {
         filterReasons[label] = "no ISBN";
+        return false;
+      }
+
+      // Stub bibliographic records have pageCount=0. They USUALLY mean
+      // Google has thin metadata only, but some real books — typically
+      // newer publisher entries that GB hasn't fully ingested yet —
+      // present this way too (e.g. "The Lost Metal" lists 0 pages).
+      // Reject only when the OTHER strong-signal fields are also weak.
+      // With author + ISBN + categories + cover already required above,
+      // a pageCount=0 record is almost certainly a real book Google
+      // just hasn't fleshed out.
+      const hasCategoryTags = (info.categories?.length ?? 0) > 0;
+      if (
+        (info.pageCount ?? 0) === 0 &&
+        !hasCategoryTags
+      ) {
+        filterReasons[label] = "no page count (stub record)";
         return false;
       }
 

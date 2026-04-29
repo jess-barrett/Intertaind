@@ -7,6 +7,7 @@ import type { MediaType, SearchResult } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
 import { upsertMediaItem } from "@/app/actions/media";
 import MediaCardActions from "@/components/media-card-actions";
+import { yearFromDateString } from "@/lib/time";
 
 const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
   book: BookOpen,
@@ -74,7 +75,7 @@ export default function SearchResultCard({ result }: { result: SearchResult }) {
           </h3>
           <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">
             {result.release_date && (
-              <span>{new Date(result.release_date).getFullYear()}</span>
+              <span>{yearFromDateString(result.release_date)}</span>
             )}
             {result.media_type === "book" &&
               Array.isArray(result.metadata?.authors) &&

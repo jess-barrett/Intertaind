@@ -69,12 +69,12 @@ export default async function MediaRecommendationsPage({
 
   const heading =
     direction === "with"
-      ? `Pairs with ${typedMedia.title}`
-      : `Recommended for fans of ${typedMedia.title}`;
+      ? `Intertaind with ${typedMedia.title}`
+      : `Intertaind for fans of ${typedMedia.title}`;
   const subhead =
     direction === "with"
-      ? "Community pairings — what people recommend if you liked this."
-      : "Community pairings — what fans of OTHER media are pointed toward this from.";
+      ? "Community pairings — what people intertain this with."
+      : "Community pairings — what people intertain this for fans of.";
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8">
@@ -111,7 +111,7 @@ export default async function MediaRecommendationsPage({
                 : "text-text-muted hover:text-text-secondary"
             }`}
           >
-            Recommended for this ({typedMedia.recommended_for_count ?? 0})
+            Intertaind for this ({typedMedia.recommended_for_count ?? 0})
           </Link>
         </div>
       </div>
@@ -241,7 +241,7 @@ function ListBody({
   if (isEmpty) {
     return (
       <p className="py-12 text-center text-sm text-text-muted">
-        {page === 1 ? "No recommendations in this direction yet." : "No more results."}
+        {page === 1 ? "No pairings in this direction yet." : "No more results."}
       </p>
     );
   }

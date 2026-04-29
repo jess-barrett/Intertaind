@@ -14,6 +14,12 @@ import type {
 
 const BASE_URL = "https://api.themoviedb.org/3";
 
+// Movie / TV details + search results barely change between visits, so
+// we let Next cache TMDb responses on the data layer. 24h is conservative
+// — popular titles get hammered by enrichment + page renders, and a day
+// is more than enough freshness for canonical metadata.
+const TMDB_CACHE_SECONDS = 86_400;
+
 function headers() {
   return {
     Authorization: `Bearer ${process.env.TMDB_API_KEY}`,
@@ -26,7 +32,10 @@ export async function searchMovies(
   page = 1
 ): Promise<TMDBSearchResponse<TMDBMovie>> {
   const url = `${BASE_URL}/search/movie?query=${encodeURIComponent(query)}&page=${page}&include_adult=false`;
-  const res = await fetch(url, { headers: headers() });
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: TMDB_CACHE_SECONDS },
+  });
   if (!res.ok) throw new Error(`TMDB search movies failed: ${res.status}`);
   return res.json();
 }
@@ -36,7 +45,10 @@ export async function searchTVShows(
   page = 1
 ): Promise<TMDBSearchResponse<TMDBTVShow>> {
   const url = `${BASE_URL}/search/tv?query=${encodeURIComponent(query)}&page=${page}&include_adult=false`;
-  const res = await fetch(url, { headers: headers() });
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: TMDB_CACHE_SECONDS },
+  });
   if (!res.ok) throw new Error(`TMDB search TV failed: ${res.status}`);
   return res.json();
 }
@@ -45,14 +57,20 @@ export async function getMovieDetails(
   tmdbId: number
 ): Promise<TMDBMovieDetails> {
   const url = `${BASE_URL}/movie/${tmdbId}?append_to_response=credits,release_dates,alternative_titles,keywords`;
-  const res = await fetch(url, { headers: headers() });
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: TMDB_CACHE_SECONDS },
+  });
   if (!res.ok) throw new Error(`TMDB movie details failed: ${res.status}`);
   return res.json();
 }
 
 export async function getTVDetails(tmdbId: number): Promise<TMDBTVDetails> {
   const url = `${BASE_URL}/tv/${tmdbId}?append_to_response=credits,alternative_titles,keywords`;
-  const res = await fetch(url, { headers: headers() });
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: TMDB_CACHE_SECONDS },
+  });
   if (!res.ok) throw new Error(`TMDB TV details failed: ${res.status}`);
   return res.json();
 }
@@ -68,7 +86,10 @@ export async function getMovieImages(
   // include_image_language narrows to English + language-neutral so we
   // don't rank non-English alternates that would look out of place.
   const url = `${BASE_URL}/movie/${tmdbId}/images?include_image_language=en,null`;
-  const res = await fetch(url, { headers: headers() });
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: TMDB_CACHE_SECONDS },
+  });
   if (!res.ok) throw new Error(`TMDB movie images failed: ${res.status}`);
   return res.json();
 }
@@ -77,7 +98,10 @@ export async function getTVImages(
   tmdbId: number
 ): Promise<TMDBImagesResponse> {
   const url = `${BASE_URL}/tv/${tmdbId}/images?include_image_language=en,null`;
-  const res = await fetch(url, { headers: headers() });
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: TMDB_CACHE_SECONDS },
+  });
   if (!res.ok) throw new Error(`TMDB TV images failed: ${res.status}`);
   return res.json();
 }

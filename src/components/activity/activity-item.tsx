@@ -501,7 +501,7 @@ export default function ActivityItem({
       // metadata.source_media_id but we don't hydrate its title at the
       // feed level to avoid an N+1 join, so the message stays
       // single-sided. Followers click through to see the pairing.
-      message = <>Recommended {TitleLink} as a pairing</>;
+      message = <>Intertaind {TitleLink} as a pairing</>;
       break;
     }
   }

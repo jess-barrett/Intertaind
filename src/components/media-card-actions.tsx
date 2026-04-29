@@ -636,6 +636,7 @@ export default function MediaCardActions({
         <div
           ref={menuRef}
           onClick={stopLink}
+          onMouseDown={(e) => e.stopPropagation()}
           style={{
             position: "fixed",
             left: menuPos.left,
@@ -712,6 +713,14 @@ export default function MediaCardActions({
                 <BookOpen size={12} />
                 Currently Reading
               </button>
+              <StatusButton
+                label="Add to TBR"
+                icon={Bookmark}
+                active={status === "want"}
+                onClick={() => handleStatusClick("want")}
+                pending={pending}
+                color={config.color}
+              />
               <button
                 type="button"
                 onClick={(e) => {
@@ -819,7 +828,10 @@ export default function MediaCardActions({
           user to the media page via the Link). */}
       {movieModalOpen &&
         createPortal(
-          <div onClick={(e) => e.stopPropagation()}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <MovieModal
               title={mediaTitle}
               onClose={() => setMovieModalOpen(false)}
@@ -831,7 +843,10 @@ export default function MediaCardActions({
         )}
       {tvModalOpen &&
         createPortal(
-          <div onClick={(e) => e.stopPropagation()}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <TVModal
               title={mediaTitle}
               totalSeasons={totalSeasons ?? 1}
@@ -844,7 +859,10 @@ export default function MediaCardActions({
         )}
       {bookModalOpen &&
         createPortal(
-          <div onClick={(e) => e.stopPropagation()}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <BookModal
               title={mediaTitle}
               onClose={() => setBookModalOpen(false)}
@@ -856,7 +874,10 @@ export default function MediaCardActions({
         )}
       {gameModalOpen &&
         createPortal(
-          <div onClick={(e) => e.stopPropagation()}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <GameModal
               title={mediaTitle}
               onClose={() => setGameModalOpen(false)}
@@ -868,7 +889,10 @@ export default function MediaCardActions({
         )}
       {logEpisodeModalOpen &&
         createPortal(
-          <div onClick={(e) => e.stopPropagation()}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <LogEpisodeModal
               title={mediaTitle}
               seasonEpisodes={seasonEpisodes ?? null}
@@ -888,7 +912,10 @@ export default function MediaCardActions({
         )}
       {currentReadingModalOpen &&
         createPortal(
-          <div onClick={(e) => e.stopPropagation()}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <CurrentReadingModal
               title={mediaTitle}
               totalPagesDefault={totalPagesDefault ?? null}
@@ -908,7 +935,10 @@ export default function MediaCardActions({
         )}
       {currentEpisodeModalOpen &&
         createPortal(
-          <div onClick={(e) => e.stopPropagation()}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <CurrentEpisodeModal
               title={mediaTitle}
               seasonEpisodes={seasonEpisodes ?? null}

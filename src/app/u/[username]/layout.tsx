@@ -58,7 +58,8 @@ export default async function UserProfileLayout({
         .from("user_media")
         .select("id, media_items!inner(media_type)", { count: "exact", head: true })
         .eq("user_id", profile.id)
-        .eq("media_items.media_type", "book"),
+        .eq("media_items.media_type", "book")
+        .neq("status", "want"),
       supabase
         .from("user_media")
         .select("id, media_items!inner(media_type)", { count: "exact", head: true })

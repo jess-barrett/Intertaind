@@ -38,6 +38,17 @@ export interface MediaItem {
       `recommended_media_id` — i.e. how many users have recommended *this*
       to fans of something else. Maintained by trigger. */
   recommended_for_count: number;
+  /** Books only — series identifier, prefixed by source: `gb:{id}` for
+      Google Books native series, `ol:{slug}` for OpenLibrary-detected
+      series. Null when the book isn't in a known series. */
+  series_id: string | null;
+  /** Human-readable series name, denormalized for display. */
+  series_name: string | null;
+  /** 1-based position within the series. */
+  series_position: number | null;
+  /** Series completion status — populated only when Wikidata has the
+      data (no reliable signal from GB/OL). null when unknown. */
+  series_status: "ongoing" | "complete" | "cancelled" | "hiatus" | null;
   created_at: string;
 }
 

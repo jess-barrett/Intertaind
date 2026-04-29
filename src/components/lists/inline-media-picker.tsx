@@ -6,6 +6,7 @@ import CoverImage from "@/components/cover-image";
 import { upsertMediaItem } from "@/app/actions/media";
 import type { MediaType, SearchResult } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
+import { yearFromDateString } from "@/lib/time";
 
 interface PickerOption {
   /** Restrict search results by media type:
@@ -182,9 +183,7 @@ export default function InlineMediaPicker({
               const dedupeKey = `${r.media_type}:${externalKey}`;
               const config = MEDIA_TYPE_CONFIG[r.media_type];
               const isAdding = adding === dedupeKey;
-              const year = r.release_date
-                ? new Date(r.release_date).getFullYear()
-                : null;
+              const year = yearFromDateString(r.release_date);
               return (
                 <button
                   key={dedupeKey}

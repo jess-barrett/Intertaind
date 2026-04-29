@@ -74,7 +74,7 @@ export default function RecommendationCard({
                 </span>
               )}
               <span className="font-medium text-text-secondary">
-                Recommended by {recommenderDisplay}
+                Intertaind by {recommenderDisplay}
               </span>
             </Link>
           ) : (

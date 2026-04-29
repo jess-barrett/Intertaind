@@ -9,9 +9,32 @@ import InlineMediaPicker from "@/components/lists/inline-media-picker";
 import CoverImage from "@/components/cover-image";
 import { createRecommendation } from "@/app/actions/recommendations";
 import { toast } from "@/lib/toast";
-import type { MediaItem, SearchResult } from "@/lib/types";
+import type { MediaItem, MediaType, SearchResult } from "@/lib/types";
 
 const MAX_NOTE = 280;
+
+// Singular labels for the helper-line copy. Pluralized labels live in
+// MEDIA_TYPE_CONFIG but read awkwardly in a sentence ("could be another
+// Movies"), so we keep a separate map here.
+const SINGULAR_LABEL: Record<MediaType, string> = {
+  movie: "movie",
+  tv_show: "show",
+  book: "book",
+  video_game: "game",
+};
+
+/**
+ * "Could be another {source_type}, a {other1}, a {other2}, or a {other3}"
+ * — re-orders the four media-type labels so the source's own type is the
+ * first option (encouraging same-medium picks) and the cross-media types
+ * follow. Reads naturally for any of the four sources.
+ */
+function pairingHint(sourceType: MediaType): string {
+  const others = (
+    Object.keys(SINGULAR_LABEL) as MediaType[]
+  ).filter((t) => t !== sourceType);
+  return `Could be another ${SINGULAR_LABEL[sourceType]}, a ${SINGULAR_LABEL[others[0]]}, a ${SINGULAR_LABEL[others[1]]}, or a ${SINGULAR_LABEL[others[2]]}.`;
+}
 
 /**
  * "Recommend" button mounted on a media detail page. For logged-out
@@ -26,19 +49,27 @@ export default function RecommendButton({
   source,
   isLoggedIn,
 }: {
-  source: Pick<MediaItem, "id" | "title" | "cover_image_url">;
+  source: Pick<MediaItem, "id" | "title" | "cover_image_url" | "media_type">;
   isLoggedIn: boolean;
 }) {
   const [open, setOpen] = useState(false);
+
+  // Width-matched to the rest of the sidebar action stack
+  // (`w-full ... gap-2.5 px-3 py-2 text-sm`), but filled with the
+  // brand pink as the visual hook. The Intertain CTA gets the strong
+  // color so the brand verb is the eye magnet of the column; the
+  // surrounding tracking actions stay quiet by comparison.
+  const sharedClass =
+    "flex w-full items-center gap-2.5 rounded-sm bg-brand px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-light";
 
   if (!isLoggedIn) {
     return (
       <Link
         href={`/login?next=/media/${source.id}`}
-        className="flex items-center gap-1.5 rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-secondary transition-colors hover:border-brand/40 hover:text-text-primary"
+        className={sharedClass}
       >
         <Share2 size={14} />
-        Recommend
+        Intertain friends
       </Link>
     );
   }
@@ -48,10 +79,10 @@ export default function RecommendButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-text-secondary transition-colors hover:border-brand/40 hover:text-text-primary"
+        className={sharedClass}
       >
         <Share2 size={14} />
-        Recommend
+        Intertain friends
       </button>
       {open && (
         <RecommendModal source={source} onClose={() => setOpen(false)} />
@@ -64,7 +95,7 @@ function RecommendModal({
   source,
   onClose,
 }: {
-  source: Pick<MediaItem, "id" | "title" | "cover_image_url">;
+  source: Pick<MediaItem, "id" | "title" | "cover_image_url" | "media_type">;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -97,7 +128,7 @@ function RecommendModal({
     setSubmitting(true);
     try {
       await createRecommendation(source.id, target.mediaId, note || undefined);
-      toast("Recommendation posted", { variant: "success" });
+      toast("Intertaind!", { variant: "success" });
       router.refresh();
       onClose();
     } catch (err) {
@@ -110,15 +141,22 @@ function RecommendModal({
   const remaining = MAX_NOTE - note.length;
 
   return (
-    <ModalWrapper title="Recommend a pairing" onClose={onClose}>
+    <ModalWrapper title="Intertain Your Friends" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
           <p className="text-sm text-text-secondary">
-            If someone liked{" "}
+            If a friend liked{" "}
             <span className="font-semibold text-text-primary">
               {source.title}
             </span>
-            , what should they try next?
+            , what would you recommend them next?
+          </p>
+          {/* Cross-media nudge — adapts to the source's media type so
+              the listed examples always include the OTHER three types.
+              Italic + muted to read as supporting copy, not a second
+              question. */}
+          <p className="mt-1.5 text-xs italic text-text-muted">
+            {pairingHint(source.media_type)}
           </p>
         </div>
 
@@ -166,7 +204,7 @@ function RecommendModal({
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs uppercase tracking-wider text-brand">
-                Recommendation
+                Intertain with
               </p>
               <p className="truncate text-sm font-medium text-text-primary">
                 {target.title}
@@ -176,7 +214,7 @@ function RecommendModal({
               type="button"
               onClick={() => setTarget(null)}
               className="shrink-0 rounded-sm p-1.5 text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary"
-              aria-label="Change recommendation"
+              aria-label="Change pairing"
             >
               <X size={14} />
             </button>
@@ -184,10 +222,10 @@ function RecommendModal({
         ) : (
           <div>
             <p className="mb-1.5 text-xs uppercase tracking-wider text-text-muted">
-              Recommendation
+              Intertain with
             </p>
             <InlineMediaPicker
-              placeholder="Search for what to recommend…"
+              placeholder={`${source.title} lovers would also love…`}
               scope="all"
               excludeMediaIds={[source.id]}
               onPick={handlePick}
@@ -232,7 +270,7 @@ function RecommendModal({
             className="flex items-center gap-1.5 rounded-sm bg-brand px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting && <Loader2 size={14} className="animate-spin" />}
-            Post recommendation
+            Intertain
           </button>
         </div>
       </form>

@@ -34,7 +34,7 @@ export async function createRecommendation(
 ): Promise<Recommendation> {
   const { supabase, user } = await getAuthUser();
   if (sourceMediaId === recommendedMediaId) {
-    throw new Error("Can't recommend a media as a pair with itself");
+    throw new Error("Can't intertain a media with itself");
   }
   const trimmedNote = note?.trim() ?? "";
   if (trimmedNote.length > MAX_NOTE_LENGTH) {
@@ -53,11 +53,11 @@ export async function createRecommendation(
     .single();
   if (error || !data) {
     // 23505 is the unique-violation SQLSTATE — surfaces when the user
-    // already recommended this exact pairing.
+    // already intertaind this exact pairing.
     if (error?.code === "23505") {
-      throw new Error("You've already recommended this pairing");
+      throw new Error("You've already intertaind this pairing");
     }
-    throw new Error(`Failed to post recommendation: ${error?.message ?? "unknown"}`);
+    throw new Error(`Failed to post pairing: ${error?.message ?? "unknown"}`);
   }
 
   await supabase.from("activity_log").insert({
@@ -88,7 +88,7 @@ export async function deleteRecommendation(id: string): Promise<void> {
     .delete()
     .eq("id", id)
     .eq("user_id", user.id);
-  if (error) throw new Error(`Failed to delete recommendation: ${error.message}`);
+  if (error) throw new Error(`Failed to delete pairing: ${error.message}`);
 }
 
 /**

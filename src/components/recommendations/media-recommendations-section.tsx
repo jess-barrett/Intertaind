@@ -53,7 +53,7 @@ export default function MediaRecommendationsSection({
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-surface-border pb-2">
         <div className="flex items-end gap-3">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-            Recommendations
+            Intertaind
           </h2>
           {/* Tab pair — only render the side that has content. We
               don't show a disabled "0 results" tab; that reads as
@@ -82,7 +82,7 @@ export default function MediaRecommendationsSection({
                     : "text-text-muted hover:text-text-secondary"
                 }`}
               >
-                Recommended for this
+                Intertaind for this
               </button>
             )}
           </div>

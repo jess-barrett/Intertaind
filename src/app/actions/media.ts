@@ -12,11 +12,21 @@ import {
   findCanonicalBookEdition,
   findVolumeByISBN,
   getBookDetails,
+  getSeriesName,
 } from "@/lib/api/google-books";
 import {
   findISBNForWork,
   findWorkByISBN,
+  getWorkByOlid,
+  getWorkEditions,
+  extractSeriesFromWork,
+  extractSeriesFromEditions,
 } from "@/lib/api/openlibrary";
+import {
+  findBookSeriesOnWikidata,
+  findBookPublicationYearOnWikidata,
+} from "@/lib/api/wikidata";
+import { yearFromDateString } from "@/lib/time";
 import { normalizeGoogleBook, normalizeIGDBGame } from "@/lib/api/normalize";
 
 async function getAuthUser() {
@@ -405,6 +415,129 @@ async function resolveOLWorkToBook(
 }
 
 /**
+ * Detect the series a book belongs to. Sources tried in order:
+ *
+ *   1. **Wikidata** — most reliable when present (structured properties
+ *      P179 part-of-series + P1545 series-ordinal verified by editors).
+ *      Also provides the only signal we trust for `series_status`
+ *      (P582 end-time → "complete"). Coverage skews to head-of-tail:
+ *      excellent for popular genre fiction, sparse for indie titles.
+ *   2. **Google Books `seriesInfo`** — fetched from the volume detail
+ *      endpoint. Stable id but only set for publisher-partnered titles.
+ *   3. **OpenLibrary editions** — most OL series data lives on edition
+ *      records, not works. We parse all editions' `series` strings and
+ *      vote on the canonical name. Best coverage for the long tail.
+ *   4. **OpenLibrary work-level** — rare last-resort fallback.
+ *
+ * Returns null when no source resolves. Caller leaves the row's
+ * existing series_* fields alone in that case, so a previously-detected
+ * series isn't blanked out by a transient API failure.
+ */
+async function enrichBookSeries(
+  externalIds: Record<string, unknown>,
+  /** Title + first-author for the Wikidata title-search fallback.
+      Wikidata can't be queried by ISBN alone reliably (Wikidata models
+      works rather than editions, so ISBN coverage is sparse). */
+  titleHint?: string,
+  authorHint?: string
+): Promise<{
+  id: string;
+  name: string | null;
+  position: number | null;
+  status: "complete" | null;
+} | null> {
+  // Source 1 — Wikidata. Tried first because when present it gives us
+  // ALL fields (id + name + position + status) in one source, while
+  // GB/OL only give the first three.
+  if (titleHint && authorHint) {
+    try {
+      const wd = await findBookSeriesOnWikidata(titleHint, authorHint);
+      if (wd) {
+        return {
+          id: `wd:${wd.seriesQid}`,
+          name: wd.seriesName || null,
+          position: wd.position,
+          status: wd.status,
+        };
+      }
+    } catch {
+      // fall through to GB
+    }
+  }
+
+  // Source 2 — Google Books
+  const gbId = externalIds.google_books_id as string | undefined;
+  if (gbId) {
+    try {
+      const volume = await getBookDetails(gbId);
+      const seriesEntry = volume.volumeInfo.seriesInfo?.volumeSeries?.[0];
+      if (seriesEntry?.seriesId) {
+        const id = `gb:${seriesEntry.seriesId}`;
+        const positionRaw =
+          seriesEntry.orderNumber ??
+          (volume.volumeInfo.seriesInfo?.bookDisplayNumber
+            ? Number(volume.volumeInfo.seriesInfo.bookDisplayNumber)
+            : null);
+        const position =
+          typeof positionRaw === "number" && Number.isFinite(positionRaw)
+            ? Math.floor(positionRaw)
+            : null;
+        // Best-effort name fetch. Failure is fine — the id is the
+        // dedup key, the name only drives display.
+        const name = await getSeriesName(seriesEntry.seriesId);
+        return { id, name, position, status: null };
+      }
+    } catch {
+      // fall through to OL
+    }
+  }
+
+  // Source 3 — Open Library editions. Most OL series data lives on
+  // individual editions (not the work itself), so we fetch a sample of
+  // editions and merge their `series` fields. Verified manually: e.g.
+  // Empire of Silence's editions yield "Sun eater -- Book one" while
+  // its work has nothing.
+  const olWorkId = externalIds.openlibrary_work_id as string | undefined;
+  if (olWorkId) {
+    try {
+      const editions = await getWorkEditions(olWorkId, 30);
+      const editionsMatch = extractSeriesFromEditions(editions);
+      if (editionsMatch) {
+        return {
+          id: editionsMatch.id,
+          name: editionsMatch.name,
+          position: editionsMatch.position,
+          status: null,
+        };
+      }
+    } catch {
+      // fall through to work-level lookup
+    }
+
+    // Source 4 — Work-level OL fallback. Rarely populated but cheap
+    // to check given we're already in the OL section.
+    try {
+      const work = await getWorkByOlid(olWorkId);
+      if (work) {
+        const match = extractSeriesFromWork(work);
+        if (match) {
+          return {
+            id: match.id,
+            name: match.name,
+            position: match.position,
+            status: null,
+          };
+        }
+      }
+    } catch {
+      // give up — no series detected
+    }
+  }
+
+  return null;
+}
+
+/**
  * Re-fetch from IGDB and merge in the new {id,name} company shape.
  * Old rows stored `developers` as a flat string[] which can't be linked
  * to entity pages — re-normalizing through the current pipeline upgrades
@@ -499,12 +632,18 @@ function isMetadataStale(
  * update we silently return the original metadata.
  */
 export async function ensureMediaItemEnriched(
-  mediaId: string
+  mediaId: string,
+  /** Optional pre-built supabase client. Required when called from
+      Next.js `after()` callbacks — cookies() can't be invoked inside
+      `after()`, so the caller must construct the client up-front. */
+  preBuiltSupabase?: Awaited<ReturnType<typeof createClient>>
 ): Promise<Record<string, unknown> | null> {
-  const supabase = await createClient();
+  const supabase = preBuiltSupabase ?? (await createClient());
   const { data } = await supabase
     .from("media_items")
-    .select("media_type, metadata, external_ids")
+    .select(
+      "media_type, metadata, external_ids, title, series_id, series_name, series_position, series_status, release_date"
+    )
     .eq("id", mediaId)
     .single();
   if (!data) return null;
@@ -512,17 +651,186 @@ export async function ensureMediaItemEnriched(
   const meta = (data.metadata as Record<string, unknown> | null) ?? null;
   const externalIds =
     (data.external_ids as Record<string, unknown> | null) ?? null;
+  const rowTitle = data.title as string | null;
+  const rowFirstAuthor =
+    (meta?.authors as string[] | undefined)?.[0] ?? undefined;
+  const rowSeriesId = data.series_id as string | null | undefined;
+  const rowReleaseDate = data.release_date as string | null;
 
   // Books take a separate enrichment path — no TMDb/IGDB metadata to
-  // refresh, but they may need cross-reference identifiers backfilled.
+  // refresh, but they may need cross-reference identifiers backfilled
+  // and series tagging populated from Wikidata / GB / OL.
+  //
+  // Each sub-task has its own early-out so we don't redundantly hit
+  // upstream APIs on every page render. A row with `series_id` set
+  // already has its series detected; a row whose `metadata.gb_average_
+  // rating` is not undefined already has the GB rating cached. Without
+  // these guards, a render loop on the page would hammer Wikidata /
+  // OL / GB and Supabase auth.
   if (data.media_type === "book") {
     if (!externalIds) return meta;
     try {
-      const enrichedIds = await enrichBookCrossReferences(externalIds);
-      if (enrichedIds) {
+      // Cross-references: only run when at least one of the three
+      // identifiers is missing. `enrichBookCrossReferences` itself
+      // checks this but the outer guard avoids the function-call
+      // overhead.
+      const hasOL = typeof externalIds.openlibrary_work_id === "string";
+      const hasISBN = typeof externalIds.isbn_13 === "string";
+      const hasGB = typeof externalIds.google_books_id === "string";
+      const enrichedIds =
+        hasOL && hasISBN && hasGB
+          ? null
+          : await enrichBookCrossReferences(externalIds);
+      const idsForSeriesLookup = (enrichedIds ?? externalIds) as Record<
+        string,
+        unknown
+      >;
+
+      // Series detection — skip entirely when the row is already tagged.
+      // Users can force re-detection by clearing series_id manually
+      // (UPDATE media_items SET series_id = NULL WHERE id = ...).
+      const wikidataTitleHint = rowTitle?.split(":")[0]?.trim() ?? undefined;
+      const series = rowSeriesId
+        ? null
+        : await enrichBookSeries(
+            idsForSeriesLookup,
+            wikidataTitleHint,
+            rowFirstAuthor
+          );
+
+      // GB volume detail fetch — single call that backfills two
+      // separate things:
+      //   1. The `gb_average_rating` / `gb_ratings_count` cache used
+      //      by the series-graph rating fallback.
+      //   2. Missing fields the search-results API doesn't return.
+      //      Most notably `pageCount`: the search endpoint serves a
+      //      "lite" record that drops pageCount and a few other
+      //      fields, while the detail endpoint includes them. Books
+      //      added via search-bar pick land here with page_count=0
+      //      until enrichment runs.
+      //
+      // Skip when we have nothing to gain (rating cached AND page
+      // count already populated) so we don't make a redundant call.
+      const gbId = idsForSeriesLookup.google_books_id as string | undefined;
+      const hasGBRatingCached =
+        meta != null && "gb_average_rating" in meta;
+      const currentPageCount =
+        typeof meta?.page_count === "number" ? meta.page_count : 0;
+      const needsPageCount = currentPageCount <= 0;
+      let metadataPatch: Record<string, unknown> | null = null;
+      if (gbId && (!hasGBRatingCached || needsPageCount)) {
+        try {
+          const volume = await getBookDetails(gbId);
+          const patch: Record<string, unknown> = {};
+          if (!hasGBRatingCached) {
+            const avg = volume.volumeInfo.averageRating;
+            const cnt = volume.volumeInfo.ratingsCount;
+            if (typeof avg === "number" || typeof cnt === "number") {
+              patch.gb_average_rating = avg ?? null;
+              patch.gb_ratings_count = cnt ?? null;
+            }
+          }
+          if (needsPageCount) {
+            const pc = volume.volumeInfo.pageCount;
+            if (typeof pc === "number" && pc > 0) {
+              patch.page_count = pc;
+            }
+          }
+          if (Object.keys(patch).length > 0) {
+            metadataPatch = patch;
+          }
+        } catch {
+          // Non-fatal — the row keeps existing metadata.
+        }
+      }
+
+      // Original publication date — Google Books returns the picked
+      // VOLUME's publishedDate, which is the printing year (e.g. the
+      // 2010 Mistborn paperback). Two sources, in priority order, that
+      // give us the original year instead:
+      //
+      //   1. Wikidata P577 — most accurate when set. Doesn't require
+      //      the series link (P179) like our series lookup does, so
+      //      catches popular books even when the series scaffolding
+      //      hasn't been edited in.
+      //   2. OpenLibrary work-level `first_publish_date` — patchy and
+      //      sometimes wrong (Mistborn says 2001 on OL), but a useful
+      //      fallback for books not on Wikidata.
+      //
+      // We only overwrite when the candidate year is EARLIER than
+      // what's stored — filters out source errors where a work has
+      // the wrong year set in either system.
+      const olWorkId = idsForSeriesLookup.openlibrary_work_id as
+        | string
+        | undefined;
+      // Use yearFromDateString rather than Date parsing to dodge the
+      // local-timezone year-flip on negative-UTC servers.
+      const currentYear = yearFromDateString(rowReleaseDate);
+      let originalReleaseDate: string | null = null;
+
+      // Source 1 — Wikidata
+      if (rowTitle && rowFirstAuthor) {
+        try {
+          const wdYear = await findBookPublicationYearOnWikidata(
+            rowTitle.split(":")[0].trim(),
+            rowFirstAuthor
+          );
+          if (
+            wdYear != null &&
+            (currentYear == null || wdYear < currentYear)
+          ) {
+            originalReleaseDate = `${wdYear}-01-01`;
+          }
+        } catch {
+          // fall through to OL
+        }
+      }
+
+      // Source 2 — OpenLibrary work-level fallback
+      if (!originalReleaseDate && olWorkId) {
+        try {
+          const work = await getWorkByOlid(olWorkId);
+          const fp = work?.first_publish_date;
+          if (fp) {
+            const yearMatch = fp.match(/\b(\d{4})\b/);
+            if (yearMatch) {
+              const olYear = Number(yearMatch[1]);
+              if (
+                Number.isFinite(olYear) &&
+                (currentYear == null || olYear < currentYear)
+              ) {
+                originalReleaseDate = `${olYear}-01-01`;
+              }
+            }
+          }
+        } catch {
+          // Non-fatal — keep existing release_date.
+        }
+      }
+
+      const updates: Record<string, unknown> = {};
+      if (enrichedIds) updates.external_ids = enrichedIds;
+      if (series) {
+        updates.series_id = series.id;
+        updates.series_name = series.name;
+        updates.series_position = series.position;
+        // Only Wikidata returns a non-null status; for GB / OL paths
+        // this stays null and we don't overwrite a previously-detected
+        // status (which can only have come from Wikidata).
+        if (series.status != null) {
+          updates.series_status = series.status;
+        }
+      }
+      if (metadataPatch) {
+        updates.metadata = { ...(meta ?? {}), ...metadataPatch };
+      }
+      if (originalReleaseDate) {
+        updates.release_date = originalReleaseDate;
+      }
+      if (Object.keys(updates).length > 0) {
         await supabase
           .from("media_items")
-          .update({ external_ids: enrichedIds })
+          .update(updates)
           .eq("id", mediaId);
       }
     } catch {
@@ -666,6 +974,34 @@ export async function upsertMediaItem(
     }
   }
 
+  // Book-only fallback: if no external id matched, look up by exact
+  // title + first author. Different Google Books editions of the same
+  // book have different gbid AND different isbn but identical title +
+  // author — without this, the search-bar pick path can create a
+  // duplicate alongside an author-page-resolved row. Mirrors the same
+  // fallback used inside `resolveAndCacheBookFromOLWork` so every
+  // book-insert path enforces the same dedup rules.
+  let matchedByTitleAuthor = false;
+  if (!existing && result.media_type === "book") {
+    const authors = (result.metadata as Record<string, unknown> | null)
+      ?.authors as string[] | undefined;
+    const firstAuthor = authors?.[0];
+    if (firstAuthor) {
+      const { data } = await supabase
+        .from("media_items")
+        .select("id, metadata, cover_image_url, backdrop_url, external_ids")
+        .eq("media_type", "book")
+        .eq("title", result.title)
+        .contains("metadata", { authors: [firstAuthor] })
+        .limit(1)
+        .maybeSingle();
+      if (data) {
+        existing = data;
+        matchedByTitleAuthor = true;
+      }
+    }
+  }
+
   if (existing) {
     // Re-enrich if metadata is missing key fields (director, genres, etc.)
     const meta = existing.metadata as Record<string, unknown> | null;
@@ -676,9 +1012,19 @@ export async function upsertMediaItem(
     // Merge any newly-resolved identifiers into the existing row's
     // external_ids. Books pick up `isbn_13` and `openlibrary_work_id`
     // here when first surfaced via an author page or search.
+    //
+    // Merge order depends on how we matched:
+    //   - Matched via shared external id: new wins on conflict (we
+    //     trust the latest input; missing keys still flow in).
+    //   - Matched via title+author fallback: existing wins on
+    //     conflict, only NEW keys flow in. The new input is from a
+    //     different edition (different gbid/isbn) — overwriting would
+    //     destroy the existing row's canonical identifier mapping.
     const existingExt =
       (existing.external_ids as Record<string, unknown> | null) ?? {};
-    const mergedExt = { ...existingExt, ...result.external_ids };
+    const mergedExt = matchedByTitleAuthor
+      ? { ...result.external_ids, ...existingExt }
+      : { ...existingExt, ...result.external_ids };
     const extChanged = Object.keys(mergedExt).some(
       (k) => existingExt[k] !== mergedExt[k]
     );
@@ -1282,6 +1628,63 @@ export async function resolveAndCacheBookFromOLWork(
     sr.external_ids = enrichedIds as Record<string, string | number>;
   }
 
+  // SECOND cache check — by `google_books_id` or `isbn_13` this time.
+  // The first check (above) only matches rows that already have
+  // `openlibrary_work_id`. But many books were inserted via the
+  // search-bar pick path, which only writes {google_books_id, isbn_13};
+  // the OL work id gets backfilled later. Without this second pass,
+  // every author-page visit would re-insert those books as duplicates.
+  //
+  // If we find an existing row, we UPDATE it to merge in the OL work
+  // id (and any other identifiers we resolved) so the next visit hits
+  // the fast OL-work-id path. Then return the existing id — no insert.
+  const gbId = sr.external_ids.google_books_id as string | undefined;
+  const isbn13 = sr.external_ids.isbn_13 as string | undefined;
+  const titleForLookup = sr.title;
+  const authorsArr = (sr.metadata as Record<string, unknown> | null)?.authors as
+    | string[]
+    | undefined;
+  const firstAuthor = authorsArr?.[0];
+  const existingByOtherId = await findExistingBookByIdentifiers(
+    supabase,
+    gbId,
+    isbn13,
+    titleForLookup,
+    firstAuthor
+  );
+  if (existingByOtherId) {
+    // Always use the existing row when matched by gbid/isbn — even if
+    // its `openlibrary_work_id` differs from the one we're resolving.
+    //
+    // Why: OpenLibrary's catalog often has multiple distinct work IDs
+    // pointing at what is, for our purposes, the same book (different
+    // editions / data-entry duplicates / cataloging splits). Treating
+    // them as different books would create duplicate `media_items`
+    // rows, which is what we just fixed.
+    //
+    // Merge order: spread `sr.external_ids` FIRST so the existing row's
+    // identifiers WIN. We don't overwrite the existing OL work id with
+    // the alias we just resolved — the older OL work id stays canonical
+    // for that row. The trade-off is that future visits hit the slow
+    // path (cache miss → GB cached call → DB lookup) for aliased OL
+    // work IDs, but no duplicates ever get created.
+    const existingExt =
+      (existingByOtherId.external_ids as Record<string, unknown> | null) ?? {};
+    const mergedExternalIds = {
+      ...sr.external_ids,
+      ...existingExt,
+    };
+    const before = JSON.stringify(existingExt);
+    const after = JSON.stringify(mergedExternalIds);
+    if (before !== after) {
+      await supabase
+        .from("media_items")
+        .update({ external_ids: mergedExternalIds })
+        .eq("id", existingByOtherId.id);
+    }
+    return existingByOtherId.id;
+  }
+
   // INSERT, but if a concurrent render beat us to it, fetch the winner.
   const { data: inserted, error } = await supabase
     .from("media_items")
@@ -1310,6 +1713,70 @@ export async function resolveAndCacheBookFromOLWork(
       .limit(1)
       .maybeSingle();
     return retry?.id ?? null;
+  }
+  return null;
+}
+
+/**
+ * Look up an existing book row by any of the cross-reference signals we
+ * can extract from a resolved Google Books volume. Used by
+ * `resolveAndCacheBookFromOLWork` to avoid creating a duplicate row
+ * for a book that was already added through some other flow (search
+ * bar, top picks, an OL alias from a prior visit) — even when the new
+ * resolution lands on a different GB edition.
+ *
+ * Order from most-specific to least-specific:
+ *   1. `google_books_id` — unique per GB volume
+ *   2. `isbn_13` — usually unique but mass-market/hardcover can share
+ *   3. exact title + first author — catches "two GB editions of the same
+ *      book where one OL work resolved to volume A and another to
+ *      volume B" (different gbid, different ISBN, but it's the same
+ *      book by the same author with the same title). Has a small
+ *      false-positive risk if an author publishes two genuinely
+ *      different works with identical titles, but for a single author's
+ *      bibliography this almost never happens.
+ */
+async function findExistingBookByIdentifiers(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  googleBooksId: string | undefined,
+  isbn13: string | undefined,
+  title: string | undefined,
+  firstAuthor: string | undefined
+): Promise<{ id: string; external_ids: unknown } | null> {
+  if (googleBooksId) {
+    const { data } = await supabase
+      .from("media_items")
+      .select("id, external_ids")
+      .contains("external_ids", { google_books_id: googleBooksId })
+      .eq("media_type", "book")
+      .limit(1)
+      .maybeSingle();
+    if (data) return data;
+  }
+  if (isbn13) {
+    const { data } = await supabase
+      .from("media_items")
+      .select("id, external_ids")
+      .contains("external_ids", { isbn_13: isbn13 })
+      .eq("media_type", "book")
+      .limit(1)
+      .maybeSingle();
+    if (data) return data;
+  }
+  if (title && firstAuthor) {
+    // Title is matched case-sensitive — both Google Books and our
+    // upsert flow preserve casing as-given, so we shouldn't see
+    // legitimate duplicates that differ only in case. Author is
+    // matched via JSONB containment on `metadata.authors`.
+    const { data } = await supabase
+      .from("media_items")
+      .select("id, external_ids")
+      .eq("media_type", "book")
+      .eq("title", title)
+      .contains("metadata", { authors: [firstAuthor] })
+      .limit(1)
+      .maybeSingle();
+    if (data) return data;
   }
   return null;
 }

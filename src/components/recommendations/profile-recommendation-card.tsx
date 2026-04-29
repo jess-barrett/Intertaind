@@ -26,11 +26,12 @@ export default function ProfileRecommendationCard({
   return (
     <div className="border-b border-surface-border/60 py-5 last:border-b-0">
       <div className="flex items-start gap-4">
-        {/* Source cover — left. Smaller than the target since it's the
-            "if you liked" anchor, not the recommendation itself. */}
+        {/* Source cover — left. Same size as target so the pair reads
+            as a single visual unit; the `Share2` between them carries
+            the directional meaning. */}
         <Link
           href={`/media/${source.id}`}
-          className="aspect-2/3 w-16 shrink-0 overflow-hidden rounded-sm border border-surface-border bg-surface-overlay transition-opacity hover:opacity-90"
+          className="aspect-2/3 w-20 shrink-0 overflow-hidden rounded-sm border border-surface-border bg-surface-overlay transition-opacity hover:opacity-90"
         >
           <CoverImage
             src={source.cover_image_url}
@@ -49,12 +50,11 @@ export default function ProfileRecommendationCard({
             consistent across surfaces. */}
         <Share2
           size={18}
-          className="mt-8 shrink-0 text-text-muted"
+          className="mt-12 shrink-0 text-text-muted"
           aria-label="recommends"
         />
 
-        {/* Target cover — slightly larger; this is the recommendation
-            itself, the thing the user is being pointed toward. */}
+        {/* Target cover — same dimensions as source. */}
         <Link
           href={`/media/${target.id}`}
           className="aspect-2/3 w-20 shrink-0 overflow-hidden rounded-sm border border-surface-border bg-surface-overlay transition-opacity hover:opacity-90"

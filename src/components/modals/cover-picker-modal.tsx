@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { Loader2, RotateCcw } from "lucide-react";
 import ModalWrapper from "./modal-wrapper";
 import { setCustomCover } from "@/app/actions/media";
+import { yearFromDateString } from "@/lib/time";
 
 type CoverOption = {
   volumeId: string;
@@ -114,7 +115,7 @@ export default function CoverPickerModal({
                     <div className="bg-surface-raised px-2 py-1 text-[10px] text-text-muted">
                       <p className="truncate">{opt.publisher ?? "—"}</p>
                       <p className="truncate">
-                        {new Date(opt.publishedDate).getFullYear() || opt.publishedDate}
+                        {yearFromDateString(opt.publishedDate) ?? opt.publishedDate}
                       </p>
                     </div>
                   )}

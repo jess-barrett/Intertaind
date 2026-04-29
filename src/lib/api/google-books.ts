@@ -1,6 +1,11 @@
 import type { GoogleBooksVolume, GoogleBooksSearchResponse } from "./types";
 
 const BASE_URL = "https://www.googleapis.com/books/v1/volumes";
+const SERIES_URL = "https://www.googleapis.com/books/v1/series/get";
+// Volume metadata + ISBN lookups are stable enough that 24h cache is
+// safe — descriptions, page counts, and identifiers don't churn. Search
+// queries also benefit because the same query repeats often.
+const GBOOKS_CACHE_SECONDS = 86_400;
 
 function apiKey() {
   return process.env.GOOGLE_BOOKS_API_KEY ?? "";
@@ -18,7 +23,9 @@ export async function searchBooks(
     printType: "books",
     key: apiKey(),
   });
-  const res = await fetch(`${BASE_URL}?${params}`);
+  const res = await fetch(`${BASE_URL}?${params}`, {
+    next: { revalidate: GBOOKS_CACHE_SECONDS },
+  });
   if (!res.ok) throw new Error(`Google Books search failed: ${res.status}`);
   return res.json();
 }
@@ -26,9 +33,38 @@ export async function searchBooks(
 export async function getBookDetails(
   volumeId: string
 ): Promise<GoogleBooksVolume> {
-  const res = await fetch(`${BASE_URL}/${volumeId}?key=${apiKey()}`);
+  const res = await fetch(`${BASE_URL}/${volumeId}?key=${apiKey()}`, {
+    next: { revalidate: GBOOKS_CACHE_SECONDS },
+  });
   if (!res.ok) throw new Error(`Google Books details failed: ${res.status}`);
   return res.json();
+}
+
+/**
+ * Look up a Google Books series's display name from its `seriesId`.
+ * The `/volumes/{id}` payload tells us a book is in series `X` but
+ * doesn't give us the human-readable name; this endpoint does. Returns
+ * null when the series is unknown / the API call fails — the caller
+ * should still tag the book with the series id (graph dedup keys on
+ * id, not name) and just leave the name field blank.
+ *
+ * Cached for 24h alongside the rest of GB's data layer.
+ */
+export async function getSeriesName(seriesId: string): Promise<string | null> {
+  const params = new URLSearchParams({
+    series_id: seriesId,
+    key: apiKey(),
+  });
+  try {
+    const res = await fetch(`${SERIES_URL}?${params}`, {
+      next: { revalidate: GBOOKS_CACHE_SECONDS },
+    });
+    if (!res.ok) return null;
+    const data: { series?: { title?: string }[] } = await res.json();
+    return data.series?.[0]?.title ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -46,7 +82,9 @@ export async function findVolumeByISBN(
     printType: "books",
     key: apiKey(),
   });
-  const res = await fetch(`${BASE_URL}?${params}`);
+  const res = await fetch(`${BASE_URL}?${params}`, {
+    next: { revalidate: GBOOKS_CACHE_SECONDS },
+  });
   if (!res.ok) return null;
   const data: GoogleBooksSearchResponse = await res.json();
   return data.items?.[0] ?? null;
@@ -124,7 +162,9 @@ export async function searchBookEditions(
     printType: "books",
     key: apiKey(),
   });
-  const res = await fetch(`${BASE_URL}?${params}`);
+  const res = await fetch(`${BASE_URL}?${params}`, {
+    next: { revalidate: GBOOKS_CACHE_SECONDS },
+  });
   if (!res.ok) return [];
   const data: GoogleBooksSearchResponse = await res.json();
   return data.items ?? [];
@@ -150,7 +190,9 @@ export async function findCanonicalBookEdition(
     printType: "books",
     key: apiKey(),
   });
-  const res = await fetch(`${BASE_URL}?${params}`);
+  const res = await fetch(`${BASE_URL}?${params}`, {
+    next: { revalidate: GBOOKS_CACHE_SECONDS },
+  });
   if (!res.ok) return null;
   const data: GoogleBooksSearchResponse = await res.json();
   const items = data.items ?? [];
@@ -253,7 +295,9 @@ export async function getBooksByAuthor(
       orderBy: "relevance",
       key: apiKey(),
     });
-    const res = await fetch(`${BASE_URL}?${params}`);
+    const res = await fetch(`${BASE_URL}?${params}`, {
+      next: { revalidate: GBOOKS_CACHE_SECONDS },
+    });
     if (!res.ok) break;
     const data: GoogleBooksSearchResponse = await res.json();
     const items = data.items ?? [];
@@ -325,10 +369,45 @@ const UK_ISBN_PREFIXES = [
   "9781787", // Penguin Random House UK
 ];
 
-function looksLikeUKEditionISBN(isbn: string | null | undefined): boolean {
+export function looksLikeUKEditionISBN(
+  isbn: string | null | undefined
+): boolean {
   if (!isbn) return false;
   const cleaned = isbn.replace(/[^\d]/g, "");
   return UK_ISBN_PREFIXES.some((p) => cleaned.startsWith(p));
+}
+
+// Imprints we see slipping in as UK-marketed editions of US-originated
+// genre titles. Not exhaustive — these cover the SFF / lit-fic houses
+// that produced the false-winner edge cases (Howling Dark, Mistborn,
+// etc.). Matched as case-insensitive substrings against `publisher`.
+const UK_PUBLISHER_KEYWORDS = [
+  "hachette uk",
+  "gollancz",
+  "orion publishing",
+  "hodder",
+  "pan macmillan",
+  "tor uk",
+  "headline",
+  "quercus",
+  "bloomsbury",
+];
+
+/**
+ * True when a volume looks like a UK edition. Combines the publisher
+ * substring match with the ISBN-13 prefix check — either signal alone
+ * is enough. Used by both the author-page bibliography dedup and the
+ * search-bar dedup so the two code paths agree on which edition wins.
+ */
+export function looksLikeUKEdition(v: GoogleBooksVolume): boolean {
+  const info = v.volumeInfo;
+  const pub = (info.publisher ?? "").toLowerCase();
+  if (UK_PUBLISHER_KEYWORDS.some((k) => pub.includes(k))) return true;
+  if (pub.endsWith(" uk")) return true;
+  const isbn13 = info.industryIdentifiers?.find(
+    (id) => id.type === "ISBN_13"
+  )?.identifier;
+  return looksLikeUKEditionISBN(isbn13);
 }
 
 function scoreEdition(v: GoogleBooksVolume): number {
@@ -355,29 +434,10 @@ function scoreEdition(v: GoogleBooksVolume): number {
   else if (subtitleLen > 60) s -= 80;
   else if (subtitleLen > 40) s -= 30;
 
-  // Publisher-name penalty for known UK imprints. Matches the obvious
-  // "Hachette UK" string plus other UK SFF imprints.
-  const pub = (info.publisher ?? "").toLowerCase();
-  const ukPublisher =
-    pub.includes("hachette uk") ||
-    pub.includes("gollancz") ||
-    pub.includes("orion publishing") ||
-    pub.includes("hodder") ||
-    pub.includes("pan macmillan") ||
-    pub.includes("tor uk") ||
-    pub.includes("headline") ||
-    pub.includes("quercus") ||
-    pub.includes("bloomsbury") ||
-    pub.endsWith(" uk");
-  if (ukPublisher) s -= 80;
-
-  // ISBN-13 prefix penalty for UK publisher registration blocks. This
-  // catches editions with US-sounding publisher names (e.g. just
-  // "Macmillan") that are actually the UK arm.
-  const isbn13 = info.industryIdentifiers?.find(
-    (id) => id.type === "ISBN_13"
-  )?.identifier;
-  if (looksLikeUKEditionISBN(isbn13)) s -= 80;
+  // UK-edition penalty — combined publisher + ISBN-13 prefix check.
+  // Same 80-point hit applied even if both signals match (we don't
+  // double-penalize) so the cross-path scores stay roughly comparable.
+  if (looksLikeUKEdition(v)) s -= 80;
 
   return s;
 }

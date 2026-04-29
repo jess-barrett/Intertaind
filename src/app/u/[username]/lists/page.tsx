@@ -4,19 +4,17 @@ import { ListPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import BrowseListRow from "@/components/lists/browse-list-row";
 import ShelfTabs from "@/components/shelves/shelf-tabs";
-import ProfileRecommendationCard from "@/components/recommendations/profile-recommendation-card";
 import { fetchListSourceMediaMap } from "@/lib/list-source-media";
-import { fetchUserRecommendations } from "@/app/actions/recommendations";
 import type { List, Profile } from "@/lib/types";
 
 const PREVIEW_COUNT = 10;
 const RESULTS_LIMIT = 50;
 
 type ListWithProfile = List & { profiles: Profile };
-type SubTab = "mine" | "saved" | "recommended";
+type SubTab = "mine" | "saved";
 
 function isSubTab(s: string | undefined): s is SubTab {
-  return s === "mine" || s === "saved" || s === "recommended";
+  return s === "mine" || s === "saved";
 }
 
 export default async function UserListsPage({
@@ -48,11 +46,10 @@ export default async function UserListsPage({
       tabs={[
         { key: "mine", label: "Created" },
         { key: "saved", label: "Saved" },
-        { key: "recommended", label: "Recommended" },
       ]}
       activeTab={tab}
       rightSlot={
-        isOwner && tab !== "recommended" ? (
+        isOwner ? (
           <Link
             href="/lists/new"
             className="flex items-center gap-1.5 rounded-sm border border-surface-border bg-surface-overlay px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-brand/40 hover:text-text-primary"
@@ -64,36 +61,6 @@ export default async function UserListsPage({
       }
     />
   );
-
-  // Recommendations tab — different shape from lists, so it gets its
-  // own render branch. RLS already filters private profiles' recs.
-  if (tab === "recommended") {
-    const { items: recs } = await fetchUserRecommendations(profile.id, RESULTS_LIMIT, 0);
-    return (
-      <div className="pt-8">
-        {tabRow}
-        {recs.length === 0 ? (
-          <p className="py-16 text-center text-sm text-text-muted">
-            {isOwner
-              ? "You haven't recommended any pairings yet. Visit a media page and tap Recommend."
-              : `${profile.username} hasn't recommended any pairings yet.`}
-          </p>
-        ) : (
-          <div>
-            {recs.map((r) => (
-              <ProfileRecommendationCard
-                key={r.id}
-                source={r.source_media}
-                target={r.recommended_media}
-                note={r.note}
-                createdAt={r.created_at}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
 
   const lists = await fetchLists(supabase, profile.id, tab, isOwner);
 

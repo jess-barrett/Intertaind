@@ -8,6 +8,7 @@ import {
   workOlid,
 } from "@/lib/api/openlibrary";
 import type { OpenLibraryWork } from "@/lib/api/openlibrary";
+import { findVolumeByTitleAndAuthor } from "@/lib/api/google-books";
 import { resolveAndCacheBookFromOLWork } from "@/app/actions/media";
 import { createClient } from "@/lib/supabase/server";
 import BackButton from "@/components/back-button";
@@ -76,20 +77,85 @@ export default async function AuthorPage({
   );
 
   if (user && missedWorks.length > 0) {
-    const newIds = await resolveInChunks(missedWorks, async (w) =>
-      resolveAndCacheBookFromOLWork(workOlid(w), w.title, author.name)
+    // Phase 1 — pre-resolve every missed work to a Google Books volume
+    // (cached at the fetch layer for 24h). We do this BEFORE calling
+    // `resolveAndCacheBookFromOLWork` so we can dedupe on the GB id
+    // *before* hitting the insert path. Without this, two OL works that
+    // map to the same GB volume race each other and both insert,
+    // leaving duplicate `media_items` rows.
+    const preResolved = await resolveInChunks(missedWorks, async (w) => {
+      const volume = await findVolumeByTitleAndAuthor(w.title, author.name);
+      return { work: w, volume };
+    });
+
+    // Phase 2 — bucket by (normalized GB title, first author). Bucketing
+    // by gbid alone misses the case where two OL works resolve to two
+    // different GB editions of the same book (different ISBNs, same
+    // title + author). Without this, both buckets fire `resolve…` in
+    // parallel, race on the DB, and create duplicate rows.
+    //
+    // Title key is lowercase+trim so case differences don't split a
+    // bucket. We don't strip subtitles — series like "LOTR: The Two
+    // Towers" / "LOTR: The Return of the King" share a base but are
+    // genuinely different books and should NOT merge.
+    const bucketsByKey = new Map<string, OpenLibraryWork[]>();
+    for (const { work, volume } of preResolved) {
+      if (!volume) continue;
+      if (
+        volume.volumeInfo.language &&
+        volume.volumeInfo.language !== "en"
+      ) {
+        continue;
+      }
+      const fullTitle =
+        volume.volumeInfo.title +
+        (volume.volumeInfo.subtitle ? `: ${volume.volumeInfo.subtitle}` : "");
+      const titleKey = fullTitle.trim().toLowerCase();
+      const authorKey = (volume.volumeInfo.authors?.[0] ?? "")
+        .trim()
+        .toLowerCase();
+      const key = `${titleKey}|${authorKey}`;
+      const arr = bucketsByKey.get(key) ?? [];
+      arr.push(work);
+      bucketsByKey.set(key, arr);
+    }
+
+    // Phase 3 — for each bucket, run the insert action ONCE. The
+    // action's own `findExistingBookByIdentifiers` (gbid → isbn →
+    // title+author) protects against cross-page-load races; the
+    // bucket dedup above protects against intra-batch races.
+    const bucketEntries = Array.from(bucketsByKey.entries());
+    const ids = await resolveInChunks(bucketEntries, async ([, works]) =>
+      resolveAndCacheBookFromOLWork(
+        workOlid(works[0]),
+        works[0].title,
+        author.name
+      )
     );
-    const ids = newIds.filter((id): id is string => id !== null);
-    if (ids.length > 0) {
+
+    // Hydrate rows in one query, then broadcast by array index: every
+    // OL work in a bucket maps to the same row, so aliased OL work IDs
+    // (multiple OLs resolving to the same canonical book) all end up
+    // in `cachedByWork` pointing at the same media_items row.
+    const idsFiltered = ids.filter((id): id is string => id !== null);
+    if (idsFiltered.length > 0) {
       const { data: newRows } = await supabase
         .from("media_items")
         .select("*")
-        .in("id", ids);
+        .in("id", idsFiltered);
+      const rowsById = new Map<string, MediaItem>();
       for (const row of (newRows as MediaItem[] | null) ?? []) {
-        const olw = (row.external_ids as Record<string, unknown> | null)
-          ?.openlibrary_work_id;
-        if (typeof olw === "string") cachedByWork.set(olw, row);
+        rowsById.set(row.id, row);
       }
+      bucketEntries.forEach(([, works], i) => {
+        const id = ids[i];
+        if (!id) return;
+        const row = rowsById.get(id);
+        if (!row) return;
+        for (const w of works) {
+          cachedByWork.set(workOlid(w), row);
+        }
+      });
     }
   }
 

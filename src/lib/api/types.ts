@@ -246,6 +246,18 @@ export interface GoogleBooksVolume {
       identifier: string;
     }[];
     maturityRating?: "MATURE" | "NOT_MATURE";
+    /** Set on volumes where Google Books has partner-supplied series
+        metadata. Coverage is roughly half of mainstream titles and
+        much worse for indie/genre — we fall back to OpenLibrary when
+        this is absent. */
+    seriesInfo?: {
+      bookDisplayNumber?: string;
+      volumeSeries?: {
+        seriesId: string;
+        orderNumber?: number;
+        seriesBookType?: string;
+      }[];
+    };
   };
   accessInfo?: {
     viewability?: "NO_PAGES" | "PARTIAL" | "ALL_PAGES" | "UNKNOWN";

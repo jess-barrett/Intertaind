@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { BookOpen, BookOpenCheck, Film, Tv, TvMinimalPlay, Gamepad2, Eye, Heart, List, CalendarClock } from "lucide-react";
 import type { MediaItem, MediaType, UserMedia } from "@/lib/types";
@@ -9,11 +10,13 @@ import { MediaCastSection } from "@/components/media/media-info-sections";
 import MediaInfoTabs from "@/components/media/media-info-tabs";
 import AboutTheAuthor from "@/components/media/about-the-author";
 import RatingsHistogram from "@/components/media/ratings-histogram";
+import SeriesGraph from "@/components/media/series-graph";
 import CoverImage from "@/components/cover-image";
 import BackButton from "@/components/back-button";
 import RecommendButton from "@/components/recommendations/recommend-button";
 import MediaRecommendationsSection from "@/components/recommendations/media-recommendations-section";
 import { ensureMediaItemEnriched } from "@/app/actions/media";
+import { yearFromDateString } from "@/lib/time";
 import {
   fetchRecommendationsForSource,
   fetchRecommendationsForTarget,
@@ -60,7 +63,11 @@ function getAttribution(
 
 function getSecondaryDetails(
   mediaType: MediaType,
-  metadata: Record<string, unknown> | null
+  metadata: Record<string, unknown> | null,
+  /** Position within the book's series. Inserted between page count
+      and publisher when present so users can tell at a glance whether
+      this is e.g. Book 1 or Book 5 of a series. */
+  seriesPosition?: number | null
 ): string[] {
   if (!metadata) return [];
   const details: string[] = [];
@@ -68,6 +75,8 @@ function getSecondaryDetails(
     details.push(`${metadata.runtime} min`);
   if (mediaType === "book" && metadata.page_count)
     details.push(`${metadata.page_count} pages`);
+  if (mediaType === "book" && seriesPosition != null)
+    details.push(`Book ${seriesPosition}`);
   if (mediaType === "book" && metadata.publisher)
     details.push(String(metadata.publisher));
   if (mediaType === "tv_show" && metadata.seasons)
@@ -101,13 +110,29 @@ export default async function MediaDetailPage({
   const config = MEDIA_TYPE_CONFIG[media.media_type];
   const Icon = MEDIA_ICONS[media.media_type];
 
-  // Lazy-refresh stale metadata. Short-circuits when the row is current,
-  // so this is effectively free on every visit after the first one.
-  // Fetches new TMDb fields (cast, upcoming-season posters, etc.) without
-  // requiring the user to re-search.
-  const refreshedMetadata = await ensureMediaItemEnriched(media.id);
-  const metadata =
-    refreshedMetadata ?? (media.metadata as Record<string, unknown> | null);
+  // Lazy-refresh stale metadata in the background — fire-and-forget via
+  // `after()` so the page render doesn't block on TMDb / IGDB / OL /
+  // Google Books. The current row's metadata renders immediately; the
+  // freshened blob shows up on the next visit.
+  //
+  // Trade-off: a brand-new row that hasn't been enriched yet will paint
+  // with whatever fields the upsert flow seeded (which is usually
+  // complete — `upsertMediaItem` runs the full enrichment inline). The
+  // lazy path here is for rows that pre-date a schema bump.
+  const metadata = media.metadata as Record<string, unknown> | null;
+  // Pre-build the supabase client OUTSIDE `after()` — cookies() can't
+  // be called inside an after() callback in Next.js 16, and our
+  // `createClient()` reads the cookie store for auth. The pre-built
+  // client uses the request's cookies but the actual reads/writes
+  // execute later, after the response has been sent.
+  const enrichClient = supabase;
+  after(async () => {
+    try {
+      await ensureMediaItemEnriched(media.id, enrichClient);
+    } catch {
+      // Background work — never fail the request if enrichment errors.
+    }
+  });
 
   // Auth + user tracking
   const {
@@ -188,6 +213,70 @@ export default async function MediaDetailPage({
     fetchRecommendationsForTarget(id, 5, 0),
   ]);
 
+  // Series siblings — only relevant for books that have been tagged
+  // with a series via the enrichment helper. Single indexed query
+  // (covered by media_items_series_idx); skipped entirely for media
+  // outside the books category or untagged books.
+  type SeriesSibling = {
+    id: string;
+    title: string;
+    series_position: number | null;
+    release_date: string | null;
+    avg_rating: number | string | null;
+    rating_count: number | null;
+    metadata: {
+      gb_average_rating?: number | null;
+      gb_ratings_count?: number | null;
+    } | null;
+  };
+  let seriesBooks: SeriesSibling[] = [];
+  let nextBook: { id: string; title: string } | null = null;
+  // The position to display in the secondary-details line ("Book N").
+  // Derived from the graph's ordering rule (explicit position when all
+  // siblings have one, else release_date sort) so the number matches
+  // what the graph plots — even when stored `series_position` is null
+  // because Wikidata / GB / OL didn't have the data.
+  let effectiveSeriesPosition: number | null = null;
+  if (media.media_type === "book" && media.series_id) {
+    const { data } = await supabase
+      .from("media_items")
+      .select(
+        "id, title, series_position, release_date, avg_rating, rating_count, metadata"
+      )
+      .eq("series_id", media.series_id)
+      .order("series_position", { ascending: true, nullsFirst: false });
+    seriesBooks = (data as SeriesSibling[]) ?? [];
+
+    if (seriesBooks.length > 1) {
+      const allHaveExplicit = seriesBooks.every(
+        (b) => b.series_position != null
+      );
+      const sorted = allHaveExplicit
+        ? [...seriesBooks].sort(
+            (a, b) => (a.series_position ?? 0) - (b.series_position ?? 0)
+          )
+        : [...seriesBooks].sort((a, b) =>
+            (a.release_date ?? "9999").localeCompare(b.release_date ?? "9999")
+          );
+      const currentIdx = sorted.findIndex((b) => b.id === media.id);
+      if (currentIdx >= 0) {
+        // Use the explicit position if every sibling has one, else
+        // the 1-based index in the sorted-by-release-date list.
+        effectiveSeriesPosition = allHaveExplicit
+          ? sorted[currentIdx].series_position
+          : currentIdx + 1;
+        // Next book — the sibling immediately after the current one.
+        if (currentIdx < sorted.length - 1) {
+          const next = sorted[currentIdx + 1];
+          nextBook = { id: next.id, title: next.title };
+        }
+      }
+    } else if (seriesBooks.length === 1 && media.series_position != null) {
+      // Single-known book with an explicit position from upstream.
+      effectiveSeriesPosition = media.series_position;
+    }
+  }
+
   // Build the 10-bucket rating histogram (1..10 → 0.5..5.0 stars).
   const ratingValues =
     ((ratingRowsRes.data as { rating: number | null }[] | null) ?? [])
@@ -202,7 +291,11 @@ export default async function MediaDetailPage({
       : null;
 
   const attribution = getAttribution(media.media_type, metadata);
-  const secondaryDetails = getSecondaryDetails(media.media_type, metadata);
+  const secondaryDetails = getSecondaryDetails(
+    media.media_type,
+    metadata,
+    effectiveSeriesPosition
+  );
   const totalSeasons =
     (metadata?.seasons as number) ?? (metadata?.number_of_seasons as number) ?? 1;
   const seasonEpisodes =
@@ -354,6 +447,19 @@ export default async function MediaDetailPage({
             <Stat icon={List} count={stats.lists} label="In lists" />
             <Stat icon={Heart} count={stats.favorites} label="Loved" />
           </div>
+
+          {/* Series ratings graph — sits below the stats so it doesn't
+              break the cover→stats visual rhythm. Only renders for
+              books in a known series with at least 2 rated siblings. */}
+          {media.media_type === "book" && media.series_id && (
+            <SeriesGraph
+              books={seriesBooks}
+              currentId={media.id}
+              seriesName={media.series_name}
+              seriesStatus={media.series_status}
+              nextBook={nextBook}
+            />
+          )}
         </div>
 
         {/* Right of cover: Title block + content row */}
@@ -365,7 +471,7 @@ export default async function MediaDetailPage({
             </h1>
             {media.release_date && (
               <span className="text-lg text-text-muted">
-                {new Date(media.release_date).getFullYear()}
+                {yearFromDateString(media.release_date)}
               </span>
             )}
           </div>
@@ -484,6 +590,7 @@ export default async function MediaDetailPage({
                     id: media.id,
                     title: media.title,
                     cover_image_url: media.cover_image_url,
+                    media_type: media.media_type,
                   }}
                   isLoggedIn={!!user}
                 />
