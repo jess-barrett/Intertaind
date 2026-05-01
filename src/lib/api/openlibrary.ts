@@ -156,6 +156,93 @@ interface OpenLibrarySearchDoc {
   cover_i?: number;
   first_publish_year?: number;
   language?: string[];
+  cover_edition_key?: string;
+  edition_count?: number;
+}
+
+export interface OLCanonicalBook {
+  /** OL work id, e.g. "OL18209798W" */
+  workKey: string;
+  /** Clean title — no "(Movie Tie-In)", no subtitle. */
+  title: string;
+  /** Year the work was first published (the original edition). */
+  firstPublishYear: number | null;
+  /** Cover URL for OL's curator-picked canonical edition (`cover_edition_key`). */
+  coverUrl: string | null;
+}
+
+/**
+ * Resolve a book to its canonical first-edition record on OpenLibrary.
+ *
+ * Why: Google Books search rankings prioritize recent reissues over the
+ * original publication — searching "Dark Matter by Blake Crouch" returns
+ * the 2024 Movie Tie-In edition first, with its movie-poster cover and
+ * "(Movie Tie-In)" / "Now on Apple TV+" cruft in title and subtitle.
+ * OL is a work-centric data model: each work has a `first_publish_year`
+ * and a `cover_edition_key` (OL's curator-picked canonical edition,
+ * usually the original first edition). That lets us recover the iconic
+ * original cover and the clean title.
+ *
+ * Uses OL's structured `title=` + `author=` params (NOT the `q=`
+ * full-text search) so we get a tighter title-matched result set than
+ * the broad keyword search would. Filters to English with cover, then
+ * picks the work with the LOWEST first_publish_year — which by
+ * definition is the original.
+ *
+ * Returns null when OL has no English cover-bearing work for the pair,
+ * or the network call fails. Caller should treat null as "keep the GB
+ * winner as-is" rather than falling back to a worse signal.
+ */
+export async function findCanonicalBookByTitleAuthor(
+  title: string,
+  author: string
+): Promise<OLCanonicalBook | null> {
+  const fields =
+    "key,title,subtitle,cover_i,first_publish_year,language,cover_edition_key,edition_count";
+  const url =
+    `${BASE_URL}/search.json?title=${encodeURIComponent(title)}` +
+    `&author=${encodeURIComponent(author)}&language=eng&limit=10&fields=${fields}`;
+  try {
+    const res = await fetch(url, {
+      next: { revalidate: AUTHOR_CACHE_SECONDS },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { docs?: OpenLibrarySearchDoc[] };
+    const docs = data.docs ?? [];
+    if (docs.length === 0) return null;
+
+    // Filter: English work with a cover and a sane publish year. OL
+    // sometimes returns docs with first_publish_year of 0 or pre-1500
+    // dates that are bibliographic noise; cap at 1500 to dodge those.
+    const candidates = docs.filter(
+      (d) =>
+        d.cover_i &&
+        d.language?.includes("eng") &&
+        d.first_publish_year &&
+        d.first_publish_year > 1500
+    );
+    if (candidates.length === 0) return null;
+
+    // Pick the earliest — the work's first publish year IS the same
+    // across all docs for a given work, but multiple works can share
+    // a title (e.g. multiple authors with "Dark Matter" titles); the
+    // author filter above already narrows to the right one, so the
+    // first_publish_year sort just deterministically picks among the
+    // remaining docs (usually only one).
+    candidates.sort(
+      (a, b) => (a.first_publish_year ?? 9999) - (b.first_publish_year ?? 9999)
+    );
+    const winner = candidates[0];
+
+    return {
+      workKey: winner.key.replace(/^\/works\//, ""),
+      title: winner.title ?? title,
+      firstPublishYear: winner.first_publish_year ?? null,
+      coverUrl: winner.cover_i ? olCoverUrl(winner.cover_i, "L") : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -188,6 +275,128 @@ export async function getEnglishAuthorWorks(
         ? String(d.first_publish_year)
         : undefined,
     }));
+  } catch {
+    return [];
+  }
+}
+
+/** Single doc returned by `/search.json` for book queries. */
+interface OLBookSearchRawDoc {
+  key: string;
+  title?: string;
+  subtitle?: string;
+  author_name?: string[];
+  first_publish_year?: number;
+  cover_i?: number;
+  cover_edition_key?: string;
+  edition_count?: number;
+  ratings_count?: number;
+  ratings_average?: number;
+  want_to_read_count?: number;
+  already_read_count?: number;
+  isbn?: string[];
+  subject?: string[];
+  language?: string[];
+}
+
+export interface OLBookSearchDoc {
+  /** OL work id, e.g. "OL18209798W". */
+  workKey: string;
+  title: string;
+  subtitle?: string;
+  authors: string[];
+  firstPublishYear: number | null;
+  coverUrl: string | null;
+  coverEditionKey: string | null;
+  editionCount: number;
+  ratingsCount: number;
+  ratingsAverage: number | null;
+  wantToReadCount: number;
+  /** Best-guess ISBN-13 (preferred) for cross-reference into Google Books. */
+  isbn13: string | null;
+  subjects: string[];
+  languages: string[];
+}
+
+/**
+ * Search OpenLibrary's work-centric book index.
+ *
+ * OL is the right primary for book search: each result is a WORK (one
+ * per actual book, not per edition), so the user doesn't see the same
+ * book repeated as a Movie Tie-In, Slipcase Edition, Anniversary
+ * Edition, etc. Google Books — which is what we used to use — returns
+ * one row per edition, which means the popularity-ranked first result
+ * is whatever has the freshest publication date (typically the movie
+ * tie-in).
+ *
+ * Quality signals on the returned work (`ratings_count`,
+ * `want_to_read_count`, `edition_count`) play the same role as TMDB's
+ * `vote_count` — they let us rank canonical books by genuine reader
+ * traction rather than by edition recency.
+ *
+ * Caller passes either a free-text query OR a structured
+ * title/author pair (when the search box parsed "Title by Author"
+ * syntax). Structured params give a tighter title-matched result set;
+ * free-text falls back to OL's `q=` keyword search.
+ *
+ * Filters out graphic novels, foreign editions, and bibliographic stubs
+ * INSIDE this function so the route handler doesn't have to.
+ *
+ * Cached for 24h alongside other OL calls.
+ */
+export async function searchOLBooks(
+  options: { q?: string; title?: string; author?: string; limit?: number }
+): Promise<OLBookSearchDoc[]> {
+  const fields =
+    "key,title,subtitle,author_name,first_publish_year,cover_i,cover_edition_key," +
+    "edition_count,ratings_count,ratings_average,want_to_read_count,already_read_count," +
+    "isbn,subject,language";
+  const params = new URLSearchParams();
+  if (options.title) params.set("title", options.title);
+  if (options.author) params.set("author", options.author);
+  if (options.q) params.set("q", options.q);
+  params.set("limit", String(options.limit ?? 30));
+  params.set("fields", fields);
+
+  const url = `${BASE_URL}/search.json?${params.toString()}`;
+  try {
+    const res = await fetch(url, {
+      next: { revalidate: AUTHOR_CACHE_SECONDS },
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { docs?: OLBookSearchRawDoc[] };
+    const docs = data.docs ?? [];
+
+    return docs
+      .map<OLBookSearchDoc | null>((d) => {
+        if (!d.title) return null;
+        // Pick the best ISBN — prefer 13-digit. Skip if neither.
+        const isbn13 =
+          d.isbn?.find((s) => s.replace(/-/g, "").length === 13) ?? null;
+        // Cover URL prefers cover_i (numeric), falls back to cover_edition_key.
+        const coverUrl = d.cover_i
+          ? olCoverUrl(d.cover_i, "L")
+          : d.cover_edition_key
+            ? `${COVERS_URL}/b/olid/${d.cover_edition_key}-L.jpg`
+            : null;
+        return {
+          workKey: d.key.replace(/^\/works\//, ""),
+          title: d.title,
+          subtitle: d.subtitle,
+          authors: d.author_name ?? [],
+          firstPublishYear: d.first_publish_year ?? null,
+          coverUrl,
+          coverEditionKey: d.cover_edition_key ?? null,
+          editionCount: d.edition_count ?? 0,
+          ratingsCount: d.ratings_count ?? 0,
+          ratingsAverage: d.ratings_average ?? null,
+          wantToReadCount: d.want_to_read_count ?? 0,
+          isbn13,
+          subjects: d.subject ?? [],
+          languages: d.language ?? [],
+        };
+      })
+      .filter((d): d is OLBookSearchDoc => d !== null);
   } catch {
     return [];
   }

@@ -60,6 +60,14 @@ export async function createRecommendation(
     throw new Error(`Failed to post pairing: ${error?.message ?? "unknown"}`);
   }
 
+  // Hydrate titles into metadata so the activity feed renderer can show
+  // "Intertaind [target] for fans of [source]" without an extra join.
+  const { data: titles } = await supabase
+    .from("media_items")
+    .select("id, title")
+    .in("id", [sourceMediaId, recommendedMediaId]);
+  const titleMap = new Map((titles ?? []).map((m) => [m.id, m.title as string]));
+
   await supabase.from("activity_log").insert({
     user_id: user.id,
     // `media_id` on activity_log is the "primary" media for the event.
@@ -71,6 +79,8 @@ export async function createRecommendation(
     metadata: {
       source_media_id: sourceMediaId,
       recommended_media_id: recommendedMediaId,
+      source_title: titleMap.get(sourceMediaId) ?? null,
+      recommended_title: titleMap.get(recommendedMediaId) ?? null,
       has_note: trimmedNote.length > 0,
     },
   });

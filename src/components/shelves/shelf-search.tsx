@@ -19,6 +19,11 @@ export default function ShelfSearch({
   const [loading, setLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  // Track the in-flight request so a new keystroke can cancel it.
+  // Without this, a fast "red"-then-"red rising" sequence races: the
+  // shorter query's larger response sometimes finishes after the longer
+  // query's response, overwriting the right results with stale ones.
+  const abortRef = useRef<AbortController | null>(null);
   const config = MEDIA_TYPE_CONFIG[mediaType];
 
   const doSearch = useCallback(
@@ -27,18 +32,32 @@ export default function ShelfSearch({
         setResults([]);
         return;
       }
+      // Cancel any in-flight request before starting a new one.
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       setLoading(true);
       try {
         const res = await fetch(
-          `/api/search?q=${encodeURIComponent(q)}&type=${mediaType}`
+          `/api/search?q=${encodeURIComponent(q)}&type=${mediaType}`,
+          { signal: controller.signal }
         );
         if (res.ok) {
-          setResults(await res.json());
+          // Belt-and-suspenders: ignore the response if the user has
+          // moved on to a different query. AbortController catches the
+          // common case but doesn't help if the request returned right
+          // before we started cancelling.
+          if (abortRef.current === controller) {
+            setResults(await res.json());
+          }
         }
       } catch {
-        // silently handle
+        // AbortError is the expected cancel path — silently swallow.
       } finally {
-        setLoading(false);
+        if (abortRef.current === controller) {
+          setLoading(false);
+        }
       }
     },
     [mediaType]

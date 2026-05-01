@@ -8,6 +8,7 @@ import type {
 import { tmdbImageUrl } from "./tmdb";
 import { bookCoverUrl } from "./google-books";
 import { igdbImageUrl } from "./igdb";
+import type { OLBookSearchDoc } from "./openlibrary";
 
 export function normalizeTMDBMovie(raw: TMDBMovie): SearchResult {
   return {
@@ -74,6 +75,48 @@ export function normalizeGoogleBook(raw: GoogleBooksVolume): SearchResult {
     external_ids: {
       google_books_id: raw.id,
       ...(isbn13 ? { isbn_13: isbn13 } : {}),
+    },
+  };
+}
+
+/**
+ * Normalize an OpenLibrary work into a SearchResult.
+ *
+ * OL emits work-level data (one record per actual book), so this is the
+ * primary book normalizer — `normalizeGoogleBook` is only used as a
+ * fallback now for the rare cases where OL hasn't ingested a book yet.
+ *
+ * `external_ids` carries `openlibrary_work_id` as the primary key plus
+ * `isbn_13` as the bridge identifier. Enrichment on the media page
+ * later resolves `google_books_id` from ISBN, which gets us GB's richer
+ * description / page count / ratings cache without cluttering search.
+ *
+ * `description` and `page_count` are intentionally null at search time
+ * — those come from GB on enrichment. The dropdown only needs title,
+ * author, year, cover, which OL already provides.
+ */
+export function normalizeOLBook(doc: OLBookSearchDoc): SearchResult {
+  return {
+    media_type: "book",
+    title: doc.title + (doc.subtitle ? `: ${doc.subtitle}` : ""),
+    description: null,
+    cover_image_url: doc.coverUrl,
+    backdrop_url: null,
+    release_date: doc.firstPublishYear
+      ? `${doc.firstPublishYear}-01-01`
+      : null,
+    metadata: {
+      authors: doc.authors,
+      page_count: null,
+      publisher: null,
+      // OL subjects are the closest analogue to GB categories. We keep
+      // a small slice for downstream filters; the full subject list
+      // lives on the work record after enrichment.
+      categories: doc.subjects.slice(0, 5),
+    },
+    external_ids: {
+      openlibrary_work_id: doc.workKey,
+      ...(doc.isbn13 ? { isbn_13: doc.isbn13 } : {}),
     },
   };
 }

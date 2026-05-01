@@ -14,6 +14,7 @@ import {
   getBookDetails,
   getSeriesName,
 } from "@/lib/api/google-books";
+import type { GoogleBooksVolume } from "@/lib/api/types";
 import {
   findISBNForWork,
   findWorkByISBN,
@@ -381,36 +382,150 @@ async function enrichBookCrossReferences(
  * matching volume — those rare cases fall through to a Google Books
  * title/author search as a last resort.
  */
+/**
+ * Sanity-check that a resolved GB volume actually matches the author we
+ * thought we were resolving. Defends against OL data contamination —
+ * e.g. OL26627585W is "Red Rising" by Renee Joiner but its editions
+ * list contains Pierce Brown's ISBNs, so an ISBN lookup returns Pierce
+ * Brown's volume. Without this check we'd land the user on the wrong
+ * book entirely.
+ *
+ * Loose substring match in either direction so "Pierce Brown" matches
+ * "P. Brown" or "Pierce Brown Jr." and "Christopher Ruocchio" matches
+ * either order. False negatives here are safer than false positives —
+ * if we reject, the upsert falls through to OL-only data.
+ */
+function gbVolumeMatchesAuthor(
+  volume: GoogleBooksVolume,
+  expectedAuthor: string
+): boolean {
+  const expected = expectedAuthor.toLowerCase().trim();
+  if (!expected) return true; // no expectation → pass
+  const actual = volume.volumeInfo.authors ?? [];
+  if (actual.length === 0) return false; // no GB authors → can't verify
+  return actual.some((a) => {
+    const got = a.toLowerCase().trim();
+    return got.includes(expected) || expected.includes(got);
+  });
+}
+
+/**
+ * Detect that a GB volume is a multi-book bundle / boxed set / omnibus.
+ *
+ * OL works often list a bundle's ISBN among their editions, so when we
+ * resolve the work to a GB volume by ISBN, we sometimes land on the
+ * bundle. Adopting its description gives the user a "first three novels
+ * of the series" blurb on what should be a single-book page. Reject
+ * bundles so the resolver falls through to a clean title+author lookup
+ * (or to OL-only data when GB has nothing else).
+ *
+ * Signals checked: bundle markers in title/subtitle, "this bundle..."
+ * descriptions, and obviously over-padded page counts (>1500). Single
+ * fantasy doorstoppers can hit 1000+ pages so we keep the threshold
+ * conservative.
+ */
+function gbVolumeIsBundle(volume: GoogleBooksVolume): boolean {
+  const info = volume.volumeInfo;
+  const text = `${info.title} ${info.subtitle ?? ""}`.toLowerCase();
+  const desc = (info.description ?? "").toLowerCase();
+  if ((info.pageCount ?? 0) > 1500) return true;
+  if (
+    /\b(bundle|boxed?\s*set|omnibus|complete\s+(series|trilogy|saga))\b/.test(
+      text
+    )
+  ) {
+    return true;
+  }
+  if (
+    /^this (bundle|ebundle|discounted|set|collection includes|set includes)/.test(
+      desc
+    )
+  ) {
+    return true;
+  }
+  if (/\b\d+[-\s]?books?\s+(bundle|set|collection|omnibus)\b/.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * A GB volume is a "stub" when GB has the ISBN indexed but doesn't have
+ * the rich metadata — no cover image, no description. Stubs leak in
+ * when an OL ISBN happens to match an under-populated GB record. We
+ * want to fall through to a different resolution path rather than
+ * adopt a stub as the canonical record (which gives the user no cover
+ * and no blurb).
+ */
+function gbVolumeIsStub(volume: GoogleBooksVolume): boolean {
+  const info = volume.volumeInfo;
+  const hasCover = !!info.imageLinks?.thumbnail;
+  const hasDesc = (info.description?.length ?? 0) > 0;
+  return !hasCover && !hasDesc;
+}
+
+/**
+ * Try a GB volume against author + bundle + stub gates. Returns a
+ * normalized SearchResult with the OL work id stamped in, or null when
+ * any gate rejects.
+ */
+function tryAcceptGBVolume(
+  volume: GoogleBooksVolume | null,
+  workId: string,
+  fallbackAuthor: string | undefined
+): SearchResult | null {
+  if (!volume) return null;
+  const matchesAuthor =
+    !fallbackAuthor || gbVolumeMatchesAuthor(volume, fallbackAuthor);
+  if (!matchesAuthor || gbVolumeIsBundle(volume) || gbVolumeIsStub(volume)) {
+    return null;
+  }
+  const sr = normalizeGoogleBook(volume);
+  sr.external_ids = {
+    ...sr.external_ids,
+    openlibrary_work_id: workId,
+  };
+  return sr;
+}
+
 async function resolveOLWorkToBook(
   workId: string,
   fallbackTitle?: string,
-  fallbackAuthor?: string
+  fallbackAuthor?: string,
+  /** ISBN already attached to the search result (from OL search doc).
+      Tried first because it's typically OL's best-guess primary edition,
+      whereas `findISBNForWork` picks the first English edition from the
+      work's editions endpoint, which can differ. */
+  searchResultIsbn?: string
 ): Promise<SearchResult | null> {
-  const isbn = await findISBNForWork(`/works/${workId}`);
-  if (isbn) {
-    const volume = await findVolumeByISBN(isbn);
-    if (volume) {
-      const sr = normalizeGoogleBook(volume);
-      sr.external_ids = {
-        ...sr.external_ids,
-        openlibrary_work_id: workId,
-      };
-      return sr;
-    }
+  // Path 1 — SR's own ISBN. Most likely to point at a real GB volume
+  // because OL's search ranking already picked it as the work's primary
+  // edition.
+  if (searchResultIsbn) {
+    const v = await findVolumeByISBN(searchResultIsbn);
+    const accepted = tryAcceptGBVolume(v, workId, fallbackAuthor);
+    if (accepted) return accepted;
   }
-  // Last-resort: try a title+author canonical-edition search. Better than
-  // nothing for works whose ISBNs aren't indexed by Google Books.
+
+  // Path 2 — the work's editions endpoint. May pick a different ISBN
+  // than the search doc.
+  const editionIsbn = await findISBNForWork(`/works/${workId}`);
+  if (editionIsbn && editionIsbn !== searchResultIsbn) {
+    const v = await findVolumeByISBN(editionIsbn);
+    const accepted = tryAcceptGBVolume(v, workId, fallbackAuthor);
+    if (accepted) return accepted;
+  }
+
+  // Path 3 — title+author canonical edition search. Best when the OL
+  // ISBNs aren't indexed by GB. The strict filters in
+  // findCanonicalBookEdition reject bundles, graphic novels, and
+  // special editions so the actual book wins the ranking.
   if (fallbackTitle && fallbackAuthor) {
-    const volume = await findCanonicalBookEdition(fallbackTitle, fallbackAuthor);
-    if (volume) {
-      const sr = normalizeGoogleBook(volume);
-      sr.external_ids = {
-        ...sr.external_ids,
-        openlibrary_work_id: workId,
-      };
-      return sr;
-    }
+    const v = await findCanonicalBookEdition(fallbackTitle, fallbackAuthor);
+    const accepted = tryAcceptGBVolume(v, workId, fallbackAuthor);
+    if (accepted) return accepted;
   }
+
   return null;
 }
 
@@ -535,6 +650,69 @@ async function enrichBookSeries(
   }
 
   return null;
+}
+
+/**
+ * Find the immediately-following book in a series, given the current
+ * book. Returns null when the current book has no series, no siblings,
+ * or is already the last entry in the series.
+ *
+ * Mirrors the ordering rule used by the media detail page's series
+ * graph: prefer explicit `series_position` when every sibling has one,
+ * otherwise sort by `release_date` (1-based index). That keeps the
+ * "next book" suggestion consistent with what the user sees on the
+ * detail page graph and with the displayed "Book N" label.
+ */
+export async function getNextBookInSeries(
+  currentMediaId: string
+): Promise<{
+  id: string;
+  title: string;
+  cover_image_url: string | null;
+  release_date: string | null;
+} | null> {
+  const supabase = await createClient();
+
+  const { data: current } = await supabase
+    .from("media_items")
+    .select("id, series_id")
+    .eq("id", currentMediaId)
+    .eq("media_type", "book")
+    .maybeSingle();
+  if (!current?.series_id) return null;
+
+  const { data: siblings } = await supabase
+    .from("media_items")
+    .select("id, title, cover_image_url, series_position, release_date")
+    .eq("series_id", current.series_id)
+    .order("series_position", { ascending: true, nullsFirst: false });
+  const rows = (siblings ?? []) as {
+    id: string;
+    title: string;
+    cover_image_url: string | null;
+    series_position: number | null;
+    release_date: string | null;
+  }[];
+  if (rows.length < 2) return null;
+
+  const allHaveExplicit = rows.every((r) => r.series_position != null);
+  const sorted = allHaveExplicit
+    ? [...rows].sort(
+        (a, b) => (a.series_position ?? 0) - (b.series_position ?? 0)
+      )
+    : [...rows].sort((a, b) =>
+        (a.release_date ?? "9999").localeCompare(b.release_date ?? "9999")
+      );
+
+  const idx = sorted.findIndex((b) => b.id === currentMediaId);
+  if (idx < 0 || idx >= sorted.length - 1) return null;
+  const next = sorted[idx + 1];
+  return {
+    id: next.id,
+    title: next.title,
+    cover_image_url: next.cover_image_url,
+    release_date: next.release_date,
+  };
 }
 
 /**
@@ -885,12 +1063,32 @@ export async function upsertMediaItem(
       const authors = (result.metadata as Record<string, unknown> | null)
         ?.authors as string[] | undefined;
       const olWorkId = String(result.external_ids.openlibrary_work_id);
+      const srIsbn = result.external_ids.isbn_13 as string | undefined;
       const resolved = await resolveOLWorkToBook(
         olWorkId,
         result.title,
-        authors?.[0]
+        authors?.[0],
+        srIsbn
       );
-      if (resolved) result = resolved;
+      if (resolved) {
+        // Merge: adopt GB's identifiers + description + page count +
+        // cover (GB's covers are usually the canonical English edition,
+        // which is what we want to show — OL's `cover_i` for a work
+        // sometimes points at a non-English edition like the Spanish
+        // "Amanecer Rojo" cover for Pierce Brown's Red Rising). Keep
+        // the OL search result's title because OL works are
+        // edition-agnostic and have cleaner titles than GB's per-
+        // edition records ("Red Rising" vs "Red Rising: A Novel").
+        // After the first click the row is stored, and subsequent
+        // searches surface the stored GB cover via
+        // applyStoredCoverOverrides — consistent for the rest of the
+        // session.
+        result = {
+          ...resolved,
+          title: result.title,
+          release_date: result.release_date ?? resolved.release_date,
+        };
+      }
       // If we couldn't resolve, the row will still upsert with OL-only
       // identifiers — better than nothing.
     }

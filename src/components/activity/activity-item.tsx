@@ -14,6 +14,8 @@ import {
   RefreshCw,
   NotebookPen,
   Share2,
+  ListPlus,
+  List as ListIcon,
 } from "lucide-react";
 import type { ActivityWithMedia, MediaType } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
@@ -169,6 +171,9 @@ function ActivityIcon({ activity }: { activity: ActivityWithMedia }) {
   if (type === "status_changed")
     return <RefreshCw size={13} className={cls} />;
   if (type === "recommended") return <Share2 size={13} className={cls} />;
+  if (type === "created_list") return <ListPlus size={13} className={cls} />;
+  if (type === "liked_list") return <Heart size={13} className={cls} />;
+  if (type === "saved_list") return <Bookmark size={13} className={cls} />;
 
   return null;
 }
@@ -497,11 +502,65 @@ export default function ActivityItem({
     }
     case "recommended": {
       // The activity row stores `media_id = recommended_media_id` (the
-      // target — what gets clicked through to). The source is in
-      // metadata.source_media_id but we don't hydrate its title at the
-      // feed level to avoid an N+1 join, so the message stays
-      // single-sided. Followers click through to see the pairing.
-      message = <>Intertaind {TitleLink} as a pairing</>;
+      // target — what gets clicked through to). When the writer
+      // captured the source title in metadata, render the full pair
+      // ("for fans of {source}") — otherwise stay single-sided so old
+      // rows don't get a broken message.
+      const sourceTitle =
+        typeof meta.source_title === "string"
+          ? (meta.source_title as string)
+          : null;
+      const sourceMediaId =
+        typeof meta.source_media_id === "string"
+          ? (meta.source_media_id as string)
+          : null;
+      if (sourceTitle && sourceMediaId) {
+        message = (
+          <>
+            Intertaind {TitleLink} for fans of{" "}
+            <Link
+              href={`/media/${sourceMediaId}`}
+              className="font-medium text-text-primary transition-colors hover:text-brand"
+            >
+              {sourceTitle}
+            </Link>
+          </>
+        );
+      } else {
+        message = <>Intertaind {TitleLink} as a pairing</>;
+      }
+      break;
+    }
+    case "created_list":
+    case "liked_list":
+    case "saved_list": {
+      const listId =
+        typeof meta.list_id === "string" ? (meta.list_id as string) : null;
+      const listTitle =
+        typeof meta.title === "string"
+          ? (meta.title as string)
+          : "an untitled list";
+      const ListLink = listId ? (
+        <Link
+          href={`/lists/${listId}`}
+          className="font-medium text-text-primary transition-colors hover:text-brand"
+        >
+          {listTitle}
+        </Link>
+      ) : (
+        <span className="font-medium text-text-primary">{listTitle}</span>
+      );
+      const verb =
+        activity.activity_type === "created_list"
+          ? "Created the list"
+          : activity.activity_type === "liked_list"
+            ? "Liked the list"
+            : "Saved the list";
+      message = (
+        <>
+          {verb} {ListLink}
+        </>
+      );
       break;
     }
   }

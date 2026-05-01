@@ -45,6 +45,10 @@ export default function InlineMediaPicker({
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cancel in-flight fetches when a new keystroke fires a new search.
+  // Prevents the slow "red" response from arriving after "red rising"
+  // and overwriting the right results with stale ones.
+  const abortRef = useRef<AbortController | null>(null);
 
   // Resolve the prop's many shapes down to a stable types-or-all
   // signal. Empty arrays and the literal "all" both mean unrestricted;
@@ -64,17 +68,26 @@ export default function InlineMediaPicker({
         setResults([]);
         return;
       }
+      // Cancel any in-flight request before starting a new one, then
+      // remember the new controller so the response handler can verify
+      // it's still the latest before applying results.
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       setLoading(true);
       try {
         let merged: SearchResult[];
         if (types === "all") {
           const res = await fetch(
-            `/api/search?q=${encodeURIComponent(q)}&type=all`
+            `/api/search?q=${encodeURIComponent(q)}&type=all`,
+            { signal: controller.signal }
           );
           merged = res.ok ? ((await res.json()) as SearchResult[]) : [];
         } else if (types.length === 1) {
           const res = await fetch(
-            `/api/search?q=${encodeURIComponent(q)}&type=${types[0]}`
+            `/api/search?q=${encodeURIComponent(q)}&type=${types[0]}`,
+            { signal: controller.signal }
           );
           merged = res.ok ? ((await res.json()) as SearchResult[]) : [];
         } else {
@@ -84,7 +97,9 @@ export default function InlineMediaPicker({
           // before any book.
           const responses = await Promise.all(
             types.map((t) =>
-              fetch(`/api/search?q=${encodeURIComponent(q)}&type=${t}`).then(
+              fetch(`/api/search?q=${encodeURIComponent(q)}&type=${t}`, {
+                signal: controller.signal,
+              }).then(
                 async (r) => (r.ok ? ((await r.json()) as SearchResult[]) : [])
               )
             )
@@ -97,11 +112,15 @@ export default function InlineMediaPicker({
             }
           }
         }
-        setResults(merged);
+        if (abortRef.current === controller) {
+          setResults(merged);
+        }
       } catch {
-        // silent — empty results is the right UX
+        // AbortError is the expected cancel path — silently swallow.
       } finally {
-        setLoading(false);
+        if (abortRef.current === controller) {
+          setLoading(false);
+        }
       }
     },
     // typesKey collapses the array into a stable string so the callback

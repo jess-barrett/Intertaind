@@ -8,11 +8,17 @@ import {
   looksLikeUKEdition,
   findVolumeByTitleAndAuthor,
 } from "@/lib/api/google-books";
+import {
+  findCanonicalBookByTitleAuthor,
+  searchOLBooks,
+  type OLBookSearchDoc,
+} from "@/lib/api/openlibrary";
 import { searchGames } from "@/lib/api/igdb";
 import {
   normalizeTMDBMovie,
   normalizeTMDBTV,
   normalizeGoogleBook,
+  normalizeOLBook,
   normalizeIGDBGame,
 } from "@/lib/api/normalize";
 import { createClient } from "@/lib/supabase/server";
@@ -179,6 +185,52 @@ function bookEditionScore(b: GoogleBooksVolume, position: number): number {
 }
 
 /**
+ * Detect a "reissue / tie-in / anniversary" edition — a book whose GB
+ * title or subtitle has been rewritten to market a movie/TV adaptation
+ * or a special release. These editions outrank originals in Google
+ * Books because they're recent, but the user wants the iconic first-
+ * edition cover. When this returns true, the searcher swaps in OL's
+ * canonical record (cover + clean title + original publish year) for
+ * the result.
+ */
+const REISSUE_TITLE_PATTERNS = [
+  /\b(movie|tv|film)[\s-]*tie[\s-]*in\b/i,
+  /\b(\d+(?:st|nd|rd|th)|tenth|twentieth|twenty[\s-]*fifth|fiftieth)\s+anniversary\b/i,
+  /\banniversary\s+edition\b/i,
+  /\b(deluxe|limited|special|lettered|artist|illustrated|leather[\s-]*bound|collector'?s?)\s+edition\b/i,
+];
+const REISSUE_SUBTITLE_PATTERNS = [
+  /\bnow\s+(?:on|a|streaming)\b/i,
+  /\b(?:apple\s+tv\+?|netflix|amazon|prime\s+video|hbo\s+max|disney\+|hulu|peacock|paramount\+)\b/i,
+  /\bsoon\s+to\s+be\s+a\b/i,
+  /\bnow\s+a\s+(?:major|netflix|amazon|hbo|apple|disney|hulu)\b/i,
+];
+function looksLikeReissue(title: string, subtitle: string): boolean {
+  return (
+    REISSUE_TITLE_PATTERNS.some((p) => p.test(title)) ||
+    REISSUE_SUBTITLE_PATTERNS.some((p) => p.test(subtitle))
+  );
+}
+
+/**
+ * Strip parentheticals and subtitle from a GB title so OL's title-match
+ * search sees the underlying canonical title.
+ *   "Dark Matter (Movie Tie-In)"           → "Dark Matter"
+ *   "Dark Matter (Movie Tie-In): A Novel"  → "Dark Matter"
+ *   "Dune: Book One"                       → "Dune"
+ * OL's `/search.json?title=` does substring-ish matching against the
+ * work title, so passing "(Movie Tie-In)" as part of the title yields
+ * zero matches even when the work is in OL.
+ */
+function cleanBookTitleForCanonicalLookup(title: string): string {
+  return title
+    .replace(/\([^)]*\)/g, "")
+    .replace(/:\s*.*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Detect foreign-language titles when Google Books doesn't set `language`.
  * Checks for common non-English article/preposition words that wouldn't
  * naturally appear in an English book title.
@@ -305,6 +357,316 @@ const searchers: Record<MediaType, SearchFn> = {
       titlePart = byMatch[1].trim();
       authorPart = byMatch[2].trim();
     }
+
+    // ============================================================
+    // OPENLIBRARY PRIMARY — work-centric search.
+    // OL returns one row per WORK (not per edition), which dodges
+    // the "Movie Tie-In > Slipcase Edition > Anniversary Edition >
+    // German edition" pollution that Google Books returns. Quality
+    // signals (ratings_count + want_to_read_count + edition_count)
+    // play the same role TMDB's `vote_count` plays for movies.
+    // ============================================================
+    // Use the structured `title=` param even when no author was parsed.
+    // OL's `q=` keyword search does broad full-text matching across
+    // every field (title, subjects, descriptions, even author bios), so
+    // a partial query like "empire of si" returns Tale of Two Cities,
+    // Picture of Dorian Gray, etc. — anything with "empire" or "si"
+    // substring matches anywhere on the work record. `title=` confines
+    // matching to the title field where prefix/substring matching gives
+    // tight, predictable results regardless of query length.
+    const olDocs = await searchOLBooks(
+      authorPart
+        ? { title: titlePart, author: authorPart, limit: 30 }
+        : { title: q, limit: 30 }
+    );
+
+    console.log(`\n[BOOK SEARCH] Query: "${q}"`);
+    if (authorPart) {
+      console.log(
+        `[BOOK SEARCH] Parsed title="${titlePart}", author="${authorPart}"`
+      );
+    }
+    console.log(`[BOOK SEARCH] OpenLibrary returned ${olDocs.length} works:`);
+    olDocs.forEach((d, i) => {
+      console.log(
+        `  ${i + 1}. "${d.title}"${d.subtitle ? ` : "${d.subtitle}"` : ""} ` +
+          `| key: ${d.workKey} ` +
+          `| authors: ${JSON.stringify(d.authors)} ` +
+          `| year: ${d.firstPublishYear ?? "?"} ` +
+          `| editions: ${d.editionCount} ` +
+          `| ratings: ${d.ratingsCount} ` +
+          `| want_to_read: ${d.wantToReadCount} ` +
+          `| cover: ${d.coverUrl ? "yes" : "NO"} ` +
+          `| langs: ${JSON.stringify(d.languages)} ` +
+          `| subjects: ${JSON.stringify(d.subjects.slice(0, 5))}`
+      );
+    });
+
+    // OL has cataloging duplicates — the same book sometimes appears
+    // under multiple work IDs from data-entry mistakes, edition splits,
+    // eBook variants, etc. Collapse these by (normalized_title, first
+    // author) before the quality filter so a low-signal duplicate
+    // doesn't pollute results when its better-data sibling would have
+    // qualified. Pick the winner by has-cover, edition_count, ratings,
+    // then earliest publish year.
+    //
+    // Two known cases this handles cleanly:
+    //   - "Empire of Silence" by Christopher Ruocchio appears as
+    //     OL19751555W (2018, 7 editions) AND OL20141524W (2019, 1
+    //     edition, dup) AND OL35706082W (eBook variant) — same first
+    //     author across all three, so they collapse correctly.
+    //   - "Red Rising" by Pierce Brown (OL17076473W) and "Red Rising"
+    //     by Renee Joiner (OL26627585W) are *genuinely different
+    //     books* even though Joiner's OL entry incorrectly lists Pierce
+    //     Brown as a co-author and inherits Brown's cover (an OL data
+    //     bug). Different first authors → different dedup keys → both
+    //     show. Joiner's wrong cover is OL's fault, not something we
+    //     can fix without per-work edition lookups; the user can
+    //     override via the custom cover feature.
+    const olDedupKey = (d: OLBookSearchDoc): string => {
+      const title = d.title
+        .toLowerCase()
+        .replace(/\([^)]*\)/g, "") // drop edition parentheticals (eBook, Deluxe Hardcover, etc.)
+        .replace(/^the\s+/i, "")
+        .replace(/[^a-z0-9 ]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const author = (d.authors[0] ?? "").toLowerCase().trim();
+      return `${title}|${author}`;
+    };
+    const olDedupScore = (d: OLBookSearchDoc): number =>
+      (d.coverUrl ? 100_000 : 0) +
+      d.ratingsCount * 100 +
+      d.wantToReadCount * 10 +
+      d.editionCount * 50 +
+      (d.firstPublishYear ? Math.max(0, 3000 - d.firstPublishYear) * 0.1 : 0);
+    const olGroups: Record<string, OLBookSearchDoc[]> = {};
+    const olWinners = new Map<string, OLBookSearchDoc>();
+    for (const d of olDocs) {
+      const key = olDedupKey(d);
+      (olGroups[key] ??= []).push(d);
+      const existing = olWinners.get(key);
+      if (!existing || olDedupScore(d) > olDedupScore(existing)) {
+        olWinners.set(key, d);
+      }
+    }
+    const olDeduped = Array.from(olWinners.values());
+    console.log(`[BOOK SEARCH] OL dedup groups:`);
+    for (const [key, docs] of Object.entries(olGroups)) {
+      if (docs.length === 1) continue; // only log groups with collapses
+      console.log(`  group "${key}" (${docs.length} works):`);
+      docs.forEach((d) => {
+        const chosen = olWinners.get(key) === d ? " [WINNER]" : "";
+        console.log(
+          `    - ${d.workKey} (${d.firstPublishYear}) editions:${d.editionCount} ratings:${d.ratingsCount} want_to_read:${d.wantToReadCount} cover:${d.coverUrl ? "y" : "n"} dedup-score:${olDedupScore(d).toFixed(1)}${chosen}`
+        );
+      });
+    }
+    console.log(
+      `[BOOK SEARCH] After OL dedup: ${olDeduped.length} unique works (from ${olDocs.length})`
+    );
+
+    // Cover contamination: when two OL works share the SAME cover URL
+    // but have different first authors, the cover was inherited by the
+    // lower-popularity work from the bestseller it got mis-cataloged
+    // with. The bestseller keeps the cover; the others get nulled. The
+    // quality filter below has a contamination-victim escape hatch so
+    // these books still show up, just without a (wrong) cover.
+    const coverAuthors = new Map<string, Set<string>>();
+    for (const d of olDeduped) {
+      if (!d.coverUrl) continue;
+      const set = coverAuthors.get(d.coverUrl) ?? new Set<string>();
+      set.add((d.authors[0] ?? "").toLowerCase().trim());
+      coverAuthors.set(d.coverUrl, set);
+    }
+    const contaminationVictims = new Set<string>();
+    for (const d of olDeduped) {
+      if (!d.coverUrl) continue;
+      const authors = coverAuthors.get(d.coverUrl);
+      if (!authors || authors.size <= 1) continue;
+      const contestants = olDeduped.filter((o) => o.coverUrl === d.coverUrl);
+      contestants.sort((a, b) => {
+        const aScore = a.ratingsCount + a.wantToReadCount * 0.5 + a.editionCount * 5;
+        const bScore = b.ratingsCount + b.wantToReadCount * 0.5 + b.editionCount * 5;
+        return bScore - aScore;
+      });
+      if (contestants[0].workKey === d.workKey) continue;
+      console.log(
+        `[BOOK SEARCH] Suppressing contaminated cover on ${d.workKey} ("${d.title}" by ${d.authors[0] ?? "?"}) — inherited from ${contestants[0].workKey} ("${contestants[0].title}" by ${contestants[0].authors[0] ?? "?"})`
+      );
+      d.coverUrl = null;
+      contaminationVictims.add(d.workKey);
+    }
+
+    // OL quality filter — drop graphic novels, foreign editions,
+    // low-signal stubs, and any title that smells like a bundle or
+    // anniversary edition. OL is work-centric so most edition
+    // pollution is already collapsed, but the long tail still has
+    // catalog noise that needs filtering.
+    const olFilterReasons: Record<string, string> = {};
+    const olQuality = olDeduped.filter((d) => {
+      const label = `"${d.title}" by ${d.authors[0] ?? "(no author)"}`;
+
+      // Contamination victims (cover was suppressed because it was
+      // inherited from another work with the same URL) still pass — we
+      // want the book to show up even if we can't trust its cover.
+      if (!d.coverUrl && !contaminationVictims.has(d.workKey)) {
+        olFilterReasons[label] = "no cover";
+        return false;
+      }
+      if (d.authors.length === 0) {
+        olFilterReasons[label] = "no authors";
+        return false;
+      }
+
+      // English-only when language tag present. Some OL works have no
+      // language at all; we don't drop those — looksForeign below
+      // catches obvious non-English titles regardless.
+      if (d.languages.length > 0 && !d.languages.includes("eng")) {
+        olFilterReasons[label] = `language: ${d.languages.join(",")}`;
+        return false;
+      }
+
+      // Graphic novels — keep them out of regular novel searches.
+      // OL flags via `subject`; check both exact and substring matches
+      // since OL subject phrasing varies.
+      const subjLower = d.subjects.map((s) => s.toLowerCase());
+      if (
+        subjLower.some(
+          (s) =>
+            s === "graphic novels" ||
+            s === "comics & graphic novels" ||
+            s === "comic books, strips, etc" ||
+            s === "comics" ||
+            s === "manga" ||
+            s.includes("graphic novel")
+        )
+      ) {
+        olFilterReasons[label] = "graphic novel subject";
+        return false;
+      }
+
+      // Low-signal: no ratings, tiny edition count, no want-to-read
+      // shelvings. Almost certainly a bibliographic stub or
+      // self-published noise.
+      if (
+        d.ratingsCount < 2 &&
+        d.editionCount < 3 &&
+        d.wantToReadCount < 5
+      ) {
+        olFilterReasons[label] = "low signal (no ratings, few editions, few shelvings)";
+        return false;
+      }
+
+      // Heuristic foreign-language detection for missing language tags.
+      if (looksForeign(d.title, d.subtitle ?? "")) {
+        olFilterReasons[label] = "title looks non-English";
+        return false;
+      }
+
+      const lowerTitle = d.title.toLowerCase();
+      const lowerSub = (d.subtitle ?? "").toLowerCase();
+
+      // Edition / tie-in junk in the work title (rare on OL but possible).
+      const editionPatterns = [
+        /\bcollector'?s?\s+edition\b/,
+        /\banniversary\s+edition\b/,
+        /\b(limited|deluxe|special|leather[\s-]*bound|illustrated)\s+edition\b/,
+        /\b(tenth|10th|20th|25th|50th)\s+.*edition\b/,
+        /\bboxed?\s*set\b/,
+        // `books?` (plural allowed) catches "5 Books Set" titles —
+        // singular-only previously let "The Red Rising Series Collection
+        // 5 Books Set" leak through.
+        /\b\d+[-\s]?books?\s+(bundle|set|collection|omnibus)\b/,
+        /\btrilogy\s+(bundle|boxed?\s*set|collection|omnibus|complete)\b/,
+        // The series-or-saga pattern that the GB filter already had —
+        // restored to OL because the same junk format ("Red Rising
+        // Series Collection") shows up on OL too.
+        /\b(series|saga)\s+(bundle|boxed?\s*set|collection|omnibus)\b/,
+        /\bcomplete\s+(series|set|collection|trilogy|saga)\b/,
+        /\bomnibus\b/,
+        /\bslipcase\b/,
+        /\bbundle\b/,
+        /\b(movie|tv|film)[\s-]*tie[\s-]*in\b/,
+      ];
+      const matchedEdition = editionPatterns.find(
+        (p) => p.test(lowerTitle) || p.test(lowerSub)
+      );
+      if (matchedEdition) {
+        olFilterReasons[label] = `edition pattern: ${matchedEdition}`;
+        return false;
+      }
+
+      // Split-volume editions (Way of Kings Part Two, Volume 1, etc).
+      const splitVolumePatterns = [
+        /\bpart\s+(one|two|three|four|five|1|2|3|4|5)\b/i,
+        /\bvolume\s+\d+\b/i,
+        /\bvol\.?\s+\d+\b/i,
+      ];
+      const matchedSplit = splitVolumePatterns.find(
+        (p) => p.test(d.title) || p.test(d.subtitle ?? "")
+      );
+      if (matchedSplit) {
+        olFilterReasons[label] = `split volume: ${matchedSplit}`;
+        return false;
+      }
+
+      return true;
+    });
+
+    console.log(
+      `[BOOK SEARCH] After OL quality filter: ${olQuality.length} works`
+    );
+    for (const [label, reason] of Object.entries(olFilterReasons)) {
+      console.log(`  X ${label} → ${reason}`);
+    }
+
+    // Rank by relevance + popularity proxy. Popularity = ratings_count
+    // + want_to_read_count*0.5 + edition_count*5 — same role as TMDB's
+    // vote_count: a work that's been rated, shelved, and reissued many
+    // times is the canonical entry users want.
+    const olRanked = rankRaw<OLBookSearchDoc>(olQuality, titlePart, {
+      getTitle: (d) => d.title + (d.subtitle ? `: ${d.subtitle}` : ""),
+      getPopularity: (d) =>
+        d.ratingsCount +
+        Math.floor(d.wantToReadCount * 0.5) +
+        d.editionCount * 5,
+      hasCover: (d) => !!d.coverUrl,
+      substringPopularityFloor: 0,
+      getYear: (d) => d.firstPublishYear ?? 0,
+    });
+
+    console.log(
+      `[BOOK SEARCH] OL ranked output (${olRanked.length} items):`
+    );
+    olRanked.forEach(({ item: d, score }, i) => {
+      console.log(
+        `  ${i + 1}. "${d.title}" by ${d.authors[0] ?? "(no author)"} (${d.firstPublishYear}) ` +
+          `ratings:${d.ratingsCount} editions:${d.editionCount} score:${score.toFixed(1)}`
+      );
+    });
+
+    // Only fall back to GB when OL has nothing. A query with one
+    // legitimate hit (e.g. "empire of silence" → just the Ruocchio
+    // book) should NOT bounce to GB just because the count is low —
+    // GB's ranking would surface its noisy edition variants and the
+    // user would lose the canonical OL pick.
+    if (olRanked.length >= 1) {
+      console.log(`[BOOK SEARCH] ==================\n`);
+      return olRanked.map(({ item, score }) => ({
+        result: normalizeOLBook(item),
+        score,
+      }));
+    }
+
+    console.log(
+      `[BOOK SEARCH] OL returned 0 quality results — falling back to Google Books`
+    );
+
+    // ============================================================
+    // GOOGLE BOOKS FALLBACK — only runs when OL has thin coverage,
+    // typically for newly-released books OL hasn't ingested yet.
+    // ============================================================
 
     // Always use intitle: so Google restricts to title matches.
     // Without it, bare queries like "Malice" get swamped by legal journals
@@ -460,7 +822,12 @@ const searchers: Record<MediaType, SearchFn> = {
         // when the word pairs with bundle indicators).
         /\b\d+[-\s]?book\s+(bundle|set|collection|omnibus)\b/,
         /\btrilogy\s+(bundle|boxed?\s*set|collection|omnibus|complete)\b/,
-        /\b(series|saga)\s+(bundle|boxed?\s*set|collection|omnibus|books?\s+\d+)\b/,
+        // NB: dropped the `books?\s+\d+` arm from the series/saga
+        // alternation — it incorrectly matched "Red Rising series book 1"
+        // (a SINGLE-book series-position annotation) as a bundle. The
+        // actual bundle catcher is the dedicated `books? \d+ to/through/-
+        // \d+` line below, which only fires on real range expressions.
+        /\b(series|saga)\s+(bundle|boxed?\s*set|collection|omnibus)\b/,
         /\bbooks?\s+\d+\s+(and|&|to|through|-)\s+\d+\b/,
         /\bcomplete\s+(series|set|collection|trilogy|saga)\b/,
         /\bomnibus\b/,
@@ -661,7 +1028,55 @@ const searchers: Record<MediaType, SearchFn> = {
     });
     console.log(`[BOOK SEARCH] ==================\n`);
 
-    return ranked.map(({ item, score }) => ({ result: normalizeGoogleBook(item), score }));
+    // Canonical resolver — when GB's winner is a reissue / movie tie-in,
+    // swap in OL's first-edition cover + clean title + original publish
+    // year. We keep the GB id so downstream metadata (description, page
+    // count, ratings) still flows through GB; only the user-visible
+    // cover/title/date get overridden. Done after normalize so OL's URL
+    // doesn't go through bookCoverUrl's GB-specific transforms.
+    const normalized = await Promise.all(
+      ranked.map(async ({ item, score }) => {
+        const result = normalizeGoogleBook(item);
+        const info = item.volumeInfo;
+        const isReissue = looksLikeReissue(info.title, info.subtitle ?? "");
+        if (!isReissue) return { result, score };
+        const author = info.authors?.[0];
+        if (!author) return { result, score };
+
+        // Prefer the user's parsed title (clean) when they used "Title by
+        // Author" syntax — falls back to scrubbing the GB title for
+        // bare-title searches.
+        const lookupTitle = authorPart
+          ? titlePart
+          : cleanBookTitleForCanonicalLookup(info.title);
+        const canonical = await findCanonicalBookByTitleAuthor(
+          lookupTitle,
+          author
+        );
+        if (!canonical) {
+          console.log(
+            `[CANONICAL SWAP] No OL canonical for "${info.title}" → looked up "${lookupTitle}" by ${author} — keeping GB record as-is`
+          );
+          return { result, score };
+        }
+        console.log(
+          `[CANONICAL SWAP] "${info.title}" → "${canonical.title}" (${canonical.firstPublishYear}); cover ${result.cover_image_url} → ${canonical.coverUrl}`
+        );
+        return {
+          result: {
+            ...result,
+            title: canonical.title,
+            cover_image_url: canonical.coverUrl ?? result.cover_image_url,
+            release_date: canonical.firstPublishYear
+              ? `${canonical.firstPublishYear}-01-01`
+              : result.release_date,
+          },
+          score,
+        };
+      })
+    );
+
+    return normalized;
   },
 
   video_game: async (q) => {

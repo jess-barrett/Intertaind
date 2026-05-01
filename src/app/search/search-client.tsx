@@ -27,6 +27,9 @@ export default function SearchClient({
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+  // Cancel in-flight searches when a new keystroke fires a new request,
+  // so a slow earlier response can't overwrite the latest results.
+  const abortRef = useRef<AbortController | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -37,6 +40,10 @@ export default function SearchClient({
         setSearched(false);
         return;
       }
+
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
       setLoading(true);
       setSearched(true);
@@ -49,16 +56,21 @@ export default function SearchClient({
 
       try {
         const res = await fetch(
-          `/api/search?q=${encodeURIComponent(q)}&type=${t}`
+          `/api/search?q=${encodeURIComponent(q)}&type=${t}`,
+          { signal: controller.signal }
         );
         if (res.ok) {
           const data = await res.json();
-          setResults(data);
+          if (abortRef.current === controller) {
+            setResults(data);
+          }
         }
       } catch {
-        // Silently handle — results stay empty
+        // AbortError on cancel — silent
       } finally {
-        setLoading(false);
+        if (abortRef.current === controller) {
+          setLoading(false);
+        }
       }
     },
     [router]

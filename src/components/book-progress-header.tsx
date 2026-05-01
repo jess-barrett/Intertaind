@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { trackMedia, updateBookPage } from "@/app/actions/media";
+import { trackMedia, updateBookPage, getNextBookInSeries } from "@/app/actions/media";
 
 function daysBetween(startIso: string | null): number | null {
   if (!startIso) return null;
@@ -12,6 +13,12 @@ function daysBetween(startIso: string | null): number | null {
   const diffMs = Date.now() - start.getTime();
   return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
 }
+
+type NextBook = {
+  id: string;
+  title: string;
+  cover_image_url: string | null;
+};
 
 export default function BookProgressHeader({
   userMediaId,
@@ -33,6 +40,10 @@ export default function BookProgressHeader({
   const [page, setPage] = useState<number>(currentPage);
   const [isPending, startTransition] = useTransition();
   const [celebrate, setCelebrate] = useState(false);
+  // Two-stage popup state. After "Move to Read" succeeds, if the book is
+  // in a series and there's a sibling after it, swap the popup contents
+  // to a "Read next?" prompt instead of closing immediately.
+  const [nextBook, setNextBook] = useState<NextBook | null>(null);
   const [popupPos, setPopupPos] = useState<{
     left: number;
     top: number;
@@ -61,10 +72,18 @@ export default function BookProgressHeader({
   function closeCelebration() {
     setCelebrate(false);
     setPopupPos(null);
+    setNextBook(null);
     router.refresh();
   }
 
   function commit() {
+    // Guard: bail if there's no real change AND if a save is already
+    // in flight. The pending check matters because `disabled={isPending}`
+    // toggles during a transition and can steal focus, firing a
+    // second onBlur → another commit() → another updateBookPage. The
+    // server action auto-revalidates the route, so an in-flight
+    // revalidation already covers any pending state.
+    if (isPending) return;
     if (page === currentPage) return;
     // Save whatever the user typed. If they over-shoot (typo), they'll
     // see e.g. "301 / 300" and correct it — we intentionally don't
@@ -75,9 +94,11 @@ export default function BookProgressHeader({
         await updateBookPage(userMediaId, nextPage);
         if (totalPages && nextPage === totalPages) {
           openCelebration();
-        } else {
-          router.refresh();
         }
+        // No explicit router.refresh() — `updateBookPage` is a Next
+        // server action which already revalidates the calling route.
+        // Adding an explicit refresh here would stack a second RSC
+        // fetch on top of the implicit one (×2 in dev StrictMode).
       } catch (err) {
         console.error(err);
       }
@@ -90,9 +111,28 @@ export default function BookProgressHeader({
         await trackMedia(mediaId, "completed", {
           completed_at: new Date().toISOString(),
         });
-        setCelebrate(false);
-        setPopupPos(null);
-        router.refresh();
+        // Look for a next-in-series sibling. If found, keep the popup
+        // open and switch its contents to a "Read next?" prompt rather
+        // than closing immediately. This lets the user roll straight
+        // into the next book without backing out and searching for it.
+        //
+        // CRITICAL: don't call router.refresh() here. trackMedia just
+        // moved the row from `in_progress` to `completed`, so refreshing
+        // would unmount this BookProgressHeader (the book is no longer
+        // on the Reading tab) and the popup would vanish before the
+        // user could see it. The `closeCelebration` handler refreshes
+        // when the popup is dismissed — by then the user has either
+        // navigated to the next book or chosen "Maybe later".
+        const next = await getNextBookInSeries(mediaId);
+        if (next) {
+          setNextBook(next);
+        } else {
+          // No follow-up book — close immediately. The server action
+          // already revalidated the route, so the list will update on
+          // its own without an explicit refresh.
+          setCelebrate(false);
+          setPopupPos(null);
+        }
       } catch (err) {
         console.error(err);
       }
@@ -190,18 +230,53 @@ export default function BookProgressHeader({
             }}
             className="z-50 w-72 rounded-sm border border-surface-border bg-surface-raised p-4 shadow-2xl shadow-black/60"
           >
-            <p className="mb-3 text-center text-sm text-text-secondary">
-              Congrats! You finished{" "}
-              <span className="font-medium text-text-primary">{title}</span>
-              {daysText ? ` ${daysText}` : ""}.
-            </p>
-            <button
-              onClick={handleMoveToRead}
-              disabled={isPending}
-              className="w-full rounded-sm bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50"
-            >
-              Move to Read
-            </button>
+            {nextBook ? (
+              <>
+                <p className="mb-3 text-center text-sm text-text-secondary">
+                  Next in the series:
+                </p>
+                <Link
+                  href={`/media/${nextBook.id}`}
+                  onClick={closeCelebration}
+                  className="flex items-center gap-3 rounded-sm border border-surface-border bg-surface-overlay p-2 transition-colors hover:border-brand"
+                >
+                  <div className="h-16 w-12 shrink-0 overflow-hidden rounded-sm bg-surface-raised">
+                    {nextBook.cover_image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={nextBook.cover_image_url}
+                        alt={nextBook.title}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : null}
+                  </div>
+                  <span className="line-clamp-3 text-sm font-medium text-text-primary">
+                    {nextBook.title.split(":")[0].trim()}
+                  </span>
+                </Link>
+                <button
+                  onClick={closeCelebration}
+                  className="mt-3 w-full rounded-sm border border-surface-border px-5 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                >
+                  Maybe later
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="mb-3 text-center text-sm text-text-secondary">
+                  Congrats! You finished{" "}
+                  <span className="font-medium text-text-primary">{title}</span>
+                  {daysText ? ` ${daysText}` : ""}.
+                </p>
+                <button
+                  onClick={handleMoveToRead}
+                  disabled={isPending}
+                  className="w-full rounded-sm bg-brand px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50"
+                >
+                  Move to Read
+                </button>
+              </>
+            )}
           </div>,
           document.body
         )}

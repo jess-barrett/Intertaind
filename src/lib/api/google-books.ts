@@ -210,7 +210,7 @@ export async function findCanonicalBookEdition(
     if (!hasISBN) return false;
 
     // Reject special/bundled editions — we want the canonical mass-market
-    // edition, not collector's/illustrated/boxed sets.
+    // edition, not collector's/illustrated/boxed sets/3-book bundles.
     const text = `${info.title} ${info.subtitle ?? ""}`.toLowerCase();
     const specialEdition =
       /\bcollector'?s?\s+edition\b/.test(text) ||
@@ -220,8 +220,27 @@ export async function findCanonicalBookEdition(
       /\bboxed?\s*set\b/.test(text) ||
       /\btrilogy\b/.test(text) ||
       /\bomnibus\b/.test(text) ||
-      /\bslipcase\b/.test(text);
+      /\bslipcase\b/.test(text) ||
+      /\bbundle\b/.test(text) ||
+      /\b\d+[-\s]?books?\s+(bundle|set|collection|omnibus)\b/.test(text) ||
+      /\b(series|saga)\s+(bundle|boxed?\s*set|collection|omnibus)\b/.test(text);
     if (specialEdition) return false;
+
+    // Bundles often slip through with descriptive titles — catch the
+    // page count tell. Single fantasy doorstoppers can hit ~1000 pages
+    // (Stormlight Archive); 1500+ is reliably a bundle.
+    if ((info.pageCount ?? 0) > 1500) return false;
+
+    // Reject graphic-novel adaptations of the same title. They share the
+    // book's title (e.g. "Pierce Brown's Red Rising: Sons of Ares") so
+    // text patterns alone can't tell them apart from the novel — the
+    // category tag is the reliable signal.
+    const cats = info.categories ?? [];
+    if (
+      cats.some((c) => /\b(comics|graphic\s+novels|manga)\b/i.test(c))
+    ) {
+      return false;
+    }
 
     return true;
   });
@@ -243,10 +262,12 @@ export async function findCanonicalBookEdition(
         ? -200
         : 0;
     const positionBonus = Math.max(0, 200 - i * 10);
-    // Prefer editions with a preview — strong correlation with a real cover
-    // image. Don't filter NO_PAGES outright (some legit paperbacks lack
-    // preview), but heavily penalize so previewed editions win when present.
-    const previewBonus = b.accessInfo?.viewability === "NO_PAGES" ? -150 : 50;
+    // Prefer editions with a preview — small correlation with a real
+    // cover image. Don't penalize NO_PAGES heavily: the canonical
+    // hardcover/paperback edition often has NO_PAGES viewability while
+    // a marketing reissue or movie tie-in has PARTIAL preview enabled.
+    // Description and ratings are stronger quality signals.
+    const previewBonus = b.accessInfo?.viewability === "NO_PAGES" ? -20 : 30;
     return {
       volume: b,
       score: ratings * 10 + positionBonus + descBonus + previewBonus,
