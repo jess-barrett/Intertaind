@@ -4,13 +4,16 @@ import { createClient } from "@/lib/supabase/server";
 import { BookOpen, BookOpenCheck, Film, Tv, TvMinimalPlay, Gamepad2, Eye, Heart, List, CalendarClock } from "lucide-react";
 import type { MediaItem, MediaType, UserMedia } from "@/lib/types";
 import { MEDIA_TYPE_CONFIG } from "@/lib/types";
-import { tmdbImageUrl } from "@/lib/api/tmdb";
+import { tmdbImageUrl, getTVSeason } from "@/lib/api/tmdb";
 import MediaDetailClient from "./media-detail-client";
 import { MediaCastSection } from "@/components/media/media-info-sections";
 import MediaInfoTabs from "@/components/media/media-info-tabs";
 import AboutTheAuthor from "@/components/media/about-the-author";
 import RatingsHistogram from "@/components/media/ratings-histogram";
 import SeriesGraph from "@/components/media/series-graph";
+import SeasonRatingsGraph, {
+  type SeasonRatingsSeason,
+} from "@/components/media/season-ratings-graph";
 import CoverImage from "@/components/cover-image";
 import BackButton from "@/components/back-button";
 import RecommendButton from "@/components/recommendations/recommend-button";
@@ -356,6 +359,47 @@ export default async function MediaDetailPage({
     }
   }
 
+  // TV ratings graph data — fan out to TMDb's per-season endpoint
+  // and gather every season's full episode list. Cached for 24h by
+  // Next's fetch layer (see getTVSeason), so warm renders are free.
+  // We skip Season 0 ("Specials") and any season without rated
+  // episodes inside the component itself, so the cost here scales
+  // with `number_of_seasons`. Done in parallel.
+  let seasonRatings: SeasonRatingsSeason[] = [];
+  if (media.media_type === "tv_show") {
+    const tmdbId = (media.external_ids as Record<string, unknown> | null)
+      ?.tmdb_id as number | undefined;
+    const numSeasons =
+      (metadata?.number_of_seasons as number | undefined) ??
+      (metadata?.seasons as number | undefined) ??
+      0;
+    if (tmdbId && numSeasons > 0) {
+      const seasonNumbers = Array.from(
+        { length: numSeasons },
+        (_, i) => i + 1
+      );
+      const results = await Promise.allSettled(
+        seasonNumbers.map((n) => getTVSeason(tmdbId, n))
+      );
+      seasonRatings = results
+        .filter(
+          (r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof getTVSeason>>> =>
+            r.status === "fulfilled"
+        )
+        .map((r) => ({
+          season_number: r.value.season_number,
+          name: r.value.name,
+          episodes: r.value.episodes.map((e) => ({
+            episode_number: e.episode_number,
+            name: e.name,
+            air_date: e.air_date,
+            vote_average: e.vote_average,
+            vote_count: e.vote_count,
+          })),
+        }));
+    }
+  }
+
   const displayCoverUrl =
     customCoverUrl ?? highlightedSeasonPoster ?? media.cover_image_url;
 
@@ -458,6 +502,16 @@ export default async function MediaDetailPage({
               seriesName={media.series_name}
               seriesStatus={media.series_status}
               nextBook={nextBook}
+            />
+          )}
+
+          {/* TV ratings graph — episode-level chart with season picker
+              and an Episodes/Seasons toggle for the overview view.
+              Renders nothing when TMDb returned no rated episodes. */}
+          {media.media_type === "tv_show" && seasonRatings.length > 0 && (
+            <SeasonRatingsGraph
+              seasons={seasonRatings}
+              showTitle={media.title}
             />
           )}
         </div>

@@ -62,6 +62,10 @@ const INTERTAIND_RATING_THRESHOLD = 1;
 
 const DOT_R = 5;
 const DOT_R_CURRENT = 8;
+// On hover, the dot grows by 2px so the original gray becomes a ring
+// outline and pink fills the center — visually reading as "the gray
+// expanded outward and made room for the brand color inside".
+const DOT_R_HOVER = DOT_R + 2;
 
 interface PlottedDot {
   id: string;
@@ -271,12 +275,13 @@ export default function SeriesGraph({
               />
             );
           })}
-          {/* Line */}
+          {/* Line — brand-pink to make the trend line the visual hero
+              and match the highlighted "current" dot below. */}
           <polyline
             points={polylinePoints}
             fill="none"
             stroke="currentColor"
-            className="text-text-muted"
+            className="text-brand"
             strokeWidth={1.5}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -318,6 +323,7 @@ export default function SeriesGraph({
           {dots.map((d, i) => {
             const cx = xFor(d.xRatio);
             const cy = yFor(d.rating);
+            const isHovered = hoveredIdx === i;
             const r = d.isCurrent ? DOT_R_CURRENT : DOT_R;
             return (
               <Link key={d.id} href={`/media/${d.id}`}>
@@ -329,10 +335,26 @@ export default function SeriesGraph({
                   {/* Invisible larger hit area for easier hover */}
                   <circle cx={cx} cy={cy} r={r + 4} fill="transparent" />
                   {d.isCurrent ? (
+                    // Current book stays pink-with-white-outline regardless
+                    // of hover — it's already the highlighted "you are here"
+                    // marker, so adding another hover state would be noise.
                     <circle
                       cx={cx}
                       cy={cy}
                       r={r}
+                      fill="rgb(255, 0, 110)"
+                      stroke="white"
+                      strokeWidth={1.5}
+                    />
+                  ) : isHovered ? (
+                    // Hover style mirrors the TV graph's dense-mode
+                    // spotlight: a single pink-filled circle at the
+                    // hover radius with a light outline. Keeps the
+                    // hover treatment consistent across both graphs.
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={DOT_R_HOVER}
                       fill="rgb(255, 0, 110)"
                       stroke="white"
                       strokeWidth={1.5}

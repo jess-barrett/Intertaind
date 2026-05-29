@@ -75,6 +75,54 @@ export async function getTVDetails(tmdbId: number): Promise<TMDBTVDetails> {
   return res.json();
 }
 
+export interface TMDBSeasonEpisode {
+  id: number;
+  name: string;
+  episode_number: number;
+  season_number: number;
+  air_date: string | null;
+  overview: string;
+  still_path: string | null;
+  vote_average: number;
+  vote_count: number;
+  runtime: number | null;
+}
+
+export interface TMDBSeasonDetails {
+  id: number;
+  name: string;
+  overview: string;
+  season_number: number;
+  air_date: string | null;
+  poster_path: string | null;
+  episodes: TMDBSeasonEpisode[];
+}
+
+/**
+ * Fetch a single season's full episode list, including per-episode
+ * `vote_average` + `vote_count` for the ratings graph. One call returns
+ * every episode in the season — much cheaper than per-episode requests
+ * which would be ~10-25 API calls per season.
+ *
+ * Cached for 24h like every other TMDb call. Per-episode ratings drift
+ * slowly enough that day-old freshness is fine for the sidebar graph.
+ */
+export async function getTVSeason(
+  tmdbId: number,
+  seasonNumber: number
+): Promise<TMDBSeasonDetails> {
+  const url = `${BASE_URL}/tv/${tmdbId}/season/${seasonNumber}`;
+  const res = await fetch(url, {
+    headers: headers(),
+    next: { revalidate: TMDB_CACHE_SECONDS },
+  });
+  if (!res.ok)
+    throw new Error(
+      `TMDB season ${seasonNumber} of ${tmdbId} failed: ${res.status}`
+    );
+  return res.json();
+}
+
 export function tmdbImageUrl(path: string | null, size = "w500"): string | null {
   if (!path) return null;
   return `https://image.tmdb.org/t/p/${size}${path}`;
