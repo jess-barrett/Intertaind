@@ -638,3 +638,4 @@ Not in scope here; recorded so the architecture intent isn't lost:
 - The pure types/normalization they need already live in `@intertaind/media` after this plan — Edge Functions (Deno) can import them via relative path or npm specifier; decide in that plan.
 - Trigger: when mobile needs search/ingestion (next mobile milestone).
 - Pre-auth-milestone requirement: swap mobile session storage from plain AsyncStorage to a SecureStore-encrypted adapter (review finding, 2026-06-12).
+- Design-system port prerequisite: shared design tokens (accent palette) for mobile tailwind theme + content glob for packages/types, so MEDIA_TYPE_CONFIG classes compile on mobile (review finding, 2026-06-12).

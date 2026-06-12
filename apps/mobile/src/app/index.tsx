@@ -1,100 +1,50 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet, Text } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, Image, Text, View } from 'react-native';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import type { MediaItem } from '@intertaind/types';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+import { supabase } from '@/lib/supabase';
+
+type TrendingItem = Pick<
+  MediaItem,
+  'id' | 'title' | 'cover_image_url' | 'media_type' | 'avg_rating'
+>;
+
+export default function TrendingScreen() {
+  const [items, setItems] = useState<TrendingItem[] | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from('media_items')
+      .select('id, title, cover_image_url, media_type, avg_rating')
+      .order('tracking_count', { ascending: false })
+      .limit(20)
+      .then(({ data, error }) => {
+        if (error) console.error(error);
+        setItems((data as TrendingItem[]) ?? []);
+      });
+  }, []);
+
+  if (!items) return <ActivityIndicator className="flex-1" />;
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
+    <FlatList
+      data={items}
+      keyExtractor={(item) => item.id}
+      className="flex-1 bg-neutral-950"
+      renderItem={({ item }) => (
+        <View className="flex-row items-center gap-3 px-4 py-2">
+          {item.cover_image_url && (
+            <Image source={{ uri: item.cover_image_url }} className="h-20 w-14 rounded" />
+          )}
+          <View className="flex-1">
+            <Text className="text-base font-semibold text-white">{item.title}</Text>
+            <Text className="text-sm text-neutral-400">
+              {item.media_type} · {item.avg_rating ?? '—'}
+            </Text>
+          </View>
+        </View>
+      )}
+    />
   );
 }
-
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <Text className="text-red-500">NativeWind is working</Text>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
-});
