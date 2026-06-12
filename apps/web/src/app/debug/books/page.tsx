@@ -3,8 +3,7 @@
 // this directory once the bibliography quality is dialed in.
 
 import { searchBooks } from "@/lib/api/google-books";
-import { bookCoverUrl } from "@intertaind/media";
-import type { GoogleBooksVolume } from "@intertaind/media";
+import { bookCoverUrl, type GoogleBooksVolume } from "@intertaind/media";
 
 export const dynamic = "force-dynamic";
 

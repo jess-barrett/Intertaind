@@ -1,5 +1,8 @@
-import { bookCoverUrl } from "@intertaind/media";
-import type { GoogleBooksVolume, GoogleBooksSearchResponse } from "@intertaind/media";
+import {
+  bookCoverUrl,
+  type GoogleBooksVolume,
+  type GoogleBooksSearchResponse,
+} from "@intertaind/media";
 
 const BASE_URL = "https://www.googleapis.com/books/v1/volumes";
 const SERIES_URL = "https://www.googleapis.com/books/v1/series/get";

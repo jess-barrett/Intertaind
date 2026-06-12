@@ -5,8 +5,8 @@ import type {
   GoogleBooksVolume,
   IGDBGame,
   OLBookSearchDoc,
-} from "./types";
-import { tmdbImageUrl, bookCoverUrl, igdbImageUrl } from "./images";
+} from "./types.ts";
+import { tmdbImageUrl, bookCoverUrl, igdbImageUrl } from "./images.ts";
 
 export function normalizeTMDBMovie(raw: TMDBMovie): SearchResult {
   return {

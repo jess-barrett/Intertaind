@@ -1,4 +1,4 @@
-import type { GoogleBooksVolume } from "./types";
+import type { GoogleBooksVolume } from "./types.ts";
 
 export function tmdbImageUrl(path: string | null, size = "w500"): string | null {
   if (!path) return null;

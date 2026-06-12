@@ -28,7 +28,12 @@ import {
   findBookPublicationYearOnWikidata,
 } from "@/lib/api/wikidata";
 import { yearFromDateString } from "@/lib/time";
-import { normalizeGoogleBook, normalizeIGDBGame } from "@intertaind/media";
+import {
+  normalizeGoogleBook,
+  normalizeIGDBGame,
+  tmdbImageUrl,
+  igdbImageUrl,
+} from "@intertaind/media";
 
 async function getAuthUser() {
   const supabase = await createClient();
@@ -2095,7 +2100,6 @@ export async function listMediaBackdrops(
     if (!tmdbId) return [];
     try {
       const { getMovieImages, getTVImages } = await import("@/lib/api/tmdb");
-      const { tmdbImageUrl } = await import("@intertaind/media");
       const res =
         mediaType === "movie"
           ? await getMovieImages(tmdbId)
@@ -2128,7 +2132,6 @@ export async function listMediaBackdrops(
     if (!igdbId) return [];
     try {
       const { getGameDetails } = await import("@/lib/api/igdb");
-      const { igdbImageUrl } = await import("@intertaind/media");
       const game = await getGameDetails(igdbId);
       if (!game) return [];
       const artworkUrls =

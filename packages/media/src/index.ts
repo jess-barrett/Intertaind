@@ -1,3 +1,3 @@
-export * from "./types";
-export * from "./normalize";
-export * from "./images";
+export * from "./types.ts";
+export * from "./normalize.ts";
+export * from "./images.ts";
