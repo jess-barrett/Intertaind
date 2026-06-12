@@ -466,14 +466,16 @@ git add -A && git commit -m "feat: scaffold Expo mobile app (apps/mobile)"
 ### Task 10: Supabase client for mobile
 
 **Files:**
-- Create: `apps/mobile/lib/supabase.ts`, `apps/mobile/.env`
+- Create: `apps/mobile/src/lib/supabase.ts`, `apps/mobile/.env`
 
 **Step 1: Install deps (expo install picks SDK-compatible versions)**
 
 ```bash
 pnpm --filter mobile add @supabase/supabase-js
-pnpm --filter mobile exec npx expo install @react-native-async-storage/async-storage react-native-url-polyfill
+pnpm --filter mobile exec npx expo install @react-native-async-storage/async-storage
 ```
+
+(`react-native-url-polyfill` no longer required by supabase-js ≥2.10x — fetch/URL provided by RN)
 
 **Step 2: `apps/mobile/.env`** (values from the human / Supabase dashboard; `.env*` is already gitignored):
 
@@ -482,10 +484,9 @@ EXPO_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 ```
 
-**Step 3: `apps/mobile/lib/supabase.ts`**
+**Step 3: `apps/mobile/src/lib/supabase.ts`**
 
 ```ts
-import "react-native-url-polyfill/auto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
 
@@ -636,3 +637,4 @@ Not in scope here; recorded so the architecture intent isn't lost:
 - Both web and mobile then consume the same functions; web's API routes become thin wrappers or are deleted.
 - The pure types/normalization they need already live in `@intertaind/media` after this plan — Edge Functions (Deno) can import them via relative path or npm specifier; decide in that plan.
 - Trigger: when mobile needs search/ingestion (next mobile milestone).
+- Pre-auth-milestone requirement: swap mobile session storage from plain AsyncStorage to a SecureStore-encrypted adapter (review finding, 2026-06-12).
