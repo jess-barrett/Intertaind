@@ -7,10 +7,10 @@ import {
   discoverTVByCompany,
   discoverTVByNetwork,
   discoverAllPages,
-  tmdbImageUrl,
   TMDB_GENRES,
 } from "@/lib/api/tmdb";
-import { getCompanyDetailsIGDB, getGamesByCompany, igdbImageUrl } from "@/lib/api/igdb";
+import { getCompanyDetailsIGDB, getGamesByCompany } from "@/lib/api/igdb";
+import { tmdbImageUrl, igdbImageUrl } from "@intertaind/media";
 import { createClient } from "@/lib/supabase/server";
 import BackButton from "@/components/back-button";
 import EntityFilmographyList from "@/components/media/entity-filmography-list";
@@ -20,7 +20,7 @@ import type {
   TMDBMovie,
   TMDBTVShow,
   IGDBGame,
-} from "@/lib/api/types";
+} from "@intertaind/media";
 
 const ENTITY_TYPES = ["tmdb_company", "tmdb_network", "igdb_company"] as const;
 type EntityType = (typeof ENTITY_TYPES)[number];

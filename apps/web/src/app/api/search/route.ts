@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import type { MediaType, SearchResult } from "@intertaind/types";
-import type { TMDBMovie, TMDBTVShow, GoogleBooksVolume, IGDBGame } from "@/lib/api/types";
+import type {
+  TMDBMovie,
+  TMDBTVShow,
+  GoogleBooksVolume,
+  IGDBGame,
+  OLBookSearchDoc,
+} from "@intertaind/media";
 import { searchMovies, searchTVShows } from "@/lib/api/tmdb";
 import {
   searchBooks,
@@ -11,7 +17,6 @@ import {
 import {
   findCanonicalBookByTitleAuthor,
   searchOLBooks,
-  type OLBookSearchDoc,
 } from "@/lib/api/openlibrary";
 import { searchGames } from "@/lib/api/igdb";
 import {
@@ -20,7 +25,7 @@ import {
   normalizeGoogleBook,
   normalizeOLBook,
   normalizeIGDBGame,
-} from "@/lib/api/normalize";
+} from "@intertaind/media";
 import { createClient } from "@/lib/supabase/server";
 
 const MAX_RESULTS = 20;

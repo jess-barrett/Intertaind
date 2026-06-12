@@ -1,4 +1,5 @@
-import type { GoogleBooksVolume, GoogleBooksSearchResponse } from "./types";
+import { bookCoverUrl } from "@intertaind/media";
+import type { GoogleBooksVolume, GoogleBooksSearchResponse } from "@intertaind/media";
 
 const BASE_URL = "https://www.googleapis.com/books/v1/volumes";
 const SERIES_URL = "https://www.googleapis.com/books/v1/series/get";
@@ -461,34 +462,4 @@ function scoreEdition(v: GoogleBooksVolume): number {
   if (looksLikeUKEdition(v)) s -= 80;
 
   return s;
-}
-
-export function bookCoverUrl(volume: GoogleBooksVolume): string | null {
-  const links = volume.volumeInfo.imageLinks;
-  if (!links) return null;
-
-  // Prefer the largest size Google has — fall back progressively
-  const url =
-    links.extraLarge ??
-    links.large ??
-    links.medium ??
-    links.small ??
-    links.thumbnail ??
-    links.smallThumbnail;
-  if (!url) return null;
-
-  // zoom=3 gives a higher-res cover, but NO_PAGES volumes only have zoom=1.
-  // Only upgrade when we know the volume has a preview (PARTIAL / ALL_PAGES).
-  // Unknown/missing viewability is treated as not-upgradable since Google
-  // sometimes omits accessInfo entirely for thin records.
-  const viewability = volume.accessInfo?.viewability;
-  const canUpgradeZoom = viewability === "PARTIAL" || viewability === "ALL_PAGES";
-
-  let fixed = url
-    .replace(/^http:\/\//, "https://")
-    .replace(/&?edge=curl/g, "");
-  if (canUpgradeZoom) {
-    fixed = fixed.replace(/zoom=\d/, "zoom=3");
-  }
-  return fixed;
 }

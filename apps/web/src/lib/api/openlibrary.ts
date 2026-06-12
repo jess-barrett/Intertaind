@@ -5,6 +5,8 @@
 // Auth-free, generously rate-limited, but we still cache aggressively
 // (24h) since author bios change rarely.
 
+import type { OLBookSearchDoc } from "@intertaind/media";
+
 const BASE_URL = "https://openlibrary.org";
 const COVERS_URL = "https://covers.openlibrary.org";
 
@@ -297,25 +299,6 @@ interface OLBookSearchRawDoc {
   isbn?: string[];
   subject?: string[];
   language?: string[];
-}
-
-export interface OLBookSearchDoc {
-  /** OL work id, e.g. "OL18209798W". */
-  workKey: string;
-  title: string;
-  subtitle?: string;
-  authors: string[];
-  firstPublishYear: number | null;
-  coverUrl: string | null;
-  coverEditionKey: string | null;
-  editionCount: number;
-  ratingsCount: number;
-  ratingsAverage: number | null;
-  wantToReadCount: number;
-  /** Best-guess ISBN-13 (preferred) for cross-reference into Google Books. */
-  isbn13: string | null;
-  subjects: string[];
-  languages: string[];
 }
 
 /**

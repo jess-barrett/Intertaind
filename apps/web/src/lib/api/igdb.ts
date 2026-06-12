@@ -1,4 +1,4 @@
-import type { IGDBGame, IGDBCompany } from "./types";
+import type { IGDBGame, IGDBCompany } from "@intertaind/media";
 
 const API_URL = "https://api.igdb.com/v4";
 
@@ -89,8 +89,4 @@ export async function getGamesByCompany(
         : "";
   const body = `where involved_companies.company = ${companyId} ${roleClause}; fields ${GAME_FIELDS}; sort rating_count desc; limit ${limit};`;
   return igdbFetch("games", body) as Promise<IGDBGame[]>;
-}
-
-export function igdbImageUrl(imageId: string, size = "t_cover_big"): string {
-  return `https://images.igdb.com/igdb/image/upload/${size}/${imageId}.jpg`;
 }

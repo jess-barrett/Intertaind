@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { searchBookEditions, bookCoverUrl } from "@/lib/api/google-books";
+import { searchBookEditions } from "@/lib/api/google-books";
+import { bookCoverUrl } from "@intertaind/media";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;

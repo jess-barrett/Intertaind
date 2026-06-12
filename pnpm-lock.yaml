@@ -14,6 +14,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@intertaind/media':
+        specifier: workspace:*
+        version: link:../../packages/media
       '@intertaind/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -57,6 +60,16 @@ importers:
       tailwindcss:
         specifier: ^4
         version: 4.3.0
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
+  packages/media:
+    dependencies:
+      '@intertaind/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
       typescript:
         specifier: ^5
         version: 5.9.3

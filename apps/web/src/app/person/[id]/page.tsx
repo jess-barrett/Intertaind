@@ -3,8 +3,8 @@ import { User } from "lucide-react";
 import {
   getPersonDetails,
   getPersonCombinedCredits,
-  tmdbImageUrl,
 } from "@/lib/api/tmdb";
+import { tmdbImageUrl } from "@intertaind/media";
 import { createClient } from "@/lib/supabase/server";
 import BackButton from "@/components/back-button";
 import BiographyText from "@/components/media/biography-text";

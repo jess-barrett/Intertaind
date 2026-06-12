@@ -2,8 +2,9 @@
 // an author and why specific titles are or aren't surfacing. Delete
 // this directory once the bibliography quality is dialed in.
 
-import { searchBooks, bookCoverUrl } from "@/lib/api/google-books";
-import type { GoogleBooksVolume } from "@/lib/api/types";
+import { searchBooks } from "@/lib/api/google-books";
+import { bookCoverUrl } from "@intertaind/media";
+import type { GoogleBooksVolume } from "@intertaind/media";
 
 export const dynamic = "force-dynamic";
 

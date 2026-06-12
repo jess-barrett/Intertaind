@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { tmdbImageUrl } from "@/lib/api/tmdb";
+import { tmdbImageUrl } from "@intertaind/media";
 import MediaCard from "@/components/media-card";
 import FilterDropdown from "@/components/filter-dropdown";
 import type { MediaItem, SearchResult, UserMedia } from "@intertaind/types";
 import type {
   TMDBPersonCredit,
   TMDBPersonCombinedCredits,
-} from "@/lib/api/types";
+} from "@intertaind/media";
 
 // Cards rendered per "page" of the filmography. 24 = 6 rows of the
 // 4-column grid at md+, ~1 page on most screens. Bumped on Load more.

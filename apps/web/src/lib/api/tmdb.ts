@@ -1,3 +1,4 @@
+import { tmdbImageUrl } from "@intertaind/media";
 import type {
   TMDBMovie,
   TMDBMovieDetails,
@@ -10,7 +11,7 @@ import type {
   TMDBPersonCombinedCredits,
   TMDBCompany,
   TMDBNetwork,
-} from "./types";
+} from "@intertaind/media";
 
 const BASE_URL = "https://api.themoviedb.org/3";
 
@@ -121,11 +122,6 @@ export async function getTVSeason(
       `TMDB season ${seasonNumber} of ${tmdbId} failed: ${res.status}`
     );
   return res.json();
-}
-
-export function tmdbImageUrl(path: string | null, size = "w500"): string | null {
-  if (!path) return null;
-  return `https://image.tmdb.org/t/p/${size}${path}`;
 }
 
 export async function getMovieImages(

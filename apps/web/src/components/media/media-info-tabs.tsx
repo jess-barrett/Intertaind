@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Tv } from "lucide-react";
-import { tmdbImageUrl } from "@/lib/api/tmdb";
+import { tmdbImageUrl } from "@intertaind/media";
 import type { MediaType } from "@intertaind/types";
 
 const SYNOPSIS_LIMIT = 175;

@@ -305,3 +305,24 @@ export interface IGDBCompany {
   url?: string;
   websites?: { url: string; category?: number }[];
 }
+
+// OpenLibrary normalized search doc
+
+export interface OLBookSearchDoc {
+  /** OL work id, e.g. "OL18209798W". */
+  workKey: string;
+  title: string;
+  subtitle?: string;
+  authors: string[];
+  firstPublishYear: number | null;
+  coverUrl: string | null;
+  coverEditionKey: string | null;
+  editionCount: number;
+  ratingsCount: number;
+  ratingsAverage: number | null;
+  wantToReadCount: number;
+  /** Best-guess ISBN-13 (preferred) for cross-reference into Google Books. */
+  isbn13: string | null;
+  subjects: string[];
+  languages: string[];
+}
