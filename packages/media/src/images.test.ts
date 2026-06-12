@@ -82,6 +82,12 @@ describe("bookCoverUrl", () => {
     expect(
       bookCoverUrl(volume({ medium: "https://x/m", small: "https://x/s" }))
     ).toBe("https://x/m");
+    expect(
+      bookCoverUrl(volume({ large: "https://x/l", medium: "https://x/m" }))
+    ).toBe("https://x/l");
+    expect(
+      bookCoverUrl(volume({ small: "https://x/s", thumbnail: "https://x/t" }))
+    ).toBe("https://x/s");
   });
 
   it("rewrites http:// to https://", () => {
@@ -135,6 +141,12 @@ describe("bookCoverUrl", () => {
     expect(
       bookCoverUrl(volume({ thumbnail: "https://x/c?zoom=1" }, "UNKNOWN"))
     ).toBe("https://x/c?zoom=1");
+  });
+
+  it("is a no-op for PARTIAL viewability when the URL has no zoom param", () => {
+    expect(
+      bookCoverUrl(volume({ medium: "https://x/m?id=abc" }, "PARTIAL"))
+    ).toBe("https://x/m?id=abc");
   });
 
   it("does not upgrade zoom when accessInfo is missing", () => {

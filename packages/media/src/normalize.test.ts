@@ -191,6 +191,7 @@ describe("normalizeGoogleBook", () => {
       publisher: null,
       categories: [],
     });
+    expect(result.external_ids).toEqual({ google_books_id: "thin" });
   });
 
   describe("publishedDate padding (toFullDate)", () => {

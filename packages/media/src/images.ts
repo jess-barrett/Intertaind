@@ -30,6 +30,7 @@ export function bookCoverUrl(volume: GoogleBooksVolume): string | null {
     .replace(/^http:\/\//, "https://")
     .replace(/&?edge=curl/g, "");
   if (canUpgradeZoom) {
+    // Non-global and single-digit-only — fine for real Google URLs, which carry one zoom param.
     fixed = fixed.replace(/zoom=\d/, "zoom=3");
   }
   return fixed;
