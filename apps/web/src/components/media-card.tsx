@@ -14,8 +14,8 @@ import type {
   MediaType,
   SearchResult,
   UserMedia,
-} from "@/lib/types";
-import { MEDIA_TYPE_CONFIG } from "@/lib/types";
+} from "@intertaind/types";
+import { MEDIA_TYPE_CONFIG } from "@intertaind/types";
 import { StarRatingDisplay } from "@/components/star-rating";
 import CoverImage from "@/components/cover-image";
 import MediaCardActions from "@/components/media-card-actions";

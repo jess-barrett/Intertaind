@@ -15,7 +15,7 @@ import { createClient } from "@/lib/supabase/server";
 import BackButton from "@/components/back-button";
 import EntityFilmographyList from "@/components/media/entity-filmography-list";
 import type { EntityCredit } from "@/components/media/entity-filmography-list";
-import type { MediaItem, UserMedia } from "@/lib/types";
+import type { MediaItem, UserMedia } from "@intertaind/types";
 import type {
   TMDBMovie,
   TMDBTVShow,

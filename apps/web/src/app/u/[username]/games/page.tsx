@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Gamepad2 } from "lucide-react";
-import type { MediaItem, UserMedia } from "@/lib/types";
+import type { MediaItem, UserMedia } from "@intertaind/types";
 import MediaCard from "@/components/media-card";
 import ShelfSearch from "@/components/shelves/shelf-search";
 import ShelfTabs from "@/components/shelves/shelf-tabs";

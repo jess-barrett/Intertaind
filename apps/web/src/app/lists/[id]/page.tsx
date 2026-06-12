@@ -16,7 +16,7 @@ import {
   type ListItem,
   type MediaItem,
   type Profile,
-} from "@/lib/types";
+} from "@intertaind/types";
 
 export default async function ListDetailPage({
   params,

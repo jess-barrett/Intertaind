@@ -2,7 +2,7 @@ import Link from "next/link";
 import { User } from "lucide-react";
 import CoverImage from "@/components/cover-image";
 import { relativeTime } from "@/lib/time";
-import type { MediaItem, Profile } from "@/lib/types";
+import type { MediaItem, Profile } from "@intertaind/types";
 
 /**
  * One recommendation rendered as a horizontal card. The "primary" media

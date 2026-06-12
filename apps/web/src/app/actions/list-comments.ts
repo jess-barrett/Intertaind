@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import type { ListComment, Profile } from "@/lib/types";
+import type { ListComment, Profile } from "@intertaind/types";
 
 const MAX_BODY_LENGTH = 4000;
 

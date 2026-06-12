@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import BackButton from "@/components/back-button";
 import BiographyText from "@/components/media/biography-text";
 import FilmographyList from "@/components/media/filmography-list";
-import type { MediaItem, UserMedia } from "@/lib/types";
+import type { MediaItem, UserMedia } from "@intertaind/types";
 
 export default async function PersonPage({
   params,

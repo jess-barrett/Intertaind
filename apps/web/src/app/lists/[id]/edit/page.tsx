@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import BackButton from "@/components/back-button";
 import ListEditForm from "@/components/lists/list-edit-form";
-import type { List, ListItem, MediaItem } from "@/lib/types";
+import type { List, ListItem, MediaItem } from "@intertaind/types";
 
 export default async function EditListPage({
   params,

@@ -7,7 +7,7 @@ import {
   fetchRecommendationsForSource,
   fetchRecommendationsForTarget,
 } from "@/app/actions/recommendations";
-import type { MediaItem } from "@/lib/types";
+import type { MediaItem } from "@intertaind/types";
 
 type Direction = "with" | "for";
 

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Search, Loader2, X, Plus } from "lucide-react";
 import CoverImage from "@/components/cover-image";
 import { upsertMediaItem } from "@/app/actions/media";
-import type { MediaType, SearchResult } from "@/lib/types";
-import { MEDIA_TYPE_CONFIG } from "@/lib/types";
+import type { MediaType, SearchResult } from "@intertaind/types";
+import { MEDIA_TYPE_CONFIG } from "@intertaind/types";
 import { yearFromDateString } from "@/lib/time";
 
 interface PickerOption {

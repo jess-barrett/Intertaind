@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Film } from "lucide-react";
-import type { MediaItem, TrackingStatus, UserMedia } from "@/lib/types";
+import type { MediaItem, TrackingStatus, UserMedia } from "@intertaind/types";
 import MediaCard from "@/components/media-card";
 import ShelfSearch from "@/components/shelves/shelf-search";
 import ShelfTabs from "@/components/shelves/shelf-tabs";

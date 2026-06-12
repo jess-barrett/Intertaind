@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Tv } from "lucide-react";
-import type { MediaItem, TrackingStatus, UserMedia } from "@/lib/types";
+import type { MediaItem, TrackingStatus, UserMedia } from "@intertaind/types";
 import MediaCard from "@/components/media-card";
 import TVProgressHeader from "@/components/tv-progress-header";
 import ShelfSearch from "@/components/shelves/shelf-search";

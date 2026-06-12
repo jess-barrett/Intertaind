@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upsertMediaItem } from "@/app/actions/media";
-import type { SearchResult } from "@/lib/types";
+import type { SearchResult } from "@intertaind/types";
 
 /**
  * Click target for a media card. When the item already exists in our

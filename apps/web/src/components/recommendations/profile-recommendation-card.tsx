@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Share2 } from "lucide-react";
 import CoverImage from "@/components/cover-image";
 import { relativeTime } from "@/lib/time";
-import type { MediaItem } from "@/lib/types";
+import type { MediaItem } from "@intertaind/types";
 
 /**
  * Two-cover variant of the recommendation card, used on the profile

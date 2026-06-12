@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { MediaItem, MediaType, ShelfItem } from "@/lib/types";
-import { TOP_4_SHELF_NAMES } from "@/lib/types";
+import type { MediaItem, MediaType, ShelfItem } from "@intertaind/types";
+import { TOP_4_SHELF_NAMES } from "@intertaind/types";
 import TopFourGrid from "@/components/top-four-grid";
 import ActivityItem from "@/components/activity/activity-item";
 import { listUserActivity, listUserRecentReviews } from "@/app/actions/activity";

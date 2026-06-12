@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import MediaCard from "@/components/media-card";
 import FilterDropdown from "@/components/filter-dropdown";
-import type { MediaItem, MediaType, SearchResult, UserMedia } from "@/lib/types";
+import type { MediaItem, MediaType, SearchResult, UserMedia } from "@intertaind/types";
 
 const PAGE_SIZE = 24;
 

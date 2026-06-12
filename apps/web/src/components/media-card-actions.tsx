@@ -29,8 +29,8 @@ import type {
   SearchResult,
   TrackingStatus,
   UserMedia,
-} from "@/lib/types";
-import { MEDIA_TYPE_CONFIG } from "@/lib/types";
+} from "@intertaind/types";
+import { MEDIA_TYPE_CONFIG } from "@intertaind/types";
 import {
   trackMedia,
   toggleFavorite,

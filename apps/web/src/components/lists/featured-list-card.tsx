@@ -2,7 +2,7 @@ import Link from "next/link";
 import { User } from "lucide-react";
 import ListCoverStack from "@/components/lists/list-cover-stack";
 import ListMediaIcons from "@/components/lists/list-media-icons";
-import type { List, MediaItem, Profile } from "@/lib/types";
+import type { List, MediaItem, Profile } from "@intertaind/types";
 
 /**
  * Featured-section card variant: no card chrome (no border, no

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import type { MediaType, SearchResult } from "@/lib/types";
+import type { MediaType, SearchResult } from "@intertaind/types";
 import type { TMDBMovie, TMDBTVShow, GoogleBooksVolume, IGDBGame } from "@/lib/api/types";
 import { searchMovies, searchTVShows } from "@/lib/api/tmdb";
 import {

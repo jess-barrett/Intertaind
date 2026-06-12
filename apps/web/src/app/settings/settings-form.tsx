@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Trash2, Lock, Globe, Loader2 } from "lucide-react";
-import type { Profile } from "@/lib/types";
+import type { Profile } from "@intertaind/types";
 import {
   updateProfile,
   uploadAvatar,

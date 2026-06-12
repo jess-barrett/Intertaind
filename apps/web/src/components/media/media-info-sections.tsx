@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { User } from "lucide-react";
 import { tmdbImageUrl } from "@/lib/api/tmdb";
-import type { MediaType } from "@/lib/types";
+import type { MediaType } from "@intertaind/types";
 
 interface CastMember {
   tmdb_id?: number;

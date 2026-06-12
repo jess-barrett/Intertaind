@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import MediaCard from "@/components/media-card";
 import FilterDropdown from "@/components/filter-dropdown";
-import type { ListItem, MediaItem, UserMedia } from "@/lib/types";
+import type { ListItem, MediaItem, UserMedia } from "@intertaind/types";
 
 type ItemRow = ListItem & { media_items: MediaItem };
 

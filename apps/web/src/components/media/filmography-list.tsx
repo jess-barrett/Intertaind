@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { tmdbImageUrl } from "@/lib/api/tmdb";
 import MediaCard from "@/components/media-card";
 import FilterDropdown from "@/components/filter-dropdown";
-import type { MediaItem, SearchResult, UserMedia } from "@/lib/types";
+import type { MediaItem, SearchResult, UserMedia } from "@intertaind/types";
 import type {
   TMDBPersonCredit,
   TMDBPersonCombinedCredits,

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { List, MediaItem, MediaType } from "@/lib/types";
+import type { List, MediaItem, MediaType } from "@intertaind/types";
 
 /**
  * Bulk-fetch source media (only the `media_type` column) for any list

@@ -5,7 +5,7 @@ import {
   type List,
   type MediaItem,
   type MediaType,
-} from "@/lib/types";
+} from "@intertaind/types";
 import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
 
 type SourceLite = Pick<MediaItem, "media_type"> | null | undefined;

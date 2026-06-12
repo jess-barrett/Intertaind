@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Tv, ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import type { MediaItem } from "@/lib/types";
+import type { MediaItem } from "@intertaind/types";
 import MediaFilterBar from "@/components/shelves/media-filter-bar";
 import PopularCarousel from "@/components/popular-carousel";
 import BackButton from "@/components/back-button";

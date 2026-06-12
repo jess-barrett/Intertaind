@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import BrowseListRow from "@/components/lists/browse-list-row";
 import ShelfTabs from "@/components/shelves/shelf-tabs";
 import { fetchListSourceMediaMap } from "@/lib/list-source-media";
-import type { List, Profile } from "@/lib/types";
+import type { List, Profile } from "@intertaind/types";
 
 const PREVIEW_COUNT = 10;
 const RESULTS_LIMIT = 50;

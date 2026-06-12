@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import type { MediaItem } from "@/lib/types";
+import type { MediaItem } from "@intertaind/types";
 import ActivityItem from "@/components/activity/activity-item";
 import { listMyActivityForMedia } from "@/app/actions/activity";
 

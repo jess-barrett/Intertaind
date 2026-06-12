@@ -7,7 +7,7 @@ import RecommendationCard from "@/components/recommendations/recommendation-card
 import type {
   RecommendationWithSource,
   RecommendationWithTarget,
-} from "@/lib/types";
+} from "@intertaind/types";
 
 type Direction = "with" | "for";
 

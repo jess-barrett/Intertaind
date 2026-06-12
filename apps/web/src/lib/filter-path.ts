@@ -1,4 +1,4 @@
-import type { MediaType } from "@/lib/types";
+import type { MediaType } from "@intertaind/types";
 import type { MediaFilters, SortKey } from "@/lib/media-query";
 import { GENRES_BY_TYPE, GAME_PLATFORMS, TV_STATUSES } from "@/lib/media-query";
 

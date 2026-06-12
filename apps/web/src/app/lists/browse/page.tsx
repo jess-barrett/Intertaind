@@ -8,7 +8,7 @@ import {
   type ListSortKey,
 } from "@/components/lists/list-sort-options";
 import { fetchListSourceMediaMap } from "@/lib/list-source-media";
-import type { List, Profile } from "@/lib/types";
+import type { List, Profile } from "@intertaind/types";
 
 const PREVIEW_COUNT = 10;
 const RESULTS_LIMIT = 30;

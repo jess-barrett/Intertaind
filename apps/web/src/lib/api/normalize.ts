@@ -1,4 +1,4 @@
-import type { SearchResult } from "@/lib/types";
+import type { SearchResult } from "@intertaind/types";
 import type {
   TMDBMovie,
   TMDBTVShow,

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import MediaCard from "@/components/media-card";
-import type { MediaItem, UserMedia } from "@/lib/types";
+import type { MediaItem, UserMedia } from "@intertaind/types";
 
 const PAGE_SIZE = 4;
 

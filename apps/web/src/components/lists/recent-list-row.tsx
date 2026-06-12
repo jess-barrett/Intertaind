@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Heart, User } from "lucide-react";
 import ListCoverStack from "@/components/lists/list-cover-stack";
 import ListMediaIcons from "@/components/lists/list-media-icons";
-import type { List, MediaItem, Profile } from "@/lib/types";
+import type { List, MediaItem, Profile } from "@intertaind/types";
 
 /**
  * Recently-liked row variant: horizontal layout with the cover stack

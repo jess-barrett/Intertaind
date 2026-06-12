@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import type { SearchResult, TrackingStatus } from "@/lib/types";
+import type { SearchResult, TrackingStatus } from "@intertaind/types";
 import {
   getMovieDetails,
   getTVDetails,

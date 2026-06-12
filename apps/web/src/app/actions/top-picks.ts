@@ -1,8 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import type { MediaType, MediaItem } from "@/lib/types";
-import { TOP_4_SHELF_NAMES } from "@/lib/types";
+import type { MediaType, MediaItem } from "@intertaind/types";
+import { TOP_4_SHELF_NAMES } from "@intertaind/types";
 
 async function getAuthUser() {
   const supabase = await createClient();

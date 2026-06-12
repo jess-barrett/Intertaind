@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import type { ActivityWithMedia } from "@/lib/types";
+import type { ActivityWithMedia } from "@intertaind/types";
 
 /**
  * Fetch the most recent activity rows for a user, joined with media info so

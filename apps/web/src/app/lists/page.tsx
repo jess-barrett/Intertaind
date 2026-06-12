@@ -5,7 +5,7 @@ import FeaturedListCard from "@/components/lists/featured-list-card";
 import PopularListCard from "@/components/lists/popular-list-card";
 import RecentListRow from "@/components/lists/recent-list-row";
 import { fetchListSourceMediaMap } from "@/lib/list-source-media";
-import type { List, Profile } from "@/lib/types";
+import type { List, Profile } from "@intertaind/types";
 
 const PREVIEW_COUNT = 5;
 const FEATURED_LIMIT = 3;

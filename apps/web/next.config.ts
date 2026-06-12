@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  transpilePackages: ["@intertaind/types", "@intertaind/media"],
 };
 
 export default nextConfig;

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { BookOpen } from "lucide-react";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import type { MediaItem } from "@/lib/types";
+import type { MediaItem } from "@intertaind/types";
 import MediaCard from "@/components/media-card";
 import MediaFilterBar from "@/components/shelves/media-filter-bar";
 import {

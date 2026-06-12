@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { UserPlus, UserCheck, UserX, Lock } from "lucide-react";
-import type { FollowState } from "@/lib/types";
+import type { FollowState } from "@intertaind/types";
 import {
   followUser,
   unfollowUser,

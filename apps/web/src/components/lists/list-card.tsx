@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heart, User } from "lucide-react";
 import ListMediaIcons from "@/components/lists/list-media-icons";
-import { LIST_TYPE_LABELS, type List, type MediaItem, type Profile } from "@/lib/types";
+import { LIST_TYPE_LABELS, type List, type MediaItem, type Profile } from "@intertaind/types";
 
 export interface ListCardData {
   covers: { src: string | null; title: string }[];

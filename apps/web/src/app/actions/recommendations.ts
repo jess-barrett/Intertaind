@@ -5,7 +5,7 @@ import type {
   Recommendation,
   RecommendationWithSource,
   RecommendationWithTarget,
-} from "@/lib/types";
+} from "@intertaind/types";
 
 const MAX_NOTE_LENGTH = 280;
 
@@ -166,8 +166,8 @@ export async function fetchUserRecommendations(
   offset = 0
 ): Promise<{
   items: (Recommendation & {
-    source_media: import("@/lib/types").MediaItem;
-    recommended_media: import("@/lib/types").MediaItem;
+    source_media: import("@intertaind/types").MediaItem;
+    recommended_media: import("@intertaind/types").MediaItem;
   })[];
   hasMore: boolean;
 }> {
@@ -182,8 +182,8 @@ export async function fetchUserRecommendations(
     .range(offset, offset + limit);
 
   type Hydrated = Recommendation & {
-    source_media: import("@/lib/types").MediaItem;
-    recommended_media: import("@/lib/types").MediaItem;
+    source_media: import("@intertaind/types").MediaItem;
+    recommended_media: import("@intertaind/types").MediaItem;
   };
   const rows = (data as Hydrated[] | null) ?? [];
   const hasMore = rows.length > limit;

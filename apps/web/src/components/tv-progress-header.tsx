@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { GalleryHorizontalEnd } from "lucide-react";
 import { trackMedia } from "@/app/actions/media";
-import type { TrackingStatus, UserMedia } from "@/lib/types";
+import type { TrackingStatus, UserMedia } from "@intertaind/types";
 import LogEpisodeModal from "@/components/modals/log-episode-modal";
 import TVModal from "@/components/modals/tv-modal";
 

@@ -3,8 +3,8 @@
 import { useEffect, useState, useTransition } from "react";
 import { Loader2, Check } from "lucide-react";
 import ModalWrapper from "./modal-wrapper";
-import type { MediaItem, MediaType } from "@/lib/types";
-import { MEDIA_TYPE_CONFIG } from "@/lib/types";
+import type { MediaItem, MediaType } from "@intertaind/types";
+import { MEDIA_TYPE_CONFIG } from "@intertaind/types";
 import { getUserLibrary, addTopPick } from "@/app/actions/top-picks";
 
 export default function TopPickModal({

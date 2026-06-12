@@ -17,8 +17,8 @@ import {
   ListPlus,
   List as ListIcon,
 } from "lucide-react";
-import type { ActivityWithMedia, MediaType } from "@/lib/types";
-import { MEDIA_TYPE_CONFIG } from "@/lib/types";
+import type { ActivityWithMedia, MediaType } from "@intertaind/types";
+import { MEDIA_TYPE_CONFIG } from "@intertaind/types";
 import { StarRatingDisplay } from "@/components/star-rating";
 import { relativeTime } from "@/lib/time";
 

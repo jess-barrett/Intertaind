@@ -1,5 +1,5 @@
 import { BookOpen, Film, Gamepad2, Tv, type LucideIcon } from "lucide-react";
-import type { MediaType } from "@/lib/types";
+import type { MediaType } from "@intertaind/types";
 
 /**
  * Single source of truth for the icon used to represent each media

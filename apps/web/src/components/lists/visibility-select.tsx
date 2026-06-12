@@ -4,7 +4,7 @@ import { Check } from "lucide-react";
 import {
   LIST_VISIBILITY_OPTIONS,
   type ListVisibility,
-} from "@/lib/types";
+} from "@intertaind/types";
 
 /**
  * Vertical radio-style picker for list visibility. Each option has a

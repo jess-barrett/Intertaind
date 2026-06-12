@@ -1,5 +1,5 @@
 import { Clock, Check, Eye, Pause, X } from "lucide-react";
-import type { TrackingStatus } from "@/lib/types";
+import type { TrackingStatus } from "@intertaind/types";
 
 const STATUS_CONFIG: Record<
   TrackingStatus,

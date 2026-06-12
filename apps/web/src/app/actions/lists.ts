@@ -7,7 +7,7 @@ import {
   type ListType,
   type ListVisibility,
   type MediaType,
-} from "@/lib/types";
+} from "@intertaind/types";
 
 async function getAuthUser() {
   const supabase = await createClient();

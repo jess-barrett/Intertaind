@@ -15,7 +15,7 @@ import BackButton from "@/components/back-button";
 import BiographyText from "@/components/media/biography-text";
 import EntityFilmographyList from "@/components/media/entity-filmography-list";
 import type { EntityCredit } from "@/components/media/entity-filmography-list";
-import type { MediaItem, UserMedia } from "@/lib/types";
+import type { MediaItem, UserMedia } from "@intertaind/types";
 
 const OLID_PATTERN = /^OL\d+A$/;
 

@@ -22,7 +22,7 @@ import {
   Clapperboard,
 } from "lucide-react";
 import Link from "next/link";
-import type { MediaType, TrackingStatus, UserMedia } from "@/lib/types";
+import type { MediaType, TrackingStatus, UserMedia } from "@intertaind/types";
 import { trackMedia, toggleFavorite, rateMedia, removeTracking } from "@/app/actions/media";
 import StarRating from "@/components/star-rating";
 import MovieModal from "@/components/modals/movie-modal";

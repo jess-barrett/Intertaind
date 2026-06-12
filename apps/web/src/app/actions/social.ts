@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import type { FollowState, Notification, Profile } from "@/lib/types";
+import type { FollowState, Notification, Profile } from "@intertaind/types";
 
 async function getAuthUser() {
   const supabase = await createClient();

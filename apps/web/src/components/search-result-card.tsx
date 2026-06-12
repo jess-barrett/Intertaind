@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BookOpen, Film, Tv, Gamepad2 } from "lucide-react";
-import type { MediaType, SearchResult } from "@/lib/types";
-import { MEDIA_TYPE_CONFIG } from "@/lib/types";
+import type { MediaType, SearchResult } from "@intertaind/types";
+import { MEDIA_TYPE_CONFIG } from "@intertaind/types";
 import { upsertMediaItem } from "@/app/actions/media";
 import MediaCardActions from "@/components/media-card-actions";
 import { yearFromDateString } from "@/lib/time";

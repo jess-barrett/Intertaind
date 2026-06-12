@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Search, Loader2, X } from "lucide-react";
 import SearchResultCard from "@/components/search-result-card";
-import type { MediaType, SearchResult } from "@/lib/types";
-import { MEDIA_TYPE_CONFIG } from "@/lib/types";
+import type { MediaType, SearchResult } from "@intertaind/types";
+import { MEDIA_TYPE_CONFIG } from "@intertaind/types";
 
 export default function ShelfSearch({
   mediaType,

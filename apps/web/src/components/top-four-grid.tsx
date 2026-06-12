@@ -3,8 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { BookOpen, Film, Tv, Gamepad2, Plus, X } from "lucide-react";
-import type { MediaItem, MediaType, UserMedia } from "@/lib/types";
-import { MEDIA_TYPE_CONFIG } from "@/lib/types";
+import type { MediaItem, MediaType, UserMedia } from "@intertaind/types";
+import { MEDIA_TYPE_CONFIG } from "@intertaind/types";
 import { removeTopPick, reorderTopPicks } from "@/app/actions/top-picks";
 import TopPickModal from "@/components/modals/top-pick-modal";
 import MediaCardActions from "@/components/media-card-actions";

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import type { MediaItem, List, Profile } from "@/lib/types";
+import type { MediaItem, List, Profile } from "@intertaind/types";
 import LandingPage from "@/components/landing-page";
 import DiscoveryFeed from "@/components/discovery-feed";
 import { fetchViewerTracking } from "@/lib/viewer-tracking";

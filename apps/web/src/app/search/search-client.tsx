@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search, BookOpen, Film, Tv, Gamepad2, Loader2 } from "lucide-react";
 import SearchResultCard from "@/components/search-result-card";
-import type { SearchResult } from "@/lib/types";
+import type { SearchResult } from "@intertaind/types";
 
 const TABS = [
   { key: "all", label: "All", icon: Search, color: "text-text-primary" },

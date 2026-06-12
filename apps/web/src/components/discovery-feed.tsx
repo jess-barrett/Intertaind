@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BookOpen, Film, Tv, Gamepad2, ArrowRight } from "lucide-react";
-import type { MediaItem, MediaType, List, Profile, UserMedia } from "@/lib/types";
-import { MEDIA_TYPE_CONFIG } from "@/lib/types";
+import type { MediaItem, MediaType, List, Profile, UserMedia } from "@intertaind/types";
+import { MEDIA_TYPE_CONFIG } from "@intertaind/types";
 import MediaCard from "@/components/media-card";
 import ListCard from "@/components/lists/list-card";
 

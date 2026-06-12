@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import type { MediaType } from "@/lib/types";
+import type { MediaType } from "@intertaind/types";
 import type { SortKey, MediaFilters } from "@/lib/media-query";
 import { DECADES } from "@/lib/media-query";
 import { filtersToPath } from "@/lib/filter-path";

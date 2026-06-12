@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BookOpen } from "lucide-react";
-import type { MediaItem, TrackingStatus, UserMedia } from "@/lib/types";
+import type { MediaItem, TrackingStatus, UserMedia } from "@intertaind/types";
 import MediaCard from "@/components/media-card";
 import BookProgressHeader from "@/components/book-progress-header";
 import ShelfSearch from "@/components/shelves/shelf-search";

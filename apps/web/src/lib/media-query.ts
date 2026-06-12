@@ -1,4 +1,4 @@
-import type { MediaType } from "@/lib/types";
+import type { MediaType } from "@intertaind/types";
 
 export interface MediaFilters {
   decade?: string; // "2020s", "2010s", etc.
@@ -166,7 +166,7 @@ export function applyMediaSort(query: any, sort: SortKey, mediaType: MediaType, 
  */
 export function sortTrackedMedia<
   T extends {
-    media_items: import("@/lib/types").MediaItem;
+    media_items: import("@intertaind/types").MediaItem;
     created_at?: string | null;
   }
 >(items: T[], sort: SortKey, mediaType: MediaType): T[] {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Lock } from "lucide-react";
-import type { Profile } from "@/lib/types";
+import type { Profile } from "@intertaind/types";
 
 /** Generic avatar+username row used in follower / following lists. */
 export default function UserRow({ user }: { user: Profile }) {

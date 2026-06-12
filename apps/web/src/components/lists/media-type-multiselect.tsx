@@ -1,8 +1,8 @@
 "use client";
 
 import { Check } from "lucide-react";
-import type { MediaType } from "@/lib/types";
-import { MEDIA_TYPE_CONFIG } from "@/lib/types";
+import type { MediaType } from "@intertaind/types";
+import { MEDIA_TYPE_CONFIG } from "@intertaind/types";
 
 const ALL_TYPES: MediaType[] = ["movie", "tv_show", "book", "video_game"];
 

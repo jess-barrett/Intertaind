@@ -9,7 +9,7 @@ import InlineMediaPicker from "@/components/lists/inline-media-picker";
 import CoverImage from "@/components/cover-image";
 import { createRecommendation } from "@/app/actions/recommendations";
 import { toast } from "@/lib/toast";
-import type { MediaItem, MediaType, SearchResult } from "@/lib/types";
+import type { MediaItem, MediaType, SearchResult } from "@intertaind/types";
 
 const MAX_NOTE = 280;
 

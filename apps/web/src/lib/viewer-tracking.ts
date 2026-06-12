@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { UserMedia } from "@/lib/types";
+import type { UserMedia } from "@intertaind/types";
 
 /**
  * Fetch the viewer's user_media rows for a set of media items. Used by
