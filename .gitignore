@@ -27,6 +27,10 @@ dist/
 # expo
 .expo/
 
+# supabase cli — local linkage / version metadata, not source
+supabase/.temp/
+supabase/.branches/
+
 # misc
 .DS_Store
 *.pem
