@@ -1,6 +1,9 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient, processLock } from "@supabase/supabase-js";
 import { AppState } from "react-native";
+
+import type { Database } from "@intertaind/supabase";
+
+import { secureStorage } from "./secure-storage";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -12,9 +15,16 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+// Typed against the generated `Database` schema so every query/insert
+// is checked against the live Postgres tables. Regenerate the type
+// after every migration: `pnpm gen:types`.
+//
+// Storage uses our chunked SecureStore wrapper so the session token
+// goes into the device's hardware-backed Keychain/Keystore instead of
+// plaintext on disk. Required for production — see apps/mobile/AGENTS.md.
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,
+    storage: secureStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

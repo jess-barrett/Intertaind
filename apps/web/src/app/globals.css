@@ -1,6 +1,22 @@
 @import "tailwindcss";
 @source "../../../../packages/types/src";
 
+/*
+ * DESIGN TOKEN SYNC — READ BEFORE EDITING.
+ *
+ * The `:root` block below is the WEB-SIDE projection of the canonical
+ * tokens in `packages/design-system/src/tokens.cjs`. Tailwind 4 is
+ * CSS-first and can't import a TS/JS object, so this list necessarily
+ * duplicates those values in CSS form.
+ *
+ * Drift between the two is caught by
+ * `packages/design-system/src/tokens.test.ts` — it parses this block
+ * and asserts every `--<token>: <hex>;` matches the TS definition.
+ * That test runs in CI; a mismatch fails the build.
+ *
+ * To change a token: edit tokens.cjs FIRST, then mirror the new value
+ * here, then `pnpm --filter @intertaind/design-system test` to confirm.
+ */
 :root {
   --background: #0A0A0A;
   --foreground: #F0F0F0;

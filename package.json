@@ -8,9 +8,12 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "ci": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "gen:types": "pnpm --filter @intertaind/supabase gen:types"
   },
   "devDependencies": {
+    "supabase": "^2.106.0",
     "turbo": "^2"
   }
 }
