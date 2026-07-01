@@ -20,6 +20,16 @@ describe("validateUsername", () => {
   it("rejects too long (>20)", () => {
     expect(validateUsername("a".repeat(21)).ok).toBe(false);
   });
+  it("accepts the exact minimum boundary (length 3)", () => {
+    expect(validateUsername("abc")).toEqual({ ok: true, value: "abc" });
+  });
+  it("accepts the exact maximum boundary (length 20)", () => {
+    expect(validateUsername("a".repeat(20))).toEqual({ ok: true, value: "a".repeat(20) });
+  });
+  it("rejects empty and whitespace-only input", () => {
+    expect(validateUsername("").ok).toBe(false);
+    expect(validateUsername("   ").ok).toBe(false);
+  });
   it("rejects illegal characters", () => {
     expect(validateUsername("jess.barrett").ok).toBe(false);
     expect(validateUsername("jess-b").ok).toBe(false);
