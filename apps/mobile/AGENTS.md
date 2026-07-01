@@ -45,9 +45,17 @@ Conventions:
 
 QueryClient defaults live in `src/components/providers.tsx`: 5-min stale, 30-min gc, retry once except on 4xx (real bugs, don't retry). Don't override per-query unless there's a documented reason.
 
-## Auth & session storage
+## Auth architecture
 
-The Supabase client in `src/lib/supabase.ts` persists sessions to **`expo-secure-store`** via the chunked adapter in `src/lib/secure-storage.ts`. SecureStore has a 2KB per-value limit on Android; Supabase session tokens often exceed this, so the adapter splits values transparently across `<key>.0`, `<key>.1`, … entries.
+Email/password + (planned) Google/Apple. The pieces, outer to inner:
+
+- **`src/components/auth-provider.tsx`** (`AuthProvider` + `useAuth()`) — the single source of "who is signed in." Subscribes to `supabase.auth.getSession()` (initial) + `onAuthStateChange` (updates) and exposes `{ session, user, profileStatus, loading, refreshProfileStatus }`. `profileStatus` is 4-state: `"none"` (signed out) · `"missing"` (signed in, no `profiles` row → needs username) · `"present"` · `"error"` (transient profile-fetch failure — distinct so gating doesn't strand the user). A monotonic `syncSeq` ref guards against out-of-order profile fetches; `loading` is cleared in a `finally` so a failed session read can't strand the splash. Lives inside `QueryClientProvider` (in `providers.tsx`).
+- **Route groups + gating** — `src/app/(auth)/` (login, signup, setup-username) and `src/app/(tabs)/` (the app). Root `src/app/_layout.tsx`'s `RootNavigator` is the ONLY place that redirects: `loading`→splash; `!session`→login; `missing`→setup-username; `present`→tabs; `error`→retry view. **Screens must never call `router.push/replace` for auth transitions** — mutate state and let gating react. (Considering `Stack.Protected` later; see the plan's deferred items.)
+- **`src/queries/auth.ts`** — all auth mutations (`useSignIn/SignUp/SignOut/CreateProfileMutation`), per the TanStack convention. Email/password signup passes `username` in `options.data` so the `handle_new_user` DB trigger creates the profile; OAuth/Apple users have no profile → setup-username → `useCreateProfileMutation` inserts it client-side under the `profiles_insert_self` RLS policy (mirrors web's `createInitialProfile`). Username rules come from the shared `validateUsername` in `@intertaind/types` — do not re-inline a regex.
+
+## Session storage
+
+The Supabase client in `src/lib/supabase.ts` persists sessions to **`expo-secure-store`** via the chunked adapter in `src/lib/secure-storage.ts`. SecureStore has a 2KB per-value limit on Android; Supabase session tokens often exceed this, so the adapter splits values transparently across `<key>.0`, `<key>.1`, … entries. The adapter also detects when the native module is absent (Node typed-route generation / web bundle) via a call-time latch and falls back to a non-persistent in-memory store, so evaluating the module graph off-device can't crash.
 
 Do NOT switch session storage back to `AsyncStorage` — it stores tokens in plaintext on disk and any other app on a rooted device can read them.
 
