@@ -1,5 +1,5 @@
 /**
- * TanStack Query mutations for email/password auth.
+ * TanStack Query mutations for auth (email/password + Google OAuth).
  *
  * Mutations (not queries) because these are imperative user actions.
  * Each throws on the Supabase error so the calling component reads the
@@ -13,6 +13,8 @@
  */
 
 import { useMutation } from "@tanstack/react-query";
+import * as WebBrowser from "expo-web-browser";
+import { makeRedirectUri } from "expo-auth-session";
 import { validateUsername } from "@intertaind/types";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
@@ -45,6 +47,64 @@ export function useSignUpMutation() {
       // session — the user must confirm via email before a session exists.
       // Surface that so the screen can show a notice instead of freezing.
       return { needsConfirmation: data.session === null };
+    },
+  });
+}
+
+/**
+ * Google sign-in via Supabase OAuth + an in-app web browser + a deep-link
+ * back into the app.
+ *
+ * Flow (works on iOS Simulator + cross-platform, and sidesteps the native
+ * Google SDK's ID-token nonce pitfall):
+ *  1. `signInWithOAuth` with `skipBrowserRedirect` hands us the provider URL
+ *     instead of navigating — we own the browser presentation.
+ *  2. `openAuthSessionAsync` opens the Google consent screen and resolves
+ *     when Google redirects to `intertaind://auth/callback` (the deep link
+ *     registered by the app scheme after a clean prebuild — a separate step).
+ *  3. supabase-js defaults to PKCE, so that redirect carries an authorization
+ *     `code` (a query param, NOT a URL fragment). We exchange it for a session.
+ *
+ * No navigation on success — like the other auth mutations, the new session
+ * fires `onAuthStateChange` and root gating routes: a brand-new Google user
+ * has no `profiles` row → gating sends them to setup-username; a returning
+ * user → tabs.
+ *
+ * User-cancel (they close the browser) is NOT an error — we return quietly so
+ * the UI doesn't surface a scary message for an intentional dismissal.
+ */
+export function useGoogleSignInMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      const redirectTo = makeRedirectUri({
+        scheme: "intertaind",
+        path: "auth/callback",
+      });
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo, skipBrowserRedirect: true },
+      });
+      if (error) throw error;
+      if (!data?.url) throw new Error("No OAuth URL returned from Supabase.");
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+
+      // User closed the browser — intentional, not a failure. Abort quietly.
+      if (result.type === "cancel" || result.type === "dismiss") return;
+      if (result.type !== "success") {
+        throw new Error("Google sign-in did not complete.");
+      }
+
+      // PKCE: the success redirect carries the authorization code as a query
+      // param. Exchange it for a session (supabase-js defaults to PKCE, so
+      // there is no implicit/fragment token path to handle here).
+      const code = new URL(result.url).searchParams.get("code");
+      if (!code) throw new Error("OAuth response missing authorization code.");
+
+      const { error: exchangeError } =
+        await supabase.auth.exchangeCodeForSession(code);
+      if (exchangeError) throw exchangeError;
     },
   });
 }

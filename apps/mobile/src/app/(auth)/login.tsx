@@ -19,6 +19,7 @@ import { Link } from "expo-router";
 import { colors } from "@intertaind/design-system";
 
 import { useSignInMutation } from "@/queries/auth";
+import { GoogleSignInButton } from "@/components/google-sign-in-button";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -82,6 +83,14 @@ export default function LoginScreen() {
           <Text className="font-semibold text-text-primary">Sign in</Text>
         )}
       </Pressable>
+
+      <View className="flex-row items-center gap-3">
+        <View className="h-px flex-1 bg-surface-border" />
+        <Text className="text-xs text-text-muted">or</Text>
+        <View className="h-px flex-1 bg-surface-border" />
+      </View>
+
+      <GoogleSignInButton />
 
       <View className="flex-row justify-center gap-1">
         <Text className="text-sm text-text-secondary">No account?</Text>

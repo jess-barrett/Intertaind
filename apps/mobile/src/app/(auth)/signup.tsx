@@ -26,6 +26,7 @@ import { validateUsername } from "@intertaind/types";
 import { colors } from "@intertaind/design-system";
 
 import { useSignUpMutation } from "@/queries/auth";
+import { GoogleSignInButton } from "@/components/google-sign-in-button";
 
 export default function SignUpScreen() {
   const [email, setEmail] = useState("");
@@ -130,6 +131,14 @@ export default function SignUpScreen() {
           <Text className="font-semibold text-text-primary">Sign up</Text>
         )}
       </Pressable>
+
+      <View className="flex-row items-center gap-3">
+        <View className="h-px flex-1 bg-surface-border" />
+        <Text className="text-xs text-text-muted">or</Text>
+        <View className="h-px flex-1 bg-surface-border" />
+      </View>
+
+      <GoogleSignInButton />
 
       <View className="flex-row justify-center gap-1">
         <Text className="text-sm text-text-secondary">Have an account?</Text>
