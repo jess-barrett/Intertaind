@@ -87,21 +87,34 @@ export function useCreateProfileMutation() {
         .maybeSingle();
       if (existing) throw new Error("Profile already set up.");
 
-      // Case-insensitive uniqueness check.
+      // Case-insensitive uniqueness check. Escape LIKE metacharacters so `_`
+      // in a username is matched literally, not as a wildcard. name is already
+      // lowercased by validateUsername.
+      const likePattern = name.replace(/[\\%_]/g, "\\$&");
       const { data: taken } = await supabase
         .from("profiles")
         .select("id")
-        .ilike("username", name)
+        .ilike("username", likePattern)
         .maybeSingle();
       if (taken) throw new Error("Username is already taken.");
 
+      // The insert is the real uniqueness arbiter — the pre-check above is
+      // best-effort and can miss (RLS-hidden private profiles / races). Remap
+      // a unique-constraint violation (Postgres code 23505) to a friendly
+      // message instead of leaking raw Postgres text.
       const { error: insertErr } = await supabase
         .from("profiles")
         .insert({ id: user.id, username: name });
-      if (insertErr) throw new Error(insertErr.message);
+      if (insertErr) {
+        if (insertErr.code === "23505") {
+          throw new Error("Username is already taken.");
+        }
+        throw new Error(insertErr.message);
+      }
 
-      // Keep auth metadata in sync (web does this too).
-      await supabase.auth.updateUser({ data: { username: name } });
+      // Best-effort mirror into auth metadata; the profiles row is
+      // authoritative, so a failure here must not block the success path.
+      await supabase.auth.updateUser({ data: { username: name } }).catch(() => {});
     },
     onSuccess: () => refreshProfileStatus(),
   });
