@@ -406,11 +406,13 @@ export default function AuthLayout() {
 
 **Step 4: Rewrite root `src/app/_layout.tsx`** — providers + redirect gating. Confirm the expo-router v6 redirect API against the installed package; this uses imperative redirects in an effect, which is universally supported:
 
+The `AuthProvider` exposes `profileStatus: "none" | "missing" | "present" | "error"` (Task 3, hardened): `"none"` = no session, `"missing"` = signed in without a profile, `"present"` = has profile, `"error"` = signed in but the profile-existence fetch failed. Gating MUST NOT silently fall through on `"error"` (that would strand a signed-in user) — render a retry instead. Also render a splash while `loading` so no wrong-screen flashes before the initial session check resolves.
+
 ```tsx
 import { useEffect } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router";
-import { useColorScheme, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, useColorScheme, View } from "react-native";
 
 import "@/global.css";
 
@@ -418,7 +420,7 @@ import Providers from "@/components/providers";
 import { useAuth } from "@/components/auth-provider";
 
 function RootNavigator() {
-  const { session, profileStatus, loading } = useAuth();
+  const { session, profileStatus, loading, refreshProfileStatus } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -434,17 +436,46 @@ function RootNavigator() {
       return;
     }
 
+    // Signed in with a profile → out of the auth group into the app.
+    if (profileStatus === "present") {
+      if (inAuthGroup) router.replace("/(tabs)");
+      return;
+    }
+
     // Signed in but no profile yet → force username setup.
     if (profileStatus === "missing") {
       if (!onSetupUsername) router.replace("/(auth)/setup-username");
       return;
     }
 
-    // Signed in with a profile but still on an auth screen → go home.
-    if (profileStatus === "present" && inAuthGroup) {
-      router.replace("/(tabs)");
-    }
+    // profileStatus === "error" (transient fetch failure while signed in):
+    // do NOT route — we don't know whether they have a profile, so guessing
+    // would strand them. The render path below shows a retry instead.
   }, [session, profileStatus, loading, segments, router]);
+
+  if (loading) {
+    return (
+      <View className="flex-1 items-center justify-center bg-neutral-950">
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
+  if (session && profileStatus === "error") {
+    return (
+      <View className="flex-1 items-center justify-center gap-4 bg-neutral-950 px-6">
+        <Text className="text-center text-white">
+          Couldn&apos;t load your profile. Check your connection and try again.
+        </Text>
+        <Pressable
+          className="rounded-lg bg-blue-600 px-4 py-3"
+          onPress={() => refreshProfileStatus()}
+        >
+          <Text className="font-semibold text-white">Retry</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return <Stack screenOptions={{ headerShown: false }} />;
 }
