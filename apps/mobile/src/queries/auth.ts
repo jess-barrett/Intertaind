@@ -15,6 +15,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { validateUsername } from "@intertaind/types";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/components/auth-provider";
 
 export function useSignInMutation() {
   return useMutation({
@@ -54,5 +55,54 @@ export function useSignOutMutation() {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
     },
+  });
+}
+
+/**
+ * Create the signed-in user's profiles row after they pick a username —
+ * the mobile analogue of web's `createInitialProfile` server action.
+ *
+ * Unlike web (which runs on a trusted server), this issues the writes as
+ * the user directly; the `profiles_insert_self` + `profiles_update_self`
+ * RLS policies scope them to `auth.uid()`. Same guards as web: refuse if a
+ * profile already exists, reject case-insensitive collisions before insert.
+ *
+ * No navigation here (see the file header) — `refreshProfileStatus` flips
+ * `profileStatus` "missing" → "present" and root gating routes to /(tabs).
+ */
+export function useCreateProfileMutation() {
+  const { user, refreshProfileStatus } = useAuth();
+  return useMutation({
+    mutationFn: async (rawUsername: string) => {
+      if (!user) throw new Error("Not signed in.");
+      const check = validateUsername(rawUsername);
+      if (!check.ok) throw new Error(check.error);
+      const name = check.value;
+
+      // Refuse if a profile already exists for this user.
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (existing) throw new Error("Profile already set up.");
+
+      // Case-insensitive uniqueness check.
+      const { data: taken } = await supabase
+        .from("profiles")
+        .select("id")
+        .ilike("username", name)
+        .maybeSingle();
+      if (taken) throw new Error("Username is already taken.");
+
+      const { error: insertErr } = await supabase
+        .from("profiles")
+        .insert({ id: user.id, username: name });
+      if (insertErr) throw new Error(insertErr.message);
+
+      // Keep auth metadata in sync (web does this too).
+      await supabase.auth.updateUser({ data: { username: name } });
+    },
+    onSuccess: () => refreshProfileStatus(),
   });
 }
