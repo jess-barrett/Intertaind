@@ -679,6 +679,13 @@ git commit -m "feat(mobile): setup-username screen + client-side profile creatio
 
 Prereq: the Google rows in the external checklist. End state: "Continue with Google" on login/signup opens a browser, returns to the app authenticated; new Google users hit setup-username (no `username` in metadata → no profile → gating routes them).
 
+> **REQUIRED FIRST (native config sync):** Task 2 changed `scheme`→`intertaind` and added `usesAppleSignIn` + the apple/web-browser plugins in `app.json`, but the `expo run:ios` there did an *incremental* build — the on-disk `ios/` project still carries the OLD `mobile` scheme in `Info.plist` and an empty `mobile.entitlements`. Before Google (deep-link redirect) or Apple (entitlement) can work end-to-end, run a **clean prebuild + rebuild**:
+> ```bash
+> pnpm --filter mobile exec expo prebuild -p ios --clean
+> pnpm --filter mobile exec npx expo run:ios --device "iPhone 17 Pro"
+> ```
+> Then VERIFY (this is the real acceptance check for the Task 2 config): `ios/mobile/Info.plist` `CFBundleURLSchemes` contains `intertaind` (and `exp+intertaind`), and `ios/mobile/mobile.entitlements` contains `com.apple.developer.applesignin`. Do NOT assume "it built" means the config applied — the incremental build masked it once already. (`ios/` is gitignored/CNG-generated — nothing to commit from this.)
+
 ### Task 7: Google sign-in via `signInWithOAuth` + `expo-web-browser`
 
 **Files:**
