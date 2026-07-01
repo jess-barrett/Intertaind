@@ -816,6 +816,6 @@ git commit -m "feat(mobile): Sign in with Apple"
 
 ## Follow-ups (out of scope; record, don't lose)
 
-- Point the **web** signup + `createInitialProfile` at the shared `validateUsername` from `@intertaind/types` to kill the regex inconsistency (Task 1 only added the shared validator; it didn't rewire web).
+- Point the **web** signup + `createInitialProfile` at the shared `validateUsername` from `@intertaind/types` to kill the regex inconsistency (Task 1 only added the shared validator; it didn't rewire web). **Migration caveat (must handle):** the shared validator standardizes on the *stricter* `/^[a-z0-9_]{3,20}$/`, but web's `createInitialProfile`/`updateProfile` used the looser `/^[a-zA-Z0-9_-]{3,30}$/`. Existing production usernames may contain uppercase, dashes, or 21–30 chars — all now rejected. When wiring web: validate only on *change* (grandfather existing values) or run a rename/migration, or users editing their profile get locked out by resubmitting their own current username.
 - Password reset / email confirmation flows (web doesn't have them yet either).
 - Account screen (display name, avatar, sign-out) — sign-out currently lives wherever Task 5 placed it.
