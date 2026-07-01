@@ -9,6 +9,8 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
+import { AuthProvider } from "./auth-provider";
+
 /**
  * QueryClient configuration.
  *
@@ -48,6 +50,8 @@ export default function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(buildQueryClient);
 
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>{children}</AuthProvider>
+    </QueryClientProvider>
   );
 }
