@@ -25,23 +25,38 @@ import * as SecureStore from "expo-secure-store";
 // implementation of the underlying Keychain/Keystore bridge. When this
 // module graph is evaluated off-device (expo-router typed-route
 // generation runs under Node; a `react-native-web` target bundle runs in
-// the browser) the native functions are simply absent, and any call —
-// e.g. `SecureStore.getItemAsync` — throws
+// the browser) the native bridge is absent, and any call — e.g.
+// `SecureStore.getItemAsync` — throws
 // `TypeError: ExpoSecureStore.getValueWithKeyAsync is not a function`.
 //
-// The Supabase client (`supabase.ts`) is constructed eagerly at import
-// with `persistSession: true`, so it reaches into this adapter the moment
-// the graph is evaluated — which is exactly what crashes those Node/web
-// evals. To stay safe we detect native availability once and, when it's
-// missing, fall back to a process-local in-memory `Map`. The fallback is
-// deliberately NON-PERSISTENT: there is no secure storage in Node/web, so
-// "session doesn't survive the process" is the correct (and only sane)
-// behaviour there. On-device the native path below is used verbatim.
-const nativeAvailable =
-  Platform.OS !== "web" &&
-  typeof SecureStore.getItemAsync === "function" &&
-  typeof SecureStore.setItemAsync === "function" &&
-  typeof SecureStore.deleteItemAsync === "function";
+// Detecting this at module-load with `typeof SecureStore.getItemAsync ===
+// "function"` does NOT work: `getItemAsync`/`setItemAsync`/
+// `deleteItemAsync` are top-level `export async function` wrappers in
+// expo-secure-store, so they ALWAYS exist as functions on every platform
+// (Node included). They only reach into the missing native object
+// (`ExpoSecureStore.getValueWithKeyAsync`) at CALL time — which is where
+// the throw actually happens. A load-time `typeof` probe is therefore
+// inert; it can't see the missing bridge.
+//
+// So availability is detected the only place the real signal exists: at
+// call time. `secureStorage` below is a thin wrapper carrying a mutable
+// `nativeUsable` latch (seeded from `Platform.OS`, since web genuinely
+// has no secure store). Each method:
+//   - web / already-latched-off → delegates to the in-memory store;
+//   - otherwise → tries the native chunked adapter; on success returns
+//     it; on a `TypeError: … is not a function` (the missing-bridge
+//     signature) it latches `nativeUsable = false` and falls back to
+//     in-memory for this call and every call after.
+//
+// Crucially, ANY other error — biometric cancel, Keychain/Keystore access
+// failure, etc. — is re-thrown unchanged. Those are genuine on-device
+// failures Supabase must see; we only swallow the "module isn't here"
+// case. The Supabase client (`supabase.ts`) is constructed eagerly at
+// import with `persistSession: true`, so it reaches into this adapter the
+// moment the graph is evaluated — the latch is what keeps that from
+// crashing Node/web evals. The in-memory fallback is deliberately
+// NON-PERSISTENT: there is no secure storage off-device, so "session
+// doesn't survive the process" is the correct behaviour there.
 
 // Keep a margin below the 2048-byte cap. UTF-8 chars are 1–4 bytes;
 // 1800 chars is safe even if every char is multi-byte (worst case ~7KB
@@ -138,7 +153,7 @@ const nativeSecureStorage = {
 const memoryStore = new Map<string, string>();
 const inMemoryStorage = {
   async getItem(key: string): Promise<string | null> {
-    return memoryStore.has(key) ? (memoryStore.get(key) as string) : null;
+    return memoryStore.get(key) ?? null;
   },
   async setItem(key: string, value: string): Promise<void> {
     memoryStore.set(key, value);
@@ -148,13 +163,94 @@ const inMemoryStorage = {
   },
 };
 
+// A missing native bridge surfaces as a `TypeError` whose message matches
+// `… is not a function` (e.g. "ExpoSecureStore.getValueWithKeyAsync is not
+// a function"). That — and ONLY that — is the signal that we're running
+// off-device and should latch to the in-memory fallback. Every other error
+// is a genuine on-device SecureStore failure that must propagate.
+function isMissingNativeModuleError(e: unknown): boolean {
+  return e instanceof TypeError && /is not a function/.test(e.message);
+}
+
+// Latch: `true` on native platforms until a call proves the bridge is
+// absent; `false` immediately on web (no secure store exists there).
+let nativeUsable = Platform.OS !== "web";
+
+// Emit the "no secure persistence, using in-memory fallback" dev warning
+// exactly once, so a future misconfiguration that silently drops device
+// persistence is loud rather than invisible.
+let warnedFallback = false;
+function warnFallbackOnce(): void {
+  if (warnedFallback) return;
+  warnedFallback = true;
+  if (__DEV__) {
+    console.warn(
+      "[secure-storage] Native SecureStore is unavailable; using a " +
+        "process-local, NON-PERSISTENT in-memory fallback. Auth sessions " +
+        "will NOT survive a restart. Expected under Node (typed-route gen) " +
+        "and web; on a real device this indicates a misconfiguration.",
+    );
+  }
+}
+
+// Warn eagerly when we already know at load time there's no secure store
+// (web). The native→missing case warns from the latch in `run` below.
+if (!nativeUsable) warnFallbackOnce();
+
+/**
+ * Runs one storage operation against the native chunked adapter, falling
+ * back to the in-memory store when the native bridge is absent.
+ *
+ * The latch (`nativeUsable`) is the authoritative availability signal: it
+ * starts optimistic on native platforms and flips off the first time a
+ * native call throws the missing-module `TypeError`. Once off, it stays
+ * off — every subsequent call goes straight to memory without retrying the
+ * (known-broken) native path. Genuine native failures are re-thrown.
+ */
+async function run<T>(
+  nativeOp: () => Promise<T>,
+  memoryOp: () => Promise<T>,
+): Promise<T> {
+  if (!nativeUsable) return memoryOp();
+  try {
+    return await nativeOp();
+  } catch (e) {
+    if (isMissingNativeModuleError(e)) {
+      nativeUsable = false;
+      warnFallbackOnce();
+      return memoryOp();
+    }
+    // Genuine on-device SecureStore error (biometric cancel, access
+    // denied, etc.) — propagate unchanged.
+    throw e;
+  }
+}
+
 /**
  * The `Storage` implementation Supabase uses to persist the auth session.
- * Resolves to the native chunked Keychain/Keystore adapter on-device, and
- * to a non-persistent in-memory `Map` when the native module is absent
- * (Node typed-route gen / web bundle) so the eager client construction in
- * `supabase.ts` can't crash the module graph off-native.
+ * On-device it drives the native chunked Keychain/Keystore adapter; when
+ * the native bridge turns out to be absent (Node typed-route gen / web
+ * bundle) it latches to a non-persistent in-memory `Map` so the eager
+ * client construction in `supabase.ts` can't crash the module graph
+ * off-native — without ever masking a real on-device SecureStore error.
  */
-export const secureStorage = nativeAvailable
-  ? nativeSecureStorage
-  : inMemoryStorage;
+export const secureStorage = {
+  getItem(key: string): Promise<string | null> {
+    return run(
+      () => nativeSecureStorage.getItem(key),
+      () => inMemoryStorage.getItem(key),
+    );
+  },
+  setItem(key: string, value: string): Promise<void> {
+    return run(
+      () => nativeSecureStorage.setItem(key, value),
+      () => inMemoryStorage.setItem(key, value),
+    );
+  },
+  removeItem(key: string): Promise<void> {
+    return run(
+      () => nativeSecureStorage.removeItem(key),
+      () => inMemoryStorage.removeItem(key),
+    );
+  },
+};
