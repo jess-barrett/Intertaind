@@ -94,13 +94,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (active) setLoading(false);
       });
 
-    const { data: sub } = supabase.auth.onAuthStateChange(
-      async (_event, nextSession) => {
-        if (!active) return;
-        setSession(nextSession);
-        await syncProfile(nextSession);
-      }
-    );
+    // IMPORTANT: this callback runs INSIDE the auth lock. `auth-js`
+    // emits INITIAL_SESSION via `_emitInitialSession` →
+    // `await _useSession(cb)`, which holds `lock: processLock` until the
+    // callback resolves. Calling any Supabase method here (e.g.
+    // `supabase.from(...)` in syncProfile, which internally re-acquires
+    // the lock for a token) deadlocks on cold start: the re-acquire
+    // queues behind the lock drain that is itself awaiting this callback,
+    // so the concurrent getSession() above never settles and `loading`
+    // never clears (infinite splash). Keep the callback SYNCHRONOUS and
+    // defer any Supabase work to a macrotask that runs after the lock is
+    // released. (Supabase's documented guidance.)
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!active) return;
+      setSession(nextSession);
+      setTimeout(() => {
+        if (active) void syncProfile(nextSession);
+      }, 0);
+    });
 
     return () => {
       active = false;
