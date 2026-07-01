@@ -38,6 +38,7 @@ export default function LoginScreen() {
         <Text className="text-sm text-text-secondary">Email</Text>
         <TextInput
           className="rounded-lg bg-surface-raised px-4 py-3 text-text-primary"
+          accessibilityLabel="Email"
           placeholder="you@example.com"
           placeholderTextColor={colors["text-muted"]}
           autoCapitalize="none"
@@ -53,6 +54,7 @@ export default function LoginScreen() {
         <Text className="text-sm text-text-secondary">Password</Text>
         <TextInput
           className="rounded-lg bg-surface-raised px-4 py-3 text-text-primary"
+          accessibilityLabel="Password"
           placeholder="••••••••"
           placeholderTextColor={colors["text-muted"]}
           autoCapitalize="none"

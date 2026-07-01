@@ -54,6 +54,7 @@ export default function SignUpScreen() {
         <Text className="text-sm text-text-secondary">Email</Text>
         <TextInput
           className="rounded-lg bg-surface-raised px-4 py-3 text-text-primary"
+          accessibilityLabel="Email"
           placeholder="you@example.com"
           placeholderTextColor={colors["text-muted"]}
           autoCapitalize="none"
@@ -69,6 +70,7 @@ export default function SignUpScreen() {
         <Text className="text-sm text-text-secondary">Username</Text>
         <TextInput
           className="rounded-lg bg-surface-raised px-4 py-3 text-text-primary"
+          accessibilityLabel="Username"
           placeholder="your_handle"
           placeholderTextColor={colors["text-muted"]}
           autoCapitalize="none"
@@ -86,6 +88,7 @@ export default function SignUpScreen() {
         <Text className="text-sm text-text-secondary">Password</Text>
         <TextInput
           className="rounded-lg bg-surface-raised px-4 py-3 text-text-primary"
+          accessibilityLabel="Password"
           placeholder="••••••••"
           placeholderTextColor={colors["text-muted"]}
           autoCapitalize="none"
@@ -100,6 +103,20 @@ export default function SignUpScreen() {
 
       {signUp.error ? (
         <Text className="text-sm text-text-muted">{signUp.error.message}</Text>
+      ) : null}
+
+      {signUp.data?.needsConfirmation ? (
+        <View className="gap-1">
+          <Text className="text-sm text-text-primary">
+            Check your email to confirm your account, then sign in.
+          </Text>
+          <Link
+            href="/(auth)/login"
+            className="text-sm font-semibold text-text-primary"
+          >
+            Go to sign in
+          </Link>
+        </View>
       ) : null}
 
       <Pressable

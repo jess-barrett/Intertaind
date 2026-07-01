@@ -31,15 +31,19 @@ export function useSignUpMutation() {
       email: string;
       password: string;
       username: string;
-    }) => {
+    }): Promise<{ needsConfirmation: boolean }> => {
       const check = validateUsername(vars.username);
       if (!check.ok) throw new Error(check.error);
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: vars.email,
         password: vars.password,
         options: { data: { username: check.value } },
       });
       if (error) throw error;
+      // With email confirmation ENABLED, signUp succeeds but returns no
+      // session — the user must confirm via email before a session exists.
+      // Surface that so the screen can show a notice instead of freezing.
+      return { needsConfirmation: data.session === null };
     },
   });
 }
