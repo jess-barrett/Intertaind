@@ -1,3 +1,5 @@
+export * from "./username.ts";
+
 export type MediaType =
   | "book"
   | "movie"
