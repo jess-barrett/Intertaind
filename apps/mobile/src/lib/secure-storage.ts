@@ -18,7 +18,30 @@
  * (e.g. `sb-<ref>-auth-token`) plus a `.NN` suffix fit comfortably.
  */
 
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
+
+// `expo-secure-store` is a NATIVE-ONLY module — there is no Node or web
+// implementation of the underlying Keychain/Keystore bridge. When this
+// module graph is evaluated off-device (expo-router typed-route
+// generation runs under Node; a `react-native-web` target bundle runs in
+// the browser) the native functions are simply absent, and any call —
+// e.g. `SecureStore.getItemAsync` — throws
+// `TypeError: ExpoSecureStore.getValueWithKeyAsync is not a function`.
+//
+// The Supabase client (`supabase.ts`) is constructed eagerly at import
+// with `persistSession: true`, so it reaches into this adapter the moment
+// the graph is evaluated — which is exactly what crashes those Node/web
+// evals. To stay safe we detect native availability once and, when it's
+// missing, fall back to a process-local in-memory `Map`. The fallback is
+// deliberately NON-PERSISTENT: there is no secure storage in Node/web, so
+// "session doesn't survive the process" is the correct (and only sane)
+// behaviour there. On-device the native path below is used verbatim.
+const nativeAvailable =
+  Platform.OS !== "web" &&
+  typeof SecureStore.getItemAsync === "function" &&
+  typeof SecureStore.setItemAsync === "function" &&
+  typeof SecureStore.deleteItemAsync === "function";
 
 // Keep a margin below the 2048-byte cap. UTF-8 chars are 1–4 bytes;
 // 1800 chars is safe even if every char is multi-byte (worst case ~7KB
@@ -48,7 +71,11 @@ async function clearChunksFrom(key: string, startIndex: number): Promise<void> {
   }
 }
 
-export const secureStorage = {
+// The native, hardware-backed chunked adapter. Used verbatim on-device;
+// its chunking semantics, atomic count-last write, and orphan cleanup are
+// unchanged. Only the *selection* between this and the in-memory fallback
+// is new.
+const nativeSecureStorage = {
   async getItem(key: string): Promise<string | null> {
     const countRaw = await SecureStore.getItemAsync(key);
     if (countRaw === null) return null;
@@ -101,3 +128,33 @@ export const secureStorage = {
     await clearChunksFrom(key, count);
   },
 };
+
+// Non-persistent, process-local fallback for Node/web evaluation contexts
+// where the native SecureStore module is unavailable (see the top-of-file
+// note). No chunking is needed — there's no 2KB per-value cap in a plain
+// `Map`, so whole values are stored directly. This implements the same
+// `getItem`/`setItem`/`removeItem` contract Supabase's `Storage` expects
+// and, critically, never throws due to a missing native function.
+const memoryStore = new Map<string, string>();
+const inMemoryStorage = {
+  async getItem(key: string): Promise<string | null> {
+    return memoryStore.has(key) ? (memoryStore.get(key) as string) : null;
+  },
+  async setItem(key: string, value: string): Promise<void> {
+    memoryStore.set(key, value);
+  },
+  async removeItem(key: string): Promise<void> {
+    memoryStore.delete(key);
+  },
+};
+
+/**
+ * The `Storage` implementation Supabase uses to persist the auth session.
+ * Resolves to the native chunked Keychain/Keystore adapter on-device, and
+ * to a non-persistent in-memory `Map` when the native module is absent
+ * (Node typed-route gen / web bundle) so the eager client construction in
+ * `supabase.ts` can't crash the module graph off-native.
+ */
+export const secureStorage = nativeAvailable
+  ? nativeSecureStorage
+  : inMemoryStorage;
