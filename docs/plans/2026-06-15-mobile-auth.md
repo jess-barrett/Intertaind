@@ -793,6 +793,8 @@ Prereq: the Apple rows in the external checklist (paid account + Supabase Apple 
 
 > **Cannot be verified on the Simulator.** Requires a real iPhone running the dev client (build with `expo run:ios --device` targeting the connected device, or an EAS dev build) and the paid Apple Developer account.
 
+> **RE-INSTALL the Apple native config (removed during M3, July 2026):** During M3, `usesAppleSignIn: true`, the `"expo-apple-authentication"` plugin entry, AND the **`expo-apple-authentication` npm package itself** were all removed. Reason: the package **auto-applies** its config plugin merely by being installed (removing it from the `plugins` array was NOT enough — the `com.apple.developer.applesignin` entitlement still appeared after a clean prebuild). That entitlement requires a paid Apple Developer team to code-sign, which broke even the **iOS Simulator** build (`CommandError: No code signing certificates are available to use`) once a clean prebuild actually applied it. So M4 Step 1 must: `pnpm --filter mobile add expo-apple-authentication`, re-add `usesAppleSignIn: true` under `expo.ios` (the plugin auto-applies, but set the flag for clarity), then `expo prebuild -p ios --clean`, then build **to a physical device** with a valid Apple team/signing. Do NOT do this until the paid account exists, or you re-break the simulator build.
+
 ### Task 8: Apple sign-in via `expo-apple-authentication` + `signInWithIdToken`
 
 **Files:**
