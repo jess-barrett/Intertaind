@@ -9,8 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.intertaind.app",
-      "icon": "./assets/expo.icon",
-      "usesAppleSignIn": true
+      "icon": "./assets/expo.icon"
     },
     "android": {
       "package": "com.intertaind.app",
@@ -39,7 +38,6 @@
         }
       ],
       "expo-secure-store",
-      "expo-apple-authentication",
       "expo-web-browser"
     ],
     "experiments": {
