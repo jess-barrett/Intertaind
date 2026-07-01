@@ -62,7 +62,8 @@ export function useSignUpMutation() {
  *  2. `openAuthSessionAsync` opens the Google consent screen and resolves
  *     when Google redirects to `intertaind://auth/callback` (the deep link
  *     registered by the app scheme after a clean prebuild — a separate step).
- *  3. supabase-js defaults to PKCE, so that redirect carries an authorization
+ *  3. PKCE is enabled explicitly on the client (`flowType: "pkce"` in
+ *     `src/lib/supabase.ts`), so that redirect carries an authorization
  *     `code` (a query param, NOT a URL fragment). We exchange it for a session.
  *
  * No navigation on success — like the other auth mutations, the new session
@@ -97,8 +98,9 @@ export function useGoogleSignInMutation() {
       }
 
       // PKCE: the success redirect carries the authorization code as a query
-      // param. Exchange it for a session (supabase-js defaults to PKCE, so
-      // there is no implicit/fragment token path to handle here).
+      // param. Exchange it for a session (PKCE is enabled explicitly via
+      // `flowType: "pkce"` in src/lib/supabase.ts, so there is no
+      // implicit/fragment token path to handle here).
       const code = new URL(result.url).searchParams.get("code");
       if (!code) throw new Error("OAuth response missing authorization code.");
 

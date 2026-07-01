@@ -29,6 +29,11 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     detectSessionInUrl: false,
     lock: processLock,
+    // PKCE is required for the OAuth code-exchange flow used by Google
+    // sign-in (see queries/auth.ts). auth-js defaults to "implicit", which
+    // would return tokens in the URL fragment instead of a `?code=`, so the
+    // exchangeCodeForSession path could never succeed without this override.
+    flowType: "pkce",
   },
 });
 
