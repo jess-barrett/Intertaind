@@ -503,6 +503,8 @@ git add apps/mobile/src/app
 git commit -m "feat(mobile): route groups (auth)/(tabs) + session gating in root layout"
 ```
 
+> **STYLING DIRECTIVE for ALL auth screens (Tasks 5, 6, 7, 8):** The code samples below use raw Tailwind palette classes (`bg-neutral-950`, `bg-blue-600`, `text-white`, `#888`, etc.) for brevity — **these are illustrative only. Do NOT ship them.** Per root `AGENTS.md` + `apps/mobile/AGENTS.md`, all colors MUST come from the design-system semantic tokens (there's a CI drift-check). Before writing each screen, read `apps/mobile/src/app/(tabs)/index.tsx` (canonical vocabulary) and `packages/design-system/src/tokens.cjs` for the actual token names, and map: screen bg → `bg-surface-default`; body text → `text-text-primary`; secondary/help text → `text-text-muted`; primary button → `bg-brand` with `text-text-primary` label; inputs/cards → the raised-surface token defined in tokens.cjs (check the exact name). Placeholder colors: use a token-derived value, not a raw hex. The root gating views in `_layout.tsx` were already converted to tokens (commit f267ecb) — match that.
+
 ### Task 5: Auth mutations (`queries/auth.ts`) + login & signup screens + sign-out
 
 **Files:**
@@ -855,5 +857,6 @@ git commit -m "feat(mobile): Sign in with Apple"
 ## Follow-ups (out of scope; record, don't lose)
 
 - Point the **web** signup + `createInitialProfile` at the shared `validateUsername` from `@intertaind/types` to kill the regex inconsistency (Task 1 only added the shared validator; it didn't rewire web). **Migration caveat (must handle):** the shared validator standardizes on the *stricter* `/^[a-z0-9_]{3,20}$/`, but web's `createInitialProfile`/`updateProfile` used the looser `/^[a-zA-Z0-9_-]{3,30}$/`. Existing production usernames may contain uppercase, dashes, or 21–30 chars — all now rejected. When wiring web: validate only on *change* (grandfather existing values) or run a rename/migration, or users editing their profile get locked out by resubmitting their own current username.
+- **Gating approach — `Stack.Protected` vs imperative-effect (decision to revisit):** Task 4 gates via `router.replace` in a root effect. Code review noted expo-router v6's `<Stack.Protected guard={...}>` exists and is the more durable option the plan originally preferred — it gates by *render* so protected screens are never mounted pre-redirect, eliminating the one-frame flash on warm in-session transitions (e.g. sign-out while on a tabs screen). The imperative approach works and cold-start/deep-link flashes are already prevented by the `loading` splash guard; the only residual is a one-frame warm-transition flash (low severity). Deferred as a conscious tradeoff — migrate to `Stack.Protected` if the flash proves noticeable or to align with the long-term-durability mandate.
 - Password reset / email confirmation flows (web doesn't have them yet either).
 - Account screen (display name, avatar, sign-out) — sign-out currently lives wherever Task 5 placed it.
