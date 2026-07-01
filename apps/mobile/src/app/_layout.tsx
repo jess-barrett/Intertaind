@@ -39,7 +39,7 @@ function RootNavigator() {
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-neutral-950">
+      <View className="flex-1 items-center justify-center bg-surface-default">
         <ActivityIndicator />
       </View>
     );
@@ -47,15 +47,15 @@ function RootNavigator() {
 
   if (session && profileStatus === "error") {
     return (
-      <View className="flex-1 items-center justify-center gap-4 bg-neutral-950 px-6">
-        <Text className="text-center text-white">
+      <View className="flex-1 items-center justify-center gap-4 bg-surface-default px-6">
+        <Text className="text-center text-text-primary">
           Couldn&apos;t load your profile. Check your connection and try again.
         </Text>
         <Pressable
-          className="rounded-lg bg-blue-600 px-4 py-3"
+          className="rounded-lg bg-brand px-4 py-3"
           onPress={() => refreshProfileStatus()}
         >
-          <Text className="font-semibold text-white">Retry</Text>
+          <Text className="font-semibold text-text-primary">Retry</Text>
         </Pressable>
       </View>
     );
