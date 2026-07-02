@@ -125,11 +125,17 @@ export function useMediaDetail(mediaId: string) {
  * an anon query would only ever return nothing. Keyed separately from
  * `media.detail` so tracking mutations can invalidate this row without
  * refetching the media item.
+ *
+ * The key includes the user id so one user's cached row can never be
+ * served to another after an account switch. Signed out, the "anon"
+ * placeholder keeps the key stable but never fetches (`enabled: !!user`
+ * gates the queryFn), so every fetched entry is keyed by a real
+ * user.id.
  */
 export function useViewerTracking(mediaId: string) {
   const { user } = useAuth();
   return useQuery({
-    queryKey: queryKeys.media.viewerTracking(mediaId),
+    queryKey: queryKeys.media.viewerTracking(user?.id ?? "anon", mediaId),
     enabled: !!user,
     queryFn: async (): Promise<Tables<"user_media"> | null> => {
       const { data, error } = await supabase

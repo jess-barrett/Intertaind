@@ -213,3 +213,5 @@ These are the non-tracking display features on web's detail page. Listed so they
 - **`avg_rating` scale confirmation** (Task 1.3) — document which scale `media_items.avg_rating` uses so histogram + display agree.
 - **Recommendations, cast/people, series** detail-page sections (M5 items 2–4) — the headline recommendations engine especially deserves its own plan.
 - **Web/mobile shared tracking helpers** — if the `progress`-shape builders duplicate between platforms, extract to `@intertaind/types`.
+- **Web avg_rating scale bug (pre-existing):** web `media-card.tsx` passes 0–5 `avg_rating` into `StarRatingDisplay` which divides by 2 again — cards show half the true community rating. Fix web-side; the scales are documented in migration 025 + mobile media/[id].tsx (review finding, 2026-07-02).
+- **Deep-link handling:** cold-start on /media/[id] mounts it as the only stack entry (no tabs beneath — add root-layout anchor for (tabs)) and signed-out deep links lose the intended route through the login gate (preserve+restore). Address when sharing/deep links become real.

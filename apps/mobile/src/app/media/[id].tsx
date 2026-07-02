@@ -23,21 +23,16 @@ import {
   Text,
   View,
 } from "react-native";
-import { Image } from "expo-image";
-import { cssInterop } from "nativewind";
 import { colors } from "@intertaind/design-system";
 import { MEDIA_TYPE_CONFIG, type MediaType } from "@intertaind/types";
 import type { Tables } from "@intertaind/supabase";
 
+import { Image } from "@/components/image";
 import {
   useMediaDetail,
   useViewerTracking,
   type MediaDetailItem,
 } from "@/queries/media";
-
-// NativeWind only auto-wires core RN components; expo-image's Image is
-// third-party, so opt it into className → style resolution once here.
-cssInterop(Image, { className: "style" });
 
 /** Human labels for the viewer's tracking_status enum. */
 const STATUS_LABELS: Record<Tables<"user_media">["status"], string> = {
@@ -70,9 +65,13 @@ function yearFrom(dateString: string | null): string | null {
 }
 
 /**
- * DB ratings (both media_items.avg_rating and user_media.rating) are
- * stored on a 1–10 scale where each step = 0.5 stars; web's
- * StarRatingDisplay divides by 2 to show 0.5–5.0 — match it exactly.
+ * The two rating columns are on DIFFERENT scales:
+ *   - `media_items.avg_rating` is ALREADY 0–5 — migration 025 divides
+ *     by 2 in SQL (`AVG(rating)::numeric / 2.0`). Render it as-is;
+ *     dividing again would halve the community rating.
+ *   - `user_media.rating` is raw 1–10 (each step = 0.5 stars) — divide
+ *     by 2 for display, matching web's StarRatingDisplay.
+ * `displayStars` is therefore ONLY for `user_media.rating`.
  * `Number()` guards Postgres numerics arriving as strings (same
  * defense as web's series-graph).
  */
@@ -119,7 +118,14 @@ export default function MediaDetailScreen() {
           </Pressable>
         </View>
       ) : (
-        <MediaDetailBody item={detail.data} viewerRow={tracking.data ?? null} />
+        <MediaDetailBody
+          item={detail.data}
+          viewerRow={tracking.data ?? null}
+          // isLoading = pending AND actually fetching (i.e. enabled) —
+          // a disabled (signed-out) query stays "pending" forever and
+          // must not render as an eternal placeholder.
+          trackingPending={tracking.isLoading}
+        />
       )}
     </View>
   );
@@ -128,9 +134,11 @@ export default function MediaDetailScreen() {
 function MediaDetailBody({
   item,
   viewerRow,
+  trackingPending,
 }: {
   item: MediaDetailItem;
   viewerRow: Tables<"user_media"> | null;
+  trackingPending: boolean;
 }) {
   const type = mediaTypeDisplay(item.media_type);
   const year = yearFrom(item.release_date);
@@ -174,16 +182,22 @@ function MediaDetailBody({
                 <Text className="text-text-muted"> · {year}</Text>
               ) : null}
             </Text>
-            {item.avg_rating != null ? (
+            {/* Migration 025 COALESCEs avg_rating to 0 for unrated
+                items, so gate on rating_count — "★ 0.0 (0 ratings)"
+                reads as a terrible score, not an absence of one.
+                avg_rating is already 0–5 (SQL-divided): no ÷2 here. */}
+            {(item.rating_count ?? 0) > 0 && item.avg_rating != null ? (
               <Text className="text-sm text-text-secondary">
-                ★ {displayStars(item.avg_rating)}
+                ★ {Number(item.avg_rating).toFixed(1)}
                 <Text className="text-text-muted">
                   {" "}
-                  ({item.rating_count ?? 0}{" "}
+                  ({item.rating_count}{" "}
                   {item.rating_count === 1 ? "rating" : "ratings"})
                 </Text>
               </Text>
-            ) : null}
+            ) : (
+              <Text className="text-sm text-text-muted">No ratings yet</Text>
+            )}
           </View>
         </View>
 
@@ -214,6 +228,10 @@ function MediaDetailBody({
                 ? ` · ★ ${displayStars(viewerRow.rating)}`
                 : ""}
             </Text>
+          ) : trackingPending ? (
+            // Tracking row still in flight — neutral placeholder so a
+            // tracked item never flashes "Not tracked" before it loads.
+            <Text className="text-sm text-text-muted">…</Text>
           ) : (
             <Text className="text-sm text-text-muted">Not tracked</Text>
           )}

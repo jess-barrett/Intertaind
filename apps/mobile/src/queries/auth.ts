@@ -12,7 +12,7 @@
  * call the router themselves.
  */
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as WebBrowser from "expo-web-browser";
 import { makeRedirectUri } from "expo-auth-session";
 import { validateUsername } from "@intertaind/types";
@@ -112,11 +112,15 @@ export function useGoogleSignInMutation() {
 }
 
 export function useSignOutMutation() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
     },
+    // Privacy backstop: drop ALL cached data (shelves, tracking, activity)
+    // so nothing from this account can be served to the next one.
+    onSuccess: () => queryClient.clear(),
   });
 }
 

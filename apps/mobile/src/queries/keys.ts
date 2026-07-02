@@ -34,8 +34,11 @@ export const queryKeys = {
     // The signed-in viewer's own user_media row for one item. Kept
     // separate from `detail` so tracking mutations can invalidate the
     // viewer's row without refetching the (heavier) media item itself.
-    viewerTracking: (mediaId: string) =>
-      [...queryKeys.media.all, "viewer-tracking", mediaId] as const,
+    // Keyed by userId too: this is per-viewer data, and a media-only
+    // key would serve user A's cached row to user B after an account
+    // switch within staleTime.
+    viewerTracking: (userId: string, mediaId: string) =>
+      [...queryKeys.media.all, "viewer-tracking", userId, mediaId] as const,
     bySeries: (seriesId: string) =>
       [...queryKeys.media.all, "series", seriesId] as const,
   },
