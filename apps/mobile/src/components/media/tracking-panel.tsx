@@ -1,4 +1,11 @@
 /**
+ * ⚠️ ORPHANED / UNUSED as of M1 (2026-07-02). The detail screen no longer
+ * imports this — it used a domain-wrong "5 status chips for every media
+ * type" model. M2 REPLACES it with the config-driven per-type action strip
+ * (`components/media/action-strip.tsx`); this file is kept only so M2 can
+ * salvage the styling/mutation-wiring from it, then delete it. Do not wire
+ * this back into a screen. See docs/plans/2026-07-01-mobile-media-tracking.md.
+ *
  * Tracking panel for the media detail screen — the write-side UI over
  * the mutations in `@/queries/tracking` (M2: unified controls for all
  * media types; type-specific flows arrive in M4).

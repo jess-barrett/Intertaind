@@ -1,5 +1,5 @@
 /**
- * Media detail — catalog info (M1) + the viewer's tracking panel (M2).
+ * Media detail — catalog info (M1).
  *
  * SHARED route inside the tab navigator: this file lives in the
  * array-group folder `(tabs)/(index,explore)/media/[id].tsx`, so it is
@@ -20,12 +20,14 @@
  * away from `(auth)` routes, so this route renders freely for them.
  * Signed-OUT users are redirected to login (`!session && !inAuthGroup`),
  * which makes this screen signed-in-only for now — acceptable while the
- * only entry points are inside the tabs (and why `TrackingPanel` needs
- * no signed-out treatment).
+ * only entry points are inside the tabs.
  *
- * The screen stays thin: all tracking mutations live inside
- * `TrackingPanel` (components/media/tracking-panel.tsx); this file only
- * feeds it the media item + the viewer's row.
+ * SCOPE (M1): this screen renders the read-only catalog — hero, per-type
+ * header/meta/tagline/description, and the community stats row. The
+ * viewer's tracking action strip is M2; the cast slider is Task 1.3 and
+ * the hybrid info tabs / seasons are Task 1.4. A commented placeholder
+ * `View` marks where M2's action strip mounts (see below) so the M1
+ * display layout reads clean in review.
  *
  * Visual language (Intertaind, mirroring the web app): a full-bleed
  * backdrop hero fades into the near-black `surface-default` via a
@@ -34,6 +36,11 @@
  * poster overlaps the hero fade (a mobile detail-screen convention),
  * the title block carries the media-type accent, and the community
  * counts read as a clean spaced row.
+ *
+ * Per-type header semantics MIRROR the web detail page
+ * (apps/web/src/app/media/[id]/page.tsx) — same `metadata` field names,
+ * same byline/secondary-line/tagline/stat composition. Web is the
+ * source of truth; keep the two in lockstep.
  */
 import { Stack, useLocalSearchParams } from "expo-router";
 import {
@@ -44,7 +51,16 @@ import {
   View,
 } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
-import { type LucideIcon } from "lucide-react-native";
+import {
+  BookOpen,
+  BookOpenCheck,
+  Eye,
+  Gamepad2,
+  Heart,
+  List,
+  TvMinimalPlay,
+  type LucideIcon,
+} from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 import { MEDIA_TYPE_CONFIG, type MediaType } from "@intertaind/types";
 import type { Tables } from "@intertaind/supabase";
@@ -52,12 +68,7 @@ import type { Tables } from "@intertaind/supabase";
 import { Image } from "@/components/image";
 import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
 import { useBottomInset } from "@/lib/use-bottom-inset";
-import { TrackingPanel } from "@/components/media/tracking-panel";
-import {
-  useMediaDetail,
-  useViewerTracking,
-  type MediaDetailItem,
-} from "@/queries/media";
+import { useMediaDetail, type MediaDetailItem } from "@/queries/media";
 
 /** Hero height in pt — the backdrop + its gradient fade. */
 const HERO_HEIGHT = 288;
@@ -111,10 +122,153 @@ function yearFrom(dateString: string | null): string | null {
   return dateString?.match(/^(\d{4})/)?.[1] ?? null;
 }
 
+/**
+ * Per-type byline attribution — the RN mirror of web's `getAttribution`
+ * (apps/web/src/app/media/[id]/page.tsx). Reads the SAME `metadata`
+ * JSONB fields: `director` (movie), `creator` (tv_show), `authors[]`
+ * (book), `developers[]` (video_game). Developers may be the legacy
+ * `string[]` or the newer `{id,name}[]` shape — accept either, exactly
+ * as web does. Returns null when the source field is absent so the line
+ * simply doesn't render.
+ */
+function attributionFor(
+  mediaType: Tables<"media_items">["media_type"],
+  metadata: Record<string, unknown> | null
+): string | null {
+  if (!metadata) return null;
+  switch (mediaType) {
+    case "movie": {
+      const director = metadata.director as string | undefined;
+      return director ? `Directed by ${director}` : null;
+    }
+    case "tv_show": {
+      const creator = metadata.creator as string | undefined;
+      return creator ? `Created by ${creator}` : null;
+    }
+    case "book": {
+      const authors = metadata.authors as string[] | undefined;
+      return authors?.length ? `by ${authors.join(", ")}` : null;
+    }
+    case "video_game": {
+      const raw = metadata.developers as
+        | (string | { id?: number; name: string })[]
+        | undefined;
+      const names =
+        raw?.map((d) => (typeof d === "string" ? d : d.name)) ?? [];
+      return names.length ? `Developed by ${names.join(", ")}` : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Per-type secondary meta parts — the RN mirror of web's
+ * `getSecondaryDetails`. Reads the SAME `metadata` fields and applies
+ * the same rules:
+ *   - movie: `runtime` min · genres
+ *   - book: `page_count` pages · Book {seriesPosition} · `publisher`
+ *   - tv_show: `seasons` seasons · genres
+ *   - video_game: genres are shown elsewhere on web (tabs) — but the
+ *     info tabs are Task 1.4 and not built here, so games show genres
+ *     inline in M1 rather than silently dropping them until 1.4.
+ * Joined with " · " by the caller.
+ */
+function secondaryMetaFor(
+  mediaType: Tables<"media_items">["media_type"],
+  metadata: Record<string, unknown> | null,
+  seriesPosition: number | null
+): string[] {
+  if (!metadata) return [];
+  const parts: string[] = [];
+  if (mediaType === "movie" && metadata.runtime)
+    parts.push(`${metadata.runtime} min`);
+  if (mediaType === "book" && metadata.page_count)
+    parts.push(`${metadata.page_count} pages`);
+  if (mediaType === "book" && seriesPosition != null)
+    parts.push(`Book ${seriesPosition}`);
+  if (mediaType === "book" && metadata.publisher)
+    parts.push(String(metadata.publisher));
+  if (mediaType === "tv_show" && metadata.seasons)
+    parts.push(`${metadata.seasons} seasons`);
+  const genres = metadata.genres as string[] | undefined;
+  if (genres?.length) parts.push(genres.join(", "));
+  return parts;
+}
+
+/**
+ * Per-type community stat descriptors — mirrors web's genre-specific
+ * stats row (page.tsx ~469-494). Each entry pairs a lucide icon with a
+ * denormalized `media_items` count column and its label:
+ *   - movie:      Watched · In lists · Loved
+ *   - tv_show:    Watched · Currently watching · In lists · Loved
+ *   - book:       Read · Currently reading · In lists · Loved
+ *   - video_game: Played · In lists · Loved
+ *
+ * The counts come from the denormalized columns on `media_items`
+ * (`completed_count` / `in_progress_count` / `lists_count` /
+ * `favorites_count`) — the mobile convention (apps/mobile/AGENTS.md) is
+ * to read these columns rather than run per-screen aggregate queries the
+ * way web's server component does. `completed_count` is `status =
+ * 'completed'` for every type (migration 018), which the web page labels
+ * Watched / Read / Played per type; for games web additionally counts
+ * non-`want` rows via a live query — a pre-existing denorm divergence we
+ * accept here, using the completed column consistently.
+ */
+type StatDescriptor = { icon: LucideIcon; count: number; label: string };
+
+function communityStatsFor(item: MediaDetailItem): StatDescriptor[] {
+  // These denormalized counts are all non-null on media_items (migrations
+  // 002/003/018 default them to 0), so read them raw.
+  const completed = item.completed_count;
+  const inProgress = item.in_progress_count;
+  const lists = item.lists_count;
+  const loved = item.favorites_count;
+
+  const listsStat: StatDescriptor = { icon: List, count: lists, label: "In lists" };
+  const lovedStat: StatDescriptor = { icon: Heart, count: loved, label: "Loved" };
+
+  switch (item.media_type) {
+    case "movie":
+      return [
+        { icon: Eye, count: completed, label: "Watched" },
+        listsStat,
+        lovedStat,
+      ];
+    case "tv_show":
+      return [
+        { icon: Eye, count: completed, label: "Watched" },
+        { icon: TvMinimalPlay, count: inProgress, label: "Currently watching" },
+        listsStat,
+        lovedStat,
+      ];
+    case "book":
+      return [
+        { icon: BookOpenCheck, count: completed, label: "Read" },
+        { icon: BookOpen, count: inProgress, label: "Currently reading" },
+        listsStat,
+        lovedStat,
+      ];
+    case "video_game":
+      return [
+        { icon: Gamepad2, count: completed, label: "Played" },
+        listsStat,
+        lovedStat,
+      ];
+    default:
+      // Unknown enum (e.g. board_game): fall back to the type-agnostic
+      // trio so the row still renders something meaningful.
+      return [
+        { icon: Eye, count: completed, label: "Completed" },
+        listsStat,
+        lovedStat,
+      ];
+  }
+}
+
 export default function MediaDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const detail = useMediaDetail(id);
-  const tracking = useViewerTracking(id);
 
   return (
     <View className="flex-1 bg-surface-default">
@@ -140,9 +294,6 @@ export default function MediaDetailScreen() {
           <Text className="text-center text-text-primary">
             Couldn&apos;t load this title.
           </Text>
-          <Text className="text-center text-xs text-text-muted">
-            {detail.error.message}
-          </Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Retry loading this title"
@@ -153,14 +304,7 @@ export default function MediaDetailScreen() {
           </Pressable>
         </View>
       ) : (
-        <MediaDetailBody
-          item={detail.data}
-          viewerRow={tracking.data ?? null}
-          // isLoading = pending AND actually fetching (i.e. enabled) —
-          // a disabled (signed-out) query stays "pending" forever and
-          // must not render as an eternal placeholder.
-          trackingPending={tracking.isLoading}
-        />
+        <MediaDetailBody item={detail.data} />
       )}
     </View>
   );
@@ -214,31 +358,33 @@ function BackdropHero({ backdropUrl }: { backdropUrl: string | null }) {
   );
 }
 
-function MediaDetailBody({
-  item,
-  viewerRow,
-  trackingPending,
-}: {
-  item: MediaDetailItem;
-  viewerRow: Tables<"user_media"> | null;
-  trackingPending: boolean;
-}) {
+function MediaDetailBody({ item }: { item: MediaDetailItem }) {
   const type = mediaTypeDisplay(item.media_type);
   const year = yearFrom(item.release_date);
-  // Reserve space so the tracking panel clears the persistent bottom navbar
-  // (added on top of the 48pt content breathing room below the panel).
+  const metadata = item.metadata as Record<string, unknown> | null;
+  const attribution = attributionFor(item.media_type, metadata);
+  const secondaryMeta = secondaryMetaFor(
+    item.media_type,
+    metadata,
+    item.series_position
+  );
+  // Tagline is TMDb-sourced and only meaningful for movies + TV shows
+  // (web gates it on media_type implicitly by only enriching those).
+  const rawTagline = metadata?.tagline;
+  const tagline =
+    (item.media_type === "movie" || item.media_type === "tv_show") &&
+    typeof rawTagline === "string" &&
+    rawTagline.trim().length > 0
+      ? rawTagline.trim()
+      : null;
+  const stats = communityStatsFor(item);
+  // Reserve space so content clears the persistent bottom navbar (added
+  // on top of the 48pt content breathing room at the end of the scroll).
   const bottomInset = useBottomInset();
 
   return (
-    // keyboardShouldPersistTaps: without it, the first tap on the
-    // review editor's Save button only dismisses the keyboard.
-    // automaticallyAdjustKeyboardInsets: iOS-only (no-op on Android) —
-    // insets the scroll view so the review editor isn't covered by the
-    // keyboard; Android already resizes via windowSoftInputMode.
     <ScrollView
       className="flex-1"
-      keyboardShouldPersistTaps="handled"
-      automaticallyAdjustKeyboardInsets
       contentContainerStyle={{ paddingBottom: 48 + bottomInset }}
     >
       {/* Full-bleed backdrop hero with its bottom fade. */}
@@ -272,49 +418,73 @@ function MediaDetailBody({
           </View>
         )}
 
-        {/* Title + type/year + rating — bottom-aligned so it sits on the
-            poster's lower half where the hero has fully faded. */}
+        {/* Title block — bottom-aligned so it sits on the poster's lower
+            half where the hero has fully faded. Ordered top-to-bottom to
+            mirror web: accent type line, title + year, byline. */}
         <View className="flex-1 justify-end gap-1 pb-1">
-          <Text className="text-2xl font-bold text-text-primary">
-            {item.title}
-          </Text>
           {/* Media-type line: lucide type icon (accent-colored via the
-              `color` prop — SVG, not className) + accent label + year. */}
+              `color` prop — SVG, not className) + accent label. */}
           <View className="flex-row items-center gap-1.5">
             {type.icon ? <type.icon size={14} color={type.iconColor} /> : null}
-            <Text className={`text-sm ${type.color}`}>
+            <Text
+              className={`text-xs font-semibold uppercase tracking-wider ${type.color}`}
+            >
               {type.label}
-              {year ? <Text className="text-text-muted"> · {year}</Text> : null}
             </Text>
           </View>
-          {/* Migration 025 COALESCEs avg_rating to 0 for unrated
-              items, so gate on rating_count — "★ 0.0 (0 ratings)"
-              reads as a terrible score, not an absence of one.
-              avg_rating is already 0–5 (SQL-divided): no ÷2 here. */}
-          {(item.rating_count ?? 0) > 0 && item.avg_rating != null ? (
-            <Text className="text-sm text-text-secondary">
-              <Text style={{ color: colors["accent-game"] }}>★</Text>{" "}
-              {Number(item.avg_rating).toFixed(1)}
-              <Text className="text-text-muted">
-                {" "}
-                ({item.rating_count}{" "}
-                {item.rating_count === 1 ? "rating" : "ratings"})
+
+          {/* Title + year — year is the muted trailing companion, web's
+              `<h1> {year}` baseline pairing. */}
+          <Text className="text-2xl font-bold text-text-primary">
+            {item.title}
+            {year ? (
+              <Text className="text-lg font-normal text-text-muted">
+                {"  "}
+                {year}
               </Text>
-            </Text>
-          ) : (
-            <Text className="text-sm text-text-muted">No ratings yet</Text>
-          )}
+            ) : null}
+          </Text>
+
+          {/* Byline — Directed by / Created by / by / Developed by. */}
+          {attribution ? (
+            <Text className="text-sm text-text-secondary">{attribution}</Text>
+          ) : null}
         </View>
       </View>
 
-      <View className="gap-6 px-4 pt-6">
-        {/* Community counts — a clean spaced row (count over label),
-            fixing the old run-together "TrackingCompletedFavorites". */}
-        <View className="flex-row gap-8 rounded-sm border border-surface-border bg-surface-raised px-4 py-3">
-          <StatBlock count={item.tracking_count ?? 0} label="Tracking" />
-          <StatBlock count={item.completed_count} label="Completed" />
-          <StatBlock count={item.favorites_count} label="Favorites" />
-        </View>
+      <View className="gap-5 px-4 pt-5">
+        {/* Secondary meta line — runtime/pages/seasons/genres per type. */}
+        {secondaryMeta.length > 0 ? (
+          <Text className="text-xs text-text-muted">
+            {secondaryMeta.join(" · ")}
+          </Text>
+        ) : null}
+
+        {/* Rating — avg_rating is already 0–5 (SQL-divided, migration
+            025): render toFixed(1), NEVER ÷2. Gated on rating_count so an
+            unrated item (COALESCEd avg_rating of 0) reads as "no ratings"
+            rather than a terrible 0.0 score. */}
+        {(item.rating_count ?? 0) > 0 && item.avg_rating != null ? (
+          <Text className="text-sm text-text-secondary">
+            <Text style={{ color: colors["accent-game"] }}>★</Text>{" "}
+            {Number(item.avg_rating).toFixed(1)}
+            <Text className="text-text-muted">
+              {" "}
+              ({item.rating_count}{" "}
+              {item.rating_count === 1 ? "rating" : "ratings"})
+            </Text>
+          </Text>
+        ) : (
+          <Text className="text-sm text-text-muted">No ratings yet</Text>
+        )}
+
+        {/* Tagline (movie / TV only) — uppercase muted, above the
+            description, matching web's Letterboxd treatment. */}
+        {tagline ? (
+          <Text className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+            {tagline}
+          </Text>
+        ) : null}
 
         {/* Description */}
         {item.description ? (
@@ -323,25 +493,50 @@ function MediaDetailBody({
           </Text>
         ) : null}
 
-        {/* Viewer tracking panel — status/rating/review/favorite/remove
-            (replaces M1's read-only badge; the "…" in-flight treatment
-            lives inside the panel via trackingPending). */}
-        <TrackingPanel
-          media={item}
-          viewerRow={viewerRow}
-          trackingPending={trackingPending}
-        />
+        {/* Community stats — a clean spaced row (icon + count over label),
+            per-media-type set mirroring web. */}
+        <View className="flex-row flex-wrap gap-x-6 gap-y-3 rounded-sm border border-surface-border bg-surface-raised px-4 py-3">
+          {stats.map((stat) => (
+            <StatBlock
+              key={stat.label}
+              icon={stat.icon}
+              count={stat.count}
+              label={stat.label}
+            />
+          ))}
+        </View>
+
+        {/*
+          M2 ACTION STRIP MOUNTS HERE.
+          The viewer's tracking controls (status / rating / review /
+          favorite / remove) are M2. The earlier `TrackingPanel` used a
+          domain-wrong model and was removed for M1; M2 re-adds the
+          action strip (and re-imports `useViewerTracking`) in its place.
+          This empty spacer keeps the M1 display layout clean for review.
+        */}
+        <View />
       </View>
     </ScrollView>
   );
 }
 
-function StatBlock({ count, label }: { count: number; label: string }) {
+function StatBlock({
+  icon: Icon,
+  count,
+  label,
+}: {
+  icon: LucideIcon;
+  count: number;
+  label: string;
+}) {
   return (
-    <View className="gap-0.5">
-      <Text className="text-base font-semibold text-text-primary">
-        {count.toLocaleString()}
-      </Text>
+    <View className="gap-1">
+      <View className="flex-row items-center gap-1.5">
+        <Icon size={14} color={colors["text-secondary"]} />
+        <Text className="text-base font-semibold text-text-primary">
+          {count.toLocaleString()}
+        </Text>
+      </View>
       <Text className="text-xs text-text-muted">{label}</Text>
     </View>
   );
