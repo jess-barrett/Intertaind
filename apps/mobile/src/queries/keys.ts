@@ -39,8 +39,11 @@ export const queryKeys = {
     // switch within staleTime.
     viewerTracking: (userId: string, mediaId: string) =>
       [...queryKeys.media.all, "viewer-tracking", userId, mediaId] as const,
+    // Every media item sharing a series_id — the books series graph
+    // (M4) reads siblings this way. Keyed by seriesId so switching
+    // series doesn't serve a stale sibling set.
     bySeries: (seriesId: string) =>
-      [...queryKeys.media.all, "series", seriesId] as const,
+      [...queryKeys.media.all, "by-series", seriesId] as const,
   },
   user: {
     all: ["user"] as const,

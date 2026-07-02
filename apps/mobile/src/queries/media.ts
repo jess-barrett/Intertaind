@@ -149,3 +149,53 @@ export function useViewerTracking(mediaId: string) {
     },
   });
 }
+
+/**
+ * Shape pulled for one entry in a series graph. Only what M4's series
+ * graph plots: identity, order, release date, aggregate rating (already
+ * on the 0–5 display scale — migration 025 — so no ÷2), and cover art.
+ */
+export type SeriesSibling = Pick<
+  Tables<"media_items">,
+  | "id"
+  | "title"
+  | "series_position"
+  | "release_date"
+  | "avg_rating"
+  | "rating_count"
+  | "cover_image_url"
+>;
+
+/**
+ * Every media item sharing a `series_id` — the sibling set the books
+ * series graph (M4) plots. Ordered by `series_position` ascending with
+ * nulls last — this matches web's DB `.order()` clause only.
+ *
+ * TODO(M4): web ALSO re-sorts client-side (apps/web `getSeriesSiblings`):
+ * if every sibling has a `series_position` it keeps position order,
+ * otherwise it falls back to sorting by `release_date`. That
+ * position-vs-release-date fallback (and next-in-series derivation) is
+ * presentation logic the M4 series-graph consumer must apply on top of
+ * these raw rows — this hook deliberately returns them unmassaged.
+ *
+ * RLS allows anon reads on `media_items` (public catalog), so this
+ * works pre-auth. Disabled until there's a `seriesId` — a media item
+ * outside a series has none, and there's nothing to fetch.
+ */
+export function useSeriesSiblings(seriesId: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.media.bySeries(seriesId ?? ""),
+    enabled: !!seriesId,
+    queryFn: async (): Promise<SeriesSibling[]> => {
+      const { data, error } = await supabase
+        .from("media_items")
+        .select(
+          "id, title, series_position, release_date, avg_rating, rating_count, cover_image_url"
+        )
+        .eq("series_id", seriesId!)
+        .order("series_position", { ascending: true, nullsFirst: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
