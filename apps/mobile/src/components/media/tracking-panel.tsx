@@ -46,6 +46,13 @@
  * and the panel shows the mapped line inline with a Dismiss affordance.
  * Optimistic mutations also roll back their cache write on failure, so
  * the controls snap back on their own.
+ *
+ * Presentation (Intertaind visual language, mirroring the web panel):
+ * the whole panel is a `surface-raised` card with a hairline border and
+ * `border-t` section dividers; each section carries an uppercase muted
+ * label. Active status chips take that status's neon accent at 15%
+ * (web's active-button style); the color map is shared with
+ * `StatusBadge` so the two never drift.
  */
 import { useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
@@ -76,6 +83,25 @@ const STATUS_OPTIONS: { status: TrackingStatus; label: string }[] = [
   { status: "dropped", label: "Dropped" },
   { status: "on_hold", label: "On hold" },
 ];
+
+/**
+ * Active status-chip styling — the accent-at-15% + accent-text pattern
+ * from web's active buttons (media-detail-client.tsx). Split into `bg`
+ * (for the chip) and `text` (for its label) so each class lands on the
+ * right element. Mirrors the per-status color intent of `StatusBadge`'s
+ * STATUS_BADGE_CONFIG; on_hold has no neon accent, so it reads as a
+ * neutral raised chip.
+ */
+const STATUS_ACTIVE_CLASS: Record<
+  TrackingStatus,
+  { bg: string; text: string }
+> = {
+  want: { bg: "bg-brand/15", text: "text-brand-light" },
+  in_progress: { bg: "bg-accent-game/15", text: "text-accent-game" },
+  completed: { bg: "bg-accent-book/15", text: "text-accent-book" },
+  dropped: { bg: "bg-accent-movie/15", text: "text-accent-movie" },
+  on_hold: { bg: "bg-surface-border", text: "text-text-secondary" },
+};
 
 /**
  * Map a mutation rejection to a user-facing string. NEVER render the
@@ -119,6 +145,15 @@ function HeartIcon({ filled, size }: { filled: boolean; size: number }) {
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+/** Uppercase section label (STATUS / YOUR RATING / …). */
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <Text className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+      {children}
+    </Text>
   );
 }
 
@@ -233,20 +268,18 @@ export function TrackingPanel({
   // so a tracked item never flashes untracked controls before it loads.
   if (trackingPending) {
     return (
-      <View className="items-center rounded-lg bg-surface-raised px-4 py-6">
+      <View className="items-center rounded-sm border border-surface-border bg-surface-raised px-4 py-6">
         <Text className="text-sm text-text-muted">…</Text>
       </View>
     );
   }
 
   return (
-    <View className="gap-4 rounded-lg bg-surface-raised p-4">
+    <View className="overflow-hidden rounded-sm border border-surface-border bg-surface-raised">
       {/* Status chips — optimistic, so they stay enabled while their own
           mutation is pending; frozen only while removing. */}
-      <View className="gap-2">
-        <Text className="text-xs font-semibold uppercase text-text-muted">
-          Status
-        </Text>
+      <View className="gap-3 p-4">
+        <SectionLabel>Status</SectionLabel>
         <View className="flex-row flex-wrap gap-2">
           {STATUS_OPTIONS.map(({ status, label }) => {
             const active = viewerRow?.status === status;
@@ -257,15 +290,15 @@ export function TrackingPanel({
                 accessibilityLabel={`Set status to ${label}`}
                 accessibilityState={{ selected: active, disabled: removing }}
                 disabled={removing}
-                className={`rounded-full px-3 py-2 active:opacity-70 ${
-                  active ? "bg-brand-dark" : "bg-surface-overlay"
+                className={`rounded-sm px-3 py-2 active:opacity-70 ${
+                  active ? STATUS_ACTIVE_CLASS[status].bg : "bg-surface-overlay"
                 } ${removing ? "opacity-50" : ""}`}
                 onPress={() => handleStatus(status)}
               >
                 <Text
                   className={`text-sm ${
                     active
-                      ? "font-semibold text-text-primary"
+                      ? `font-semibold ${STATUS_ACTIVE_CLASS[status].text}`
                       : "text-text-secondary"
                   }`}
                 >
@@ -280,10 +313,8 @@ export function TrackingPanel({
       {/* Rating — optimistic; stars convert to DB scale in handleRate.
           readOnly while removing (panel freeze); size 32 keeps each tap
           half a 16pt-wide target. */}
-      <View className="gap-2">
-        <Text className="text-xs font-semibold uppercase text-text-muted">
-          Your rating
-        </Text>
+      <View className="gap-3 border-t border-surface-border p-4">
+        <SectionLabel>Your rating</SectionLabel>
         <StarRating
           value={stars}
           onChange={handleRate}
@@ -293,10 +324,8 @@ export function TrackingPanel({
       </View>
 
       {/* Review — non-optimistic: explicit saving state. */}
-      <View className="gap-2">
-        <Text className="text-xs font-semibold uppercase text-text-muted">
-          Your review
-        </Text>
+      <View className="gap-3 border-t border-surface-border p-4">
+        <SectionLabel>Your review</SectionLabel>
         {editingReview ? (
           <View className="gap-2">
             <TextInput
@@ -308,7 +337,7 @@ export function TrackingPanel({
               placeholder="What did you think?"
               placeholderTextColor={colors["text-muted"]}
               accessibilityLabel="Review text"
-              className="min-h-24 rounded-md bg-surface-overlay px-3 py-2 text-base text-text-primary"
+              className="min-h-24 rounded-sm border border-surface-border bg-surface-overlay px-3 py-2 text-base text-text-primary"
               style={{ textAlignVertical: "top" }}
             />
             <View className="flex-row justify-end gap-2">
@@ -316,7 +345,7 @@ export function TrackingPanel({
                 accessibilityRole="button"
                 accessibilityLabel="Cancel editing review"
                 disabled={reviewMutation.isPending}
-                className="rounded-md px-4 py-2 active:opacity-70"
+                className="rounded-sm px-4 py-2 active:opacity-70"
                 onPress={() => setEditingReview(false)}
               >
                 <Text className="text-sm text-text-secondary">Cancel</Text>
@@ -328,12 +357,12 @@ export function TrackingPanel({
                   disabled: reviewMutation.isPending || removing,
                 }}
                 disabled={reviewMutation.isPending || removing}
-                className={`rounded-md bg-brand px-4 py-2 active:opacity-70 ${
+                className={`rounded-sm bg-brand px-4 py-2 active:opacity-70 ${
                   reviewMutation.isPending || removing ? "opacity-50" : ""
                 }`}
                 onPress={handleSaveReview}
               >
-                <Text className="text-sm font-semibold text-text-primary">
+                <Text className="text-sm font-semibold text-white">
                   {reviewMutation.isPending ? "Saving…" : "Save"}
                 </Text>
               </Pressable>
@@ -347,7 +376,7 @@ export function TrackingPanel({
             }
             accessibilityState={{ disabled: removing }}
             disabled={removing}
-            className={`rounded-md bg-surface-overlay px-3 py-2.5 active:opacity-70 ${
+            className={`rounded-sm bg-surface-overlay px-3 py-2 active:opacity-70 ${
               removing ? "opacity-50" : ""
             }`}
             onPress={openReviewEditor}
@@ -363,54 +392,60 @@ export function TrackingPanel({
         )}
       </View>
 
-      {/* Favorite — disabled while pending (double-tap flip-flop race)
-          and while removing (panel freeze). */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={
-          isFavorite ? "Remove from favorites" : "Add to favorites"
-        }
-        accessibilityState={{
-          selected: isFavorite,
-          disabled: favoriteMutation.isPending || removing,
-        }}
-        disabled={favoriteMutation.isPending || removing}
-        className={`flex-row items-center gap-2 self-start rounded-md bg-surface-overlay px-3 py-2.5 active:opacity-70 ${
-          favoriteMutation.isPending || removing ? "opacity-50" : ""
-        }`}
-        onPress={handleFavorite}
-      >
-        <HeartIcon filled={isFavorite} size={18} />
-        <Text
-          className={`text-sm ${
-            isFavorite ? "font-semibold text-accent-movie" : "text-text-secondary"
-          }`}
-        >
-          Loved
-        </Text>
-      </Pressable>
-
-      {/* Remove — only with a REAL row id (hidden while optimistic). */}
-      {safeId ? (
+      {/* Favorite + Remove row. Favorite is disabled while pending
+          (double-tap flip-flop race) and while removing (panel freeze);
+          Remove renders only with a REAL row id (hidden while
+          optimistic) and routes destruction through the Alert confirm. */}
+      <View className="flex-row items-center justify-between border-t border-surface-border p-4">
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Remove from your library"
-          accessibilityState={{ disabled: removeMutation.isPending }}
-          disabled={removeMutation.isPending}
-          className={`self-start rounded-md px-1 py-1 active:opacity-70 ${
-            removeMutation.isPending ? "opacity-50" : ""
+          accessibilityLabel={
+            isFavorite ? "Remove from favorites" : "Add to favorites"
+          }
+          accessibilityState={{
+            selected: isFavorite,
+            disabled: favoriteMutation.isPending || removing,
+          }}
+          disabled={favoriteMutation.isPending || removing}
+          className={`flex-row items-center gap-2 active:opacity-70 ${
+            favoriteMutation.isPending || removing ? "opacity-50" : ""
           }`}
-          onPress={handleRemove}
+          onPress={handleFavorite}
         >
-          <Text className="text-sm text-accent-movie">
-            {removeMutation.isPending ? "Removing…" : "Remove from library"}
+          <HeartIcon filled={isFavorite} size={20} />
+          <Text
+            className={`text-sm ${
+              isFavorite
+                ? "font-semibold text-accent-movie"
+                : "text-text-secondary"
+            }`}
+          >
+            {isFavorite ? "Favorited" : "Favorite"}
           </Text>
         </Pressable>
-      ) : null}
+
+        {/* Remove — only with a REAL row id (hidden while optimistic). */}
+        {safeId ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Remove from your library"
+            accessibilityState={{ disabled: removeMutation.isPending }}
+            disabled={removeMutation.isPending}
+            className={`active:opacity-70 ${
+              removeMutation.isPending ? "opacity-50" : ""
+            }`}
+            onPress={handleRemove}
+          >
+            <Text className="text-sm text-accent-movie">
+              {removeMutation.isPending ? "Removing…" : "Remove"}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
 
       {/* Inline, dismissible error line (mapped message, never raw). */}
       {errorMessage ? (
-        <View className="flex-row items-center gap-3 rounded-md bg-surface-overlay px-3 py-2">
+        <View className="flex-row items-center gap-3 border-t border-surface-border bg-surface-overlay px-4 py-3">
           <Text className="flex-1 text-sm text-accent-movie">
             {errorMessage}
           </Text>

@@ -17,6 +17,14 @@
  * The screen stays thin: all tracking mutations live inside
  * `TrackingPanel` (components/media/tracking-panel.tsx); this file only
  * feeds it the media item + the viewer's row.
+ *
+ * Visual language (Intertaind, mirroring the web app): a full-bleed
+ * backdrop hero fades into the near-black `surface-default` via a
+ * react-native-svg `LinearGradient` (the RN analogue of web's
+ * `from-background to-transparent`), so content sits on solid bg. The
+ * poster overlaps the hero fade (a mobile detail-screen convention),
+ * the title block carries the media-type accent, and the community
+ * counts read as a clean spaced row.
  */
 import { Stack, useLocalSearchParams } from "expo-router";
 import {
@@ -26,6 +34,7 @@ import {
   Text,
   View,
 } from "react-native";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { colors } from "@intertaind/design-system";
 import { MEDIA_TYPE_CONFIG, type MediaType } from "@intertaind/types";
 import type { Tables } from "@intertaind/supabase";
@@ -37,6 +46,9 @@ import {
   useViewerTracking,
   type MediaDetailItem,
 } from "@/queries/media";
+
+/** Hero height in pt — the backdrop + its gradient fade. */
+const HERO_HEIGHT = 288;
 
 /**
  * Label + accent class for a media type. The DB enum is a superset of
@@ -70,7 +82,10 @@ export default function MediaDetailScreen() {
         options={{
           headerShown: true,
           title: "",
-          headerStyle: { backgroundColor: colors["surface-default"] },
+          // Transparent header so the backdrop hero reads full-bleed
+          // behind the native back button (web's edge-to-edge hero).
+          headerTransparent: true,
+          headerStyle: { backgroundColor: "transparent" },
           headerTintColor: colors["text-primary"],
           headerShadowVisible: false,
         }}
@@ -91,7 +106,7 @@ export default function MediaDetailScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Retry loading this title"
-            className="rounded-lg bg-brand px-4 py-3 active:opacity-70"
+            className="rounded-sm bg-brand px-4 py-3 active:opacity-70"
             onPress={() => detail.refetch()}
           >
             <Text className="font-semibold text-text-primary">Retry</Text>
@@ -107,6 +122,54 @@ export default function MediaDetailScreen() {
           trackingPending={tracking.isLoading}
         />
       )}
+    </View>
+  );
+}
+
+/**
+ * The hero backdrop + its bottom-fading gradient. The gradient is a
+ * react-native-svg `LinearGradient` (NativeWind can't express a
+ * multi-stop gradient), fading from transparent at the top to opaque
+ * `surface-default` across the lower ~60% — the RN analogue of web's
+ * `bg-gradient-to-t from-background to-transparent`, so the content
+ * below lands on solid page background.
+ */
+function BackdropHero({ backdropUrl }: { backdropUrl: string | null }) {
+  return (
+    <View style={{ height: HERO_HEIGHT }} className="w-full">
+      {backdropUrl ? (
+        <Image
+          source={{ uri: backdropUrl }}
+          className="h-full w-full"
+          contentFit="cover"
+          accessible={false}
+        />
+      ) : (
+        // No backdrop — a solid raised block of the same height keeps
+        // the poster overlap consistent.
+        <View className="h-full w-full bg-surface-raised" />
+      )}
+
+      {/* Bottom-to-transparent fade to solid page bg. Decorative. */}
+      <View className="absolute inset-0" pointerEvents="none">
+        <Svg width="100%" height="100%">
+          <Defs>
+            <LinearGradient id="heroFade" x1="0" y1="0" x2="0" y2="1">
+              <Stop
+                offset="0.35"
+                stopColor={colors["surface-default"]}
+                stopOpacity={0}
+              />
+              <Stop
+                offset="1"
+                stopColor={colors["surface-default"]}
+                stopOpacity={1}
+              />
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill="url(#heroFade)" />
+        </Svg>
+      </View>
     </View>
   );
 }
@@ -133,76 +196,84 @@ function MediaDetailBody({
       className="flex-1"
       keyboardShouldPersistTaps="handled"
       automaticallyAdjustKeyboardInsets
+      contentContainerStyle={{ paddingBottom: 48 }}
     >
-      {/* Backdrop hero — decorative, hidden from a11y tree. */}
-      {item.backdrop_url ? (
-        <Image
-          source={{ uri: item.backdrop_url }}
-          className="h-52 w-full"
-          contentFit="cover"
-          accessible={false}
-        />
-      ) : null}
+      {/* Full-bleed backdrop hero with its bottom fade. */}
+      <BackdropHero backdropUrl={item.backdrop_url} />
 
-      <View className="gap-6 px-4 py-4 pb-12">
-        {/* Cover + title block */}
-        <View className="flex-row gap-4">
-          {item.cover_image_url ? (
-            <Image
-              source={{ uri: item.cover_image_url }}
-              className="h-36 w-24 rounded-md bg-surface-overlay"
-              contentFit="cover"
-              accessible
-              accessibilityLabel={`${item.title} cover`}
-            />
-          ) : (
-            <View className="h-36 w-24 items-center justify-center rounded-md bg-surface-overlay">
-              <Text className="text-xs text-text-muted">No cover</Text>
-            </View>
-          )}
-
-          <View className="flex-1 justify-center gap-1">
-            <Text className="text-2xl font-bold text-text-primary">
-              {item.title}
-            </Text>
-            <Text className={`text-sm ${type.color}`}>
-              {type.label}
-              {year ? (
-                <Text className="text-text-muted"> · {year}</Text>
-              ) : null}
-            </Text>
-            {/* Migration 025 COALESCEs avg_rating to 0 for unrated
-                items, so gate on rating_count — "★ 0.0 (0 ratings)"
-                reads as a terrible score, not an absence of one.
-                avg_rating is already 0–5 (SQL-divided): no ÷2 here. */}
-            {(item.rating_count ?? 0) > 0 && item.avg_rating != null ? (
-              <Text className="text-sm text-text-secondary">
-                ★ {Number(item.avg_rating).toFixed(1)}
-                <Text className="text-text-muted">
-                  {" "}
-                  ({item.rating_count}{" "}
-                  {item.rating_count === 1 ? "rating" : "ratings"})
-                </Text>
-              </Text>
-            ) : (
-              <Text className="text-sm text-text-muted">No ratings yet</Text>
-            )}
+      {/* Poster + title block, pulled up to straddle the hero fade
+          (the mobile detail-screen overlap pattern). */}
+      <View className="-mt-24 flex-row gap-4 px-4">
+        {item.cover_image_url ? (
+          <Image
+            source={{ uri: item.cover_image_url }}
+            // 112pt-wide 2:3 cover, sharp corners + hairline border to
+            // match web's poster treatment; shadow lifts it off the bg.
+            className="aspect-[2/3] w-28 rounded-sm border border-surface-border bg-surface-overlay"
+            contentFit="cover"
+            accessible
+            accessibilityLabel={`${item.title} cover`}
+            // iOS drop shadow to lift the poster off the faded hero.
+            // (expo-image's ImageStyle omits Android `elevation`; the
+            // hairline border carries the separation on Android.)
+            style={{
+              shadowColor: colors["surface-default"],
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.5,
+              shadowRadius: 8,
+            }}
+          />
+        ) : (
+          <View className="aspect-[2/3] w-28 items-center justify-center rounded-sm border border-surface-border bg-surface-overlay">
+            <Text className="text-xs text-text-muted">No cover</Text>
           </View>
-        </View>
+        )}
 
-        {/* Description */}
-        {item.description ? (
-          <Text className="text-base leading-relaxed text-text-secondary">
-            {item.description}
+        {/* Title + type/year + rating — bottom-aligned so it sits on the
+            poster's lower half where the hero has fully faded. */}
+        <View className="flex-1 justify-end gap-1 pb-1">
+          <Text className="text-2xl font-bold text-text-primary">
+            {item.title}
           </Text>
-        ) : null}
+          <Text className={`text-sm ${type.color}`}>
+            {type.label}
+            {year ? <Text className="text-text-muted"> · {year}</Text> : null}
+          </Text>
+          {/* Migration 025 COALESCEs avg_rating to 0 for unrated
+              items, so gate on rating_count — "★ 0.0 (0 ratings)"
+              reads as a terrible score, not an absence of one.
+              avg_rating is already 0–5 (SQL-divided): no ÷2 here. */}
+          {(item.rating_count ?? 0) > 0 && item.avg_rating != null ? (
+            <Text className="text-sm text-text-secondary">
+              <Text style={{ color: colors["accent-game"] }}>★</Text>{" "}
+              {Number(item.avg_rating).toFixed(1)}
+              <Text className="text-text-muted">
+                {" "}
+                ({item.rating_count}{" "}
+                {item.rating_count === 1 ? "rating" : "ratings"})
+              </Text>
+            </Text>
+          ) : (
+            <Text className="text-sm text-text-muted">No ratings yet</Text>
+          )}
+        </View>
+      </View>
 
-        {/* Denormalized community counts */}
-        <View className="flex-row justify-around rounded-lg bg-surface-raised px-4 py-3">
+      <View className="gap-6 px-4 pt-6">
+        {/* Community counts — a clean spaced row (count over label),
+            fixing the old run-together "TrackingCompletedFavorites". */}
+        <View className="flex-row gap-8 rounded-sm border border-surface-border bg-surface-raised px-4 py-3">
           <StatBlock count={item.tracking_count ?? 0} label="Tracking" />
           <StatBlock count={item.completed_count} label="Completed" />
           <StatBlock count={item.favorites_count} label="Favorites" />
         </View>
+
+        {/* Description */}
+        {item.description ? (
+          <Text className="text-sm leading-relaxed text-text-secondary">
+            {item.description}
+          </Text>
+        ) : null}
 
         {/* Viewer tracking panel — status/rating/review/favorite/remove
             (replaces M1's read-only badge; the "…" in-flight treatment
@@ -219,7 +290,7 @@ function MediaDetailBody({
 
 function StatBlock({ count, label }: { count: number; label: string }) {
   return (
-    <View className="items-center gap-0.5">
+    <View className="gap-0.5">
       <Text className="text-base font-semibold text-text-primary">
         {count.toLocaleString()}
       </Text>
