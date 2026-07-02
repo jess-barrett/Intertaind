@@ -141,6 +141,9 @@ End state: `user_media` INSERT/UPDATE/DELETE automatically writes the correct `a
 
 > **These land together in one migration + web change** (a trigger without removing web's inserts = double logging; removing web's inserts without the trigger = web loses activity). Do the whole milestone before deploying either.
 
+
+> **Timestamp + constraint notes (from Task 2.3 review):** (a) Mobile writes `started_at`/`completed_at` from the DEVICE clock (web wrote them server-side) — consider having this trigger migration also stamp those transitions server-side, and verify whether `user_media` has any `updated_at` trigger at all (base schema is dashboard-era; `lists` has one, `user_media` unverified). (b) Land the `user_media.rating` CHECK constraint (recorded in Follow-ups) in the same migration pass.
+
 ### Task 3.1: Design + write the trigger migration
 
 **Files:** Create `supabase/migrations/0XX_user_media_activity_trigger.sql` (next number in sequence — check `ls supabase/migrations`).
@@ -170,6 +173,8 @@ Port web's logic (`apps/web/src/app/actions/media.ts` — read the `trackMedia`/
 ---
 
 ## Milestone 4 — Media-type progress flows
+
+> **⚠️ PROGRESS-REPLACEMENT LANDMINE (from Task 2.3 review):** `useTrackMediaMutation`'s `progress` payload REPLACES the whole JSONB object (web parity — web's modals merge client-side before calling). M4 must: (a) add read-merge-write progress mutations in a new `src/queries/progress.ts` (mirror web's `updateBookPage`/`setCustomCover`/`setCustomBackdrop` fresh-read-merge pattern); (b) never merge from an `OPTIMISTIC_ID` row or mid-mutation cache; (c) put progress-shape builders in `@intertaind/types` with vitest coverage. A book flow passing `progress: { sub_shelf: "finished" }` without merging silently wipes `custom_cover_url`; a TV flow can wipe `watched_episodes`.
 
 End state: each media type gets its web-equivalent progress UX. Mirror the web modals (`components/modals/*`). Each flow writes the `progress` JSONB shape from the data-model section and uses `useTrackMediaMutation` (or dedicated progress mutations) with the right status. Reuse `TrackingPanel`; branch the "primary action" + progress UI by `media.media_type`.
 
