@@ -1,4 +1,5 @@
-import { ActivityIndicator, FlatList, Image, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Pressable, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import { useTrendingMedia, type TrendingMediaItem } from '@/queries/media';
 
@@ -13,6 +14,7 @@ import { useTrendingMedia, type TrendingMediaItem } from '@/queries/media';
  */
 export default function TrendingScreen() {
   const { data, isPending, error } = useTrendingMedia();
+  const router = useRouter();
 
   if (isPending) return <ActivityIndicator className="flex-1" />;
   if (error) {
@@ -30,7 +32,12 @@ export default function TrendingScreen() {
       keyExtractor={(item) => item.id}
       className="flex-1 bg-surface-default"
       renderItem={({ item }) => (
-        <View className="flex-row items-center gap-3 px-4 py-2">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${item.title}`}
+          onPress={() => router.push(`/media/${item.id}`)}
+          className="flex-row items-center gap-3 px-4 py-2 active:opacity-60"
+        >
           {item.cover_image_url ? (
             <Image source={{ uri: item.cover_image_url }} className="h-20 w-14 rounded" />
           ) : null}
@@ -40,7 +47,7 @@ export default function TrendingScreen() {
               {item.media_type} · {item.avg_rating ?? '—'}
             </Text>
           </View>
-        </View>
+        </Pressable>
       )}
     />
   );
