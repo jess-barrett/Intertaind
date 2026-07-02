@@ -9,9 +9,11 @@
  *     `updateTrackingStatus`, so re-tracking recomputes
  *     started_at/completed_at. Optimistic → stays enabled while
  *     pending. Tapping the already-active status is a DELIBERATE
- *     divergence from web: web treats that tap as untrack-and-delete
- *     (web media-card-actions.tsx ~269–287 — removeTracking deletes
- *     the row, and the rating/review go with it); mobile no-ops and
+ *     divergence from web: web's detail panel treats that tap as
+ *     untrack-and-delete (web media-detail-client.tsx ~267–294,
+ *     handleStatusToggle — removeTracking deletes the row, and the
+ *     rating/review go with it; media-card-actions.tsx ~269–287 does
+ *     the same for the want chip); mobile no-ops and
  *     routes ALL destruction through the confirmed Remove button
  *     (fat-finger safety on touch). Intentional divergence — a future
  *     parity pass must not "fix" it in either direction.

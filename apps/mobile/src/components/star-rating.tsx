@@ -122,7 +122,12 @@ export default function StarRating({
   return (
     <View className="flex-row items-center gap-2">
       <View
-        className="flex-row items-center gap-1"
+        className="flex-row items-center"
+        // Literal 4pt gap (NOT gap-1): NativeWind inlines rem at 14pt, so
+        // gap-1 is 3.5pt — which would leave a 0.5pt overlap between the
+        // adjacent stars' 2pt+2pt outward hitSlops below. The literal keeps
+        // the hitSlop math exact.
+        style={{ gap: 4 }}
         // Display-only mode reads as one element ("Rated 3.5 stars");
         // interactive mode exposes the per-half buttons instead.
         accessible={!interactive}
@@ -137,12 +142,12 @@ export default function StarRating({
             <View key={n} style={{ width: size, height: size }}>
               <StarGlyph size={size} fill={fill} clipId={`${clipPrefix}s${n}`} />
               {interactive ? (
-                // Horizontal hitSlop math: the star row uses gap-1
-                // (4pt) between stars. Each half extends 2pt on its
-                // OUTER edge only — left half grows left, right half
-                // grows right — so adjacent stars split each 4pt gap
-                // 2pt/2pt with no overlap, and the seam between the
-                // two halves of one star stays exact (no inward slop).
+                // Horizontal hitSlop math: the star row uses a literal
+                // 4pt gap between stars (see row style above). Each half
+                // extends 2pt on its OUTER edge only — left half grows
+                // left, right half grows right — so adjacent stars split
+                // each 4pt gap 2pt/2pt with no overlap, and the seam
+                // between the two halves of one star stays exact.
                 <View className="absolute inset-0 flex-row">
                   <Pressable
                     accessibilityRole="button"
