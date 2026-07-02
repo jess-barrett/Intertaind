@@ -1,5 +1,5 @@
 /**
- * Media detail — read-only (Milestone 1).
+ * Media detail — catalog info (M1) + the viewer's tracking panel (M2).
  *
  * Top-level route (sibling of the `(auth)`/`(tabs)` groups) so it
  * pushes onto the root Stack OVER the tabs with a native back button.
@@ -11,9 +11,12 @@
  * from `(auth)` routes, so this route renders freely for them. Signed-
  * OUT users are redirected to login (`!session && !inAuthGroup`), which
  * makes this screen signed-in-only for now — acceptable while the only
- * entry points are inside the tabs.
+ * entry points are inside the tabs (and why `TrackingPanel` needs no
+ * signed-out treatment).
  *
- * No mutations here — tracking/rating actions land in Milestone 2.
+ * The screen stays thin: all tracking mutations live inside
+ * `TrackingPanel` (components/media/tracking-panel.tsx); this file only
+ * feeds it the media item + the viewer's row.
  */
 import { Stack, useLocalSearchParams } from "expo-router";
 import {
@@ -24,29 +27,16 @@ import {
   View,
 } from "react-native";
 import { colors } from "@intertaind/design-system";
-import {
-  MEDIA_TYPE_CONFIG,
-  formatStars,
-  ratingToStars,
-  type MediaType,
-} from "@intertaind/types";
+import { MEDIA_TYPE_CONFIG, type MediaType } from "@intertaind/types";
 import type { Tables } from "@intertaind/supabase";
 
 import { Image } from "@/components/image";
+import { TrackingPanel } from "@/components/media/tracking-panel";
 import {
   useMediaDetail,
   useViewerTracking,
   type MediaDetailItem,
 } from "@/queries/media";
-
-/** Human labels for the viewer's tracking_status enum. */
-const STATUS_LABELS: Record<Tables<"user_media">["status"], string> = {
-  want: "Want",
-  in_progress: "In progress",
-  completed: "Completed",
-  dropped: "Dropped",
-  on_hold: "On hold",
-};
 
 /**
  * Label + accent class for a media type. The DB enum is a superset of
@@ -133,19 +123,10 @@ function MediaDetailBody({
   const type = mediaTypeDisplay(item.media_type);
   const year = yearFrom(item.release_date);
 
-  // `user_media.rating` is raw 1–10 → 0.5–5.0 stars via the shared
-  // pipeline (see the two-scale story in @intertaind/types rating.ts —
-  // `avg_rating` below is ALREADY 0–5 and must never go through it).
-  // `Number()` guards Postgres numerics arriving as strings; the
-  // pipeline is null-safe end to end, so a bad value renders as
-  // unrated — never the string "NaN".
-  const viewerStars =
-    viewerRow?.rating != null
-      ? formatStars(ratingToStars(Number(viewerRow.rating)))
-      : null;
-
   return (
-    <ScrollView className="flex-1">
+    // keyboardShouldPersistTaps: without it, the first tap on the
+    // review editor's Save button only dismisses the keyboard.
+    <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
       {/* Backdrop hero — decorative, hidden from a11y tree. */}
       {item.backdrop_url ? (
         <Image
@@ -216,27 +197,14 @@ function MediaDetailBody({
           <StatBlock count={item.favorites_count} label="Favorites" />
         </View>
 
-        {/* Viewer tracking badge — read-only; mutations arrive in M2. */}
-        <View
-          className={`self-start rounded-full px-3 py-1.5 ${
-            viewerRow ? "bg-brand-dark" : "bg-surface-overlay"
-          }`}
-        >
-          {viewerRow ? (
-            <Text className="text-sm font-semibold text-text-primary">
-              {STATUS_LABELS[viewerRow.status]}
-              {/* Suffix renders only when the null-safe pipeline
-                  (computed as `viewerStars` above) produced a value. */}
-              {viewerStars != null ? ` · ★ ${viewerStars}` : ""}
-            </Text>
-          ) : trackingPending ? (
-            // Tracking row still in flight — neutral placeholder so a
-            // tracked item never flashes "Not tracked" before it loads.
-            <Text className="text-sm text-text-muted">…</Text>
-          ) : (
-            <Text className="text-sm text-text-muted">Not tracked</Text>
-          )}
-        </View>
+        {/* Viewer tracking panel — status/rating/review/favorite/remove
+            (replaces M1's read-only badge; the "…" in-flight treatment
+            lives inside the panel via trackingPending). */}
+        <TrackingPanel
+          media={item}
+          viewerRow={viewerRow}
+          trackingPending={trackingPending}
+        />
       </View>
     </ScrollView>
   );
