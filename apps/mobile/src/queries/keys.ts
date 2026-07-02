@@ -31,6 +31,11 @@ export const queryKeys = {
     trending: () => [...queryKeys.media.all, "trending"] as const,
     detail: (mediaId: string) =>
       [...queryKeys.media.all, "detail", mediaId] as const,
+    // The signed-in viewer's own user_media row for one item. Kept
+    // separate from `detail` so tracking mutations can invalidate the
+    // viewer's row without refetching the (heavier) media item itself.
+    viewerTracking: (mediaId: string) =>
+      [...queryKeys.media.all, "viewer-tracking", mediaId] as const,
     bySeries: (seriesId: string) =>
       [...queryKeys.media.all, "series", seriesId] as const,
   },
