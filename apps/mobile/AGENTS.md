@@ -72,6 +72,24 @@ From the original scaffold plan, intentionally deferred until needed:
 
 `app.json` has `android.package = "com.intertaind.app"` and `ios.bundleIdentifier = "com.intertaind.app"`. **These are permanent in app stores** — change before first store submission if needed, painful after.
 
+## Scrollable screens must clear the navbar
+
+The custom bottom navbar (`components/nav/bottom-tab-bar.tsx`) is rendered by the `Tabs` navigator ABOVE the per-tab Stacks, so it OVERLAYS the bottom of every screen. A `ScrollView`/`FlatList` whose content can reach the bottom edge will hide its last rows behind the bar unless it reserves that space.
+
+**Convention:** every scrollable screen pads its bottom by `useBottomInset()` (`src/lib/use-bottom-inset.ts`) — a hook returning the points to reserve = the bar's content height + `Math.max(safe-area bottom, 8)`. Apply it via the scroll container's `contentContainerStyle` (NOT the outer `className`, which doesn't reach scroll content):
+
+```tsx
+const bottomInset = useBottomInset();
+// FlatList / ScrollView:
+contentContainerStyle={{ paddingBottom: bottomInset }}
+// If the screen already has intentional content padding, ADD to it:
+contentContainerStyle={{ paddingBottom: 48 + bottomInset }}
+```
+
+Non-scrolling screens (e.g. the `explore.tsx` placeholder) don't need it — their content can't scroll under the bar. Applied screens: Trending (`(tabs)/(index,explore)/index.tsx`) and media detail (`(tabs)/(index,explore)/media/[id].tsx`).
+
+Why the hook COMPOSES the inset (bar constants + safe area) instead of react-navigation's `useBottomTabBarHeight()`: that hook returns the DEFAULT bar's measured height, but our custom `tabBar` never reports its layout to the navigator's height-callback context, so the hook falls back to a hardcoded UIKit constant that doesn't match our bar. The bar exports its own geometry constants (`BAR_CONTENT_HEIGHT`, `BAR_MIN_BOTTOM_PADDING`) so the hook stays in lockstep with the bar — change the bar's layout, change those constants. Full rationale is in `use-bottom-inset.ts`.
+
 ## Patterns
 
 - Mobile primitives only: `View`, `Text`, `Image`, `FlatList`, etc. No HTML elements, no `<div>`, no `onClick` (use `onPress`). For images, import `Image` from `@/components/image` (NOT directly from `expo-image`) — that module wires NativeWind `className` support once; direct imports silently lack it depending on import order.

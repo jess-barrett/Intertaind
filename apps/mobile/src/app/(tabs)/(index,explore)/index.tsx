@@ -4,6 +4,7 @@ import { colors } from '@intertaind/design-system';
 import { MEDIA_TYPE_CONFIG, type MediaType } from '@intertaind/types';
 
 import { MEDIA_TYPE_ICONS } from '@/lib/media-type-icons';
+import { useBottomInset } from '@/lib/use-bottom-inset';
 import { useTrendingMedia, type TrendingMediaItem } from '@/queries/media';
 
 /**
@@ -31,6 +32,8 @@ const MEDIA_TYPE_ICON_COLOR: Record<MediaType, string> = {
 export default function TrendingScreen() {
   const { data, isPending, error } = useTrendingMedia();
   const router = useRouter();
+  // Reserve space so the last row clears the persistent bottom navbar.
+  const bottomInset = useBottomInset();
 
   if (isPending) return <ActivityIndicator className="flex-1" />;
   if (error) {
@@ -47,6 +50,7 @@ export default function TrendingScreen() {
       data={data}
       keyExtractor={(item) => item.id}
       className="flex-1 bg-surface-default"
+      contentContainerStyle={{ paddingBottom: bottomInset }}
       renderItem={({ item }) => {
         // media_type is the DB enum (superset of MediaType); render the
         // accent-colored lucide icon only for known types. Icons color

@@ -51,6 +51,7 @@ import type { Tables } from "@intertaind/supabase";
 
 import { Image } from "@/components/image";
 import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
+import { useBottomInset } from "@/lib/use-bottom-inset";
 import { TrackingPanel } from "@/components/media/tracking-panel";
 import {
   useMediaDetail,
@@ -224,6 +225,9 @@ function MediaDetailBody({
 }) {
   const type = mediaTypeDisplay(item.media_type);
   const year = yearFrom(item.release_date);
+  // Reserve space so the tracking panel clears the persistent bottom navbar
+  // (added on top of the 48pt content breathing room below the panel).
+  const bottomInset = useBottomInset();
 
   return (
     // keyboardShouldPersistTaps: without it, the first tap on the
@@ -235,7 +239,7 @@ function MediaDetailBody({
       className="flex-1"
       keyboardShouldPersistTaps="handled"
       automaticallyAdjustKeyboardInsets
-      contentContainerStyle={{ paddingBottom: 48 }}
+      contentContainerStyle={{ paddingBottom: 48 + bottomInset }}
     >
       {/* Full-bleed backdrop hero with its bottom fade. */}
       <BackdropHero backdropUrl={item.backdrop_url} />
