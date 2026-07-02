@@ -572,6 +572,17 @@ export type ToggleFavoriteVars = {
  * item synthesizes a favorited row). The server flip reads the DB
  * value, so if cache and DB disagree the settle-refetch reconciles to
  * the DB. Resolves to the NEW favorite value.
+ *
+ * Concurrency caveat (favorite × favorite): the flip is read-then-
+ * write, so two toggles in flight at once BOTH read the same snapshot
+ * and BOTH write its inverse — they converge on the same value, net
+ * ONE flip for two taps (e.g. a quick double-toggle from favorited
+ * ends unfavorited instead of round-tripping back to favorited). The
+ * tracking panel's disabled-while-pending heart guards the SAME-
+ * surface double-tap only; the moment a second surface can toggle the
+ * same row (M3+ shelf rows), the cross-surface race is re-exposed — a
+ * real fix needs an atomic server-side flip
+ * (`is_favorite = NOT is_favorite`).
  */
 export function useToggleFavoriteMutation() {
   const { user } = useAuth();

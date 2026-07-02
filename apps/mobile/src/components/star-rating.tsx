@@ -137,12 +137,18 @@ export default function StarRating({
             <View key={n} style={{ width: size, height: size }}>
               <StarGlyph size={size} fill={fill} clipId={`${clipPrefix}s${n}`} />
               {interactive ? (
+                // Horizontal hitSlop math: the star row uses gap-1
+                // (4pt) between stars. Each half extends 2pt on its
+                // OUTER edge only — left half grows left, right half
+                // grows right — so adjacent stars split each 4pt gap
+                // 2pt/2pt with no overlap, and the seam between the
+                // two halves of one star stays exact (no inward slop).
                 <View className="absolute inset-0 flex-row">
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={halfStepLabel(n - 0.5)}
                     accessibilityState={{ selected: value === n - 0.5 }}
-                    hitSlop={{ top: 8, bottom: 8 }}
+                    hitSlop={{ top: 8, bottom: 8, left: 2 }}
                     className="flex-1"
                     onPress={() => onChange?.(n - 0.5)}
                   />
@@ -150,7 +156,7 @@ export default function StarRating({
                     accessibilityRole="button"
                     accessibilityLabel={halfStepLabel(n)}
                     accessibilityState={{ selected: value === n }}
-                    hitSlop={{ top: 8, bottom: 8 }}
+                    hitSlop={{ top: 8, bottom: 8, right: 2 }}
                     className="flex-1"
                     onPress={() => onChange?.(n)}
                   />

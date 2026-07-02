@@ -126,7 +126,14 @@ function MediaDetailBody({
   return (
     // keyboardShouldPersistTaps: without it, the first tap on the
     // review editor's Save button only dismisses the keyboard.
-    <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
+    // automaticallyAdjustKeyboardInsets: iOS-only (no-op on Android) —
+    // insets the scroll view so the review editor isn't covered by the
+    // keyboard; Android already resizes via windowSoftInputMode.
+    <ScrollView
+      className="flex-1"
+      keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets
+    >
       {/* Backdrop hero — decorative, hidden from a11y tree. */}
       {item.backdrop_url ? (
         <Image

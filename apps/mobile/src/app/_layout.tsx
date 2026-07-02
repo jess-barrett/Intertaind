@@ -1,6 +1,12 @@
 import { useEffect } from "react";
-import { Stack, useRouter, useSegments } from "expo-router";
-import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router";
+import {
+  DarkTheme,
+  DefaultTheme,
+  Stack,
+  ThemeProvider,
+  useRouter,
+  useSegments,
+} from "expo-router";
 import { ActivityIndicator, Pressable, Text, useColorScheme, View } from "react-native";
 
 import "@/global.css";

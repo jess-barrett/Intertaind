@@ -8,8 +8,13 @@
  *     web's panel calls `trackMedia` for status changes, never
  *     `updateTrackingStatus`, so re-tracking recomputes
  *     started_at/completed_at. Optimistic → stays enabled while
- *     pending. Tapping the already-active status is a no-op (a re-track
- *     would pointlessly rewrite both timestamps).
+ *     pending. Tapping the already-active status is a DELIBERATE
+ *     divergence from web: web treats that tap as untrack-and-delete
+ *     (web media-card-actions.tsx ~269–287 — removeTracking deletes
+ *     the row, and the rating/review go with it); mobile no-ops and
+ *     routes ALL destruction through the confirmed Remove button
+ *     (fat-finger safety on touch). Intentional divergence — a future
+ *     parity pass must not "fix" it in either direction.
  *   - StarRating → `useRateMediaMutation`, converting display stars →
  *     1–10 DB scale with `starsToRating` at this boundary (two-scale
  *     rule in @intertaind/types rating.ts). Clear = null, never 0.
@@ -23,7 +28,9 @@
  *     pending: the server flip reads the DB value, so a double-tap
  *     race could land as flip-flip = no-op while the UI says otherwise.
  *   - Remove → confirm via Alert.alert → `useRemoveTrackingMutation`.
- *     Rendered only when a REAL row id exists (see sentinel below).
+ *     Rendered only with a REAL row id (see sentinel below). While the
+ *     delete is in flight, EVERY panel write is disabled — see the
+ *     `removing` flag in the component.
  *
  * Sentinel guard: optimistic rows for untracked items carry
  * `id: OPTIMISTIC_ID`, which must never reach a byId mutation. Every
@@ -132,6 +139,14 @@ export function TrackingPanel({
   const [editingReview, setEditingReview] = useState(false);
   const [reviewDraft, setReviewDraft] = useState("");
 
+  // While Remove is in flight the panel is mid-transition to
+  // "untracked", so EVERY write control freezes — not just the Remove
+  // button. A write racing the delete either lands first and is
+  // silently deleted with the row, or (for the optimistic mutations)
+  // fails after the delete and "rolls back" to a snapshot of the
+  // now-deleted row, resurrecting it in the cache for a round trip.
+  const removing = removeMutation.isPending;
+
   // Sentinel guard (see file header): never hand OPTIMISTIC_ID to a
   // byId mutation — the row doesn't exist in Postgres under that id.
   const safeId =
@@ -147,7 +162,8 @@ export function TrackingPanel({
     setErrorMessage(trackingErrorMessage(err));
 
   function handleStatus(status: TrackingStatus) {
-    // Re-tracking the active status would only rewrite the timestamps.
+    // Deliberate no-op on the active status — web untracks-and-deletes
+    // here; mobile routes destruction through Remove (see file header).
     if (viewerRow?.status === status) return;
     setErrorMessage(null);
     trackMutation.mutate(
@@ -223,7 +239,8 @@ export function TrackingPanel({
 
   return (
     <View className="gap-4 rounded-lg bg-surface-raised p-4">
-      {/* Status chips — optimistic, so they stay enabled while pending. */}
+      {/* Status chips — optimistic, so they stay enabled while their own
+          mutation is pending; frozen only while removing. */}
       <View className="gap-2">
         <Text className="text-xs font-semibold uppercase text-text-muted">
           Status
@@ -236,10 +253,11 @@ export function TrackingPanel({
                 key={status}
                 accessibilityRole="button"
                 accessibilityLabel={`Set status to ${label}`}
-                accessibilityState={{ selected: active }}
+                accessibilityState={{ selected: active, disabled: removing }}
+                disabled={removing}
                 className={`rounded-full px-3 py-2 active:opacity-70 ${
                   active ? "bg-brand-dark" : "bg-surface-overlay"
-                }`}
+                } ${removing ? "opacity-50" : ""}`}
                 onPress={() => handleStatus(status)}
               >
                 <Text
@@ -257,12 +275,19 @@ export function TrackingPanel({
         </View>
       </View>
 
-      {/* Rating — optimistic; stars convert to DB scale in handleRate. */}
+      {/* Rating — optimistic; stars convert to DB scale in handleRate.
+          readOnly while removing (panel freeze); size 32 keeps each tap
+          half a 16pt-wide target. */}
       <View className="gap-2">
         <Text className="text-xs font-semibold uppercase text-text-muted">
           Your rating
         </Text>
-        <StarRating value={stars} onChange={handleRate} />
+        <StarRating
+          value={stars}
+          onChange={handleRate}
+          readOnly={removing}
+          size={32}
+        />
       </View>
 
       {/* Review — non-optimistic: explicit saving state. */}
@@ -297,10 +322,12 @@ export function TrackingPanel({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Save review"
-                accessibilityState={{ disabled: reviewMutation.isPending }}
-                disabled={reviewMutation.isPending}
+                accessibilityState={{
+                  disabled: reviewMutation.isPending || removing,
+                }}
+                disabled={reviewMutation.isPending || removing}
                 className={`rounded-md bg-brand px-4 py-2 active:opacity-70 ${
-                  reviewMutation.isPending ? "opacity-50" : ""
+                  reviewMutation.isPending || removing ? "opacity-50" : ""
                 }`}
                 onPress={handleSaveReview}
               >
@@ -316,7 +343,11 @@ export function TrackingPanel({
             accessibilityLabel={
               viewerRow?.review ? "Edit your review" : "Add a review"
             }
-            className="rounded-md bg-surface-overlay px-3 py-2.5 active:opacity-70"
+            accessibilityState={{ disabled: removing }}
+            disabled={removing}
+            className={`rounded-md bg-surface-overlay px-3 py-2.5 active:opacity-70 ${
+              removing ? "opacity-50" : ""
+            }`}
             onPress={openReviewEditor}
           >
             {viewerRow?.review ? (
@@ -330,7 +361,8 @@ export function TrackingPanel({
         )}
       </View>
 
-      {/* Favorite — disabled while pending (double-tap flip-flop race). */}
+      {/* Favorite — disabled while pending (double-tap flip-flop race)
+          and while removing (panel freeze). */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={
@@ -338,11 +370,11 @@ export function TrackingPanel({
         }
         accessibilityState={{
           selected: isFavorite,
-          disabled: favoriteMutation.isPending,
+          disabled: favoriteMutation.isPending || removing,
         }}
-        disabled={favoriteMutation.isPending}
+        disabled={favoriteMutation.isPending || removing}
         className={`flex-row items-center gap-2 self-start rounded-md bg-surface-overlay px-3 py-2.5 active:opacity-70 ${
-          favoriteMutation.isPending ? "opacity-50" : ""
+          favoriteMutation.isPending || removing ? "opacity-50" : ""
         }`}
         onPress={handleFavorite}
       >
