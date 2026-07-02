@@ -24,7 +24,11 @@ import {
   View,
 } from "react-native";
 import { colors } from "@intertaind/design-system";
-import { MEDIA_TYPE_CONFIG, type MediaType } from "@intertaind/types";
+import {
+  MEDIA_TYPE_CONFIG,
+  ratingToStars,
+  type MediaType,
+} from "@intertaind/types";
 import type { Tables } from "@intertaind/supabase";
 
 import { Image } from "@/components/image";
@@ -62,21 +66,6 @@ function mediaTypeDisplay(mediaType: Tables<"media_items">["media_type"]): {
 /** First 4 digits of an ISO date string, mirroring web's yearFromDateString. */
 function yearFrom(dateString: string | null): string | null {
   return dateString?.match(/^(\d{4})/)?.[1] ?? null;
-}
-
-/**
- * The two rating columns are on DIFFERENT scales:
- *   - `media_items.avg_rating` is ALREADY 0–5 — migration 025 divides
- *     by 2 in SQL (`AVG(rating)::numeric / 2.0`). Render it as-is;
- *     dividing again would halve the community rating.
- *   - `user_media.rating` is raw 1–10 (each step = 0.5 stars) — divide
- *     by 2 for display, matching web's StarRatingDisplay.
- * `displayStars` is therefore ONLY for `user_media.rating`.
- * `Number()` guards Postgres numerics arriving as strings (same
- * defense as web's series-graph).
- */
-function displayStars(dbRating: number): string {
-  return (Number(dbRating) / 2).toFixed(1);
 }
 
 export default function MediaDetailScreen() {
@@ -224,8 +213,14 @@ function MediaDetailBody({
           {viewerRow ? (
             <Text className="text-sm font-semibold text-text-primary">
               {STATUS_LABELS[viewerRow.status]}
+              {/* `user_media.rating` is raw 1–10 → 0.5–5.0 stars via
+                  the shared `ratingToStars` (see the two-scale story
+                  in @intertaind/types rating.ts — `avg_rating` above
+                  is ALREADY 0–5 and must never go through it).
+                  `Number()` guards Postgres numerics arriving as
+                  strings; non-null input ⇒ non-null result. */}
               {viewerRow.rating != null
-                ? ` · ★ ${displayStars(viewerRow.rating)}`
+                ? ` · ★ ${ratingToStars(Number(viewerRow.rating))!.toFixed(1)}`
                 : ""}
             </Text>
           ) : trackingPending ? (

@@ -1,3 +1,4 @@
+export * from "./rating.ts";
 export * from "./username.ts";
 
 export type MediaType =
