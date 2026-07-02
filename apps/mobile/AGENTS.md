@@ -73,6 +73,6 @@ From the original scaffold plan, intentionally deferred until needed:
 
 ## Patterns
 
-- Mobile primitives only: `View`, `Text`, `Image` (use `expo-image`), `FlatList`, etc. No HTML elements, no `<div>`, no `onClick` (use `onPress`).
+- Mobile primitives only: `View`, `Text`, `Image`, `FlatList`, etc. No HTML elements, no `<div>`, no `onClick` (use `onPress`). For images, import `Image` from `@/components/image` (NOT directly from `expo-image`) — that module wires NativeWind `className` support once; direct imports silently lack it depending on import order.
 - DB types from `@intertaind/supabase`. Domain types from `@intertaind/types`. Same rules as web.
 - Don't lift web hover idioms — RN has no hover state on touch. Translate hover-based affordances into press/long-press or visual emphasis.
