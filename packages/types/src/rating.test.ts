@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { isValidStars, ratingToStars, starsToRating } from "./rating.ts";
+import {
+  formatStars,
+  isValidDbRating,
+  isValidStars,
+  ratingToStars,
+  starsToRating,
+} from "./rating.ts";
 
 describe("ratingToStars", () => {
   it("converts the DB minimum (1) to half a star", () => {
@@ -22,6 +28,15 @@ describe("ratingToStars", () => {
   });
   it("clamps out-of-range high values (11 → 5.0 stars)", () => {
     expect(ratingToStars(11)).toBe(5.0);
+  });
+  it("treats NaN as unrated (null), never rendering 'NaN'", () => {
+    expect(ratingToStars(NaN)).toBeNull();
+  });
+  it("treats Infinity as unrated (null), not a clamped 5.0", () => {
+    expect(ratingToStars(Infinity)).toBeNull();
+  });
+  it("treats -Infinity as unrated (null)", () => {
+    expect(ratingToStars(-Infinity)).toBeNull();
   });
 });
 
@@ -57,6 +72,12 @@ describe("starsToRating", () => {
   it("rounds down when nearer the lower step (3.2 → 6)", () => {
     // 3.2 * 2 = 6.4 → Math.round → 6
     expect(starsToRating(3.2)).toBe(6);
+  });
+  it("treats NaN as unrated (null), never heading toward a DB write", () => {
+    expect(starsToRating(NaN)).toBeNull();
+  });
+  it("treats Infinity as unrated (null), not a clamped 10", () => {
+    expect(starsToRating(Infinity)).toBeNull();
   });
 });
 
@@ -94,5 +115,56 @@ describe("isValidStars", () => {
   });
   it("rejects negatives", () => {
     expect(isValidStars(-0.5)).toBe(false);
+  });
+  it("rejects NaN (pins the non-finite policy)", () => {
+    expect(isValidStars(NaN)).toBe(false);
+  });
+});
+
+describe("formatStars", () => {
+  it("formats a half-star value with one decimal (3.5 → '3.5')", () => {
+    expect(formatStars(3.5)).toBe("3.5");
+  });
+  it("formats whole stars with a trailing .0 (5 → '5.0')", () => {
+    expect(formatStars(5)).toBe("5.0");
+  });
+  it("formats the minimum (0.5 → '0.5')", () => {
+    expect(formatStars(0.5)).toBe("0.5");
+  });
+  it("propagates null (unrated)", () => {
+    expect(formatStars(null)).toBeNull();
+  });
+  it("treats NaN as unrated (null) — never renders the string 'NaN'", () => {
+    expect(formatStars(NaN)).toBeNull();
+  });
+  it("treats Infinity as unrated (null)", () => {
+    expect(formatStars(Infinity)).toBeNull();
+  });
+});
+
+describe("isValidDbRating", () => {
+  it("accepts the DB minimum (1)", () => {
+    expect(isValidDbRating(1)).toBe(true);
+  });
+  it("accepts the DB maximum (10)", () => {
+    expect(isValidDbRating(10)).toBe(true);
+  });
+  it("accepts a mid value (7)", () => {
+    expect(isValidDbRating(7)).toBe(true);
+  });
+  it("rejects 0 (unrated is null, not 0)", () => {
+    expect(isValidDbRating(0)).toBe(false);
+  });
+  it("rejects values above the maximum (11)", () => {
+    expect(isValidDbRating(11)).toBe(false);
+  });
+  it("rejects non-integers — 3.5 is a STARS value, not a DB rating", () => {
+    expect(isValidDbRating(3.5)).toBe(false);
+  });
+  it("rejects NaN", () => {
+    expect(isValidDbRating(NaN)).toBe(false);
+  });
+  it("rejects negatives", () => {
+    expect(isValidDbRating(-5)).toBe(false);
   });
 });

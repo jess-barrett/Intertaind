@@ -26,6 +26,7 @@ import {
 import { colors } from "@intertaind/design-system";
 import {
   MEDIA_TYPE_CONFIG,
+  formatStars,
   ratingToStars,
   type MediaType,
 } from "@intertaind/types";
@@ -132,6 +133,17 @@ function MediaDetailBody({
   const type = mediaTypeDisplay(item.media_type);
   const year = yearFrom(item.release_date);
 
+  // `user_media.rating` is raw 1–10 → 0.5–5.0 stars via the shared
+  // pipeline (see the two-scale story in @intertaind/types rating.ts —
+  // `avg_rating` below is ALREADY 0–5 and must never go through it).
+  // `Number()` guards Postgres numerics arriving as strings; the
+  // pipeline is null-safe end to end, so a bad value renders as
+  // unrated — never the string "NaN".
+  const viewerStars =
+    viewerRow?.rating != null
+      ? formatStars(ratingToStars(Number(viewerRow.rating)))
+      : null;
+
   return (
     <ScrollView className="flex-1">
       {/* Backdrop hero — decorative, hidden from a11y tree. */}
@@ -213,15 +225,9 @@ function MediaDetailBody({
           {viewerRow ? (
             <Text className="text-sm font-semibold text-text-primary">
               {STATUS_LABELS[viewerRow.status]}
-              {/* `user_media.rating` is raw 1–10 → 0.5–5.0 stars via
-                  the shared `ratingToStars` (see the two-scale story
-                  in @intertaind/types rating.ts — `avg_rating` above
-                  is ALREADY 0–5 and must never go through it).
-                  `Number()` guards Postgres numerics arriving as
-                  strings; non-null input ⇒ non-null result. */}
-              {viewerRow.rating != null
-                ? ` · ★ ${ratingToStars(Number(viewerRow.rating))!.toFixed(1)}`
-                : ""}
+              {/* Suffix renders only when the null-safe pipeline
+                  (computed as `viewerStars` above) produced a value. */}
+              {viewerStars != null ? ` · ★ ${viewerStars}` : ""}
             </Text>
           ) : trackingPending ? (
             // Tracking row still in flight — neutral placeholder so a
