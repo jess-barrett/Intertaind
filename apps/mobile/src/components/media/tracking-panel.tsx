@@ -56,7 +56,7 @@
  */
 import { useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
+import { Heart } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 import {
   ratingToStars,
@@ -66,6 +66,7 @@ import {
 import type { Tables } from "@intertaind/supabase";
 
 import StarRating from "@/components/star-rating";
+import { STATUS_BADGE_CONFIG } from "@/components/status-badge";
 import type { MediaDetailItem } from "@/queries/media";
 import {
   OPTIMISTIC_ID,
@@ -125,27 +126,6 @@ function trackingErrorMessage(err: unknown): string {
     return "Couldn't save — check your connection and try again.";
   }
   return "Something went wrong saving your changes.";
-}
-
-/** lucide "heart" path (24×24 viewBox) — web's favorite icon. */
-const HEART_PATH =
-  "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 " +
-  ".5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 " +
-  "4.05 3 5.5l7 7Z";
-
-function HeartIcon({ filled, size }: { filled: boolean; size: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24">
-      <Path
-        d={HEART_PATH}
-        fill={filled ? colors["accent-movie"] : "none"}
-        stroke={filled ? colors["accent-movie"] : colors["text-muted"]}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
 }
 
 /** Uppercase section label (STATUS / YOUR RATING / …). */
@@ -283,6 +263,14 @@ export function TrackingPanel({
         <View className="flex-row flex-wrap gap-2">
           {STATUS_OPTIONS.map(({ status, label }) => {
             const active = viewerRow?.status === status;
+            // Icon shares StatusBadge's per-status glyph map (one source,
+            // no drift). Icons color via the `color` PROP (hex), not
+            // className: active = the status accent, inactive = muted
+            // secondary — mirroring the label's active/inactive tokens.
+            const Icon = STATUS_BADGE_CONFIG[status].icon;
+            const iconColor = active
+              ? STATUS_BADGE_CONFIG[status].iconColor
+              : colors["text-secondary"];
             return (
               <Pressable
                 key={status}
@@ -290,11 +278,12 @@ export function TrackingPanel({
                 accessibilityLabel={`Set status to ${label}`}
                 accessibilityState={{ selected: active, disabled: removing }}
                 disabled={removing}
-                className={`rounded-sm px-3 py-2 active:opacity-70 ${
+                className={`flex-row items-center gap-1.5 rounded-sm px-3 py-2 active:opacity-70 ${
                   active ? STATUS_ACTIVE_CLASS[status].bg : "bg-surface-overlay"
                 } ${removing ? "opacity-50" : ""}`}
                 onPress={() => handleStatus(status)}
               >
+                <Icon size={14} color={iconColor} />
                 <Text
                   className={`text-sm ${
                     active
@@ -412,7 +401,14 @@ export function TrackingPanel({
           }`}
           onPress={handleFavorite}
         >
-          <HeartIcon filled={isFavorite} size={20} />
+          {/* lucide Heart — icons color via props (react-native-svg),
+              not className. Filled = accent-movie fill + stroke; empty =
+              no fill, muted stroke. */}
+          <Heart
+            size={22}
+            color={isFavorite ? colors["accent-movie"] : colors["text-muted"]}
+            fill={isFavorite ? colors["accent-movie"] : "none"}
+          />
           <Text
             className={`text-sm ${
               isFavorite

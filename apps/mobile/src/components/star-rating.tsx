@@ -34,6 +34,9 @@ import Svg, { ClipPath, Defs, Path, Rect } from "react-native-svg";
 import { colors } from "@intertaind/design-system";
 import { formatStars } from "@intertaind/types";
 
+// This is lucide's own <Star> path, inlined (NOT lucide-react-native's
+// <Star>) so the half-fill ClipPath below can clip the left 12 units —
+// kept custom on purpose; don't swap it for the lucide component.
 /** lucide "star" outline path (24×24 viewBox) — web renders <Star/>. */
 const STAR_PATH =
   "M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 " +

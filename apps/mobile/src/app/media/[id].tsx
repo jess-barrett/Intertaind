@@ -35,11 +35,13 @@ import {
   View,
 } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+import { type LucideIcon } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 import { MEDIA_TYPE_CONFIG, type MediaType } from "@intertaind/types";
 import type { Tables } from "@intertaind/supabase";
 
 import { Image } from "@/components/image";
+import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
 import { TrackingPanel } from "@/components/media/tracking-panel";
 import {
   useMediaDetail,
@@ -51,19 +53,47 @@ import {
 const HERO_HEIGHT = 288;
 
 /**
- * Label + accent class for a media type. The DB enum is a superset of
- * the domain `MediaType` (it already contains `board_game`), so fall
- * back to the raw enum value for types the config doesn't know yet.
+ * Per-media-type accent hex for the lucide type icon. Icons color via
+ * the `color` PROP (react-native-svg), not a className, so we need the
+ * raw token value — not the `text-accent-*` class MEDIA_TYPE_CONFIG
+ * carries for the label. Keyed by the domain `MediaType` (the icon map
+ * is too), so unknown DB enum values get no icon (see below).
+ */
+const MEDIA_TYPE_ICON_COLOR: Record<MediaType, string> = {
+  book: colors["accent-book"],
+  movie: colors["accent-movie"],
+  tv_show: colors["accent-tv"],
+  video_game: colors["accent-game"],
+};
+
+/**
+ * Label + accent class + lucide icon for a media type. The DB enum is a
+ * superset of the domain `MediaType` (it already contains `board_game`),
+ * so fall back to the raw enum value with NO icon for types the config
+ * doesn't know yet (the icon map is keyed by `MediaType`).
  */
 function mediaTypeDisplay(mediaType: Tables<"media_items">["media_type"]): {
   label: string;
   color: string;
+  icon: LucideIcon | null;
+  iconColor: string;
 } {
   if (mediaType in MEDIA_TYPE_CONFIG) {
-    const config = MEDIA_TYPE_CONFIG[mediaType as MediaType];
-    return { label: config.label, color: config.color };
+    const key = mediaType as MediaType;
+    const config = MEDIA_TYPE_CONFIG[key];
+    return {
+      label: config.label,
+      color: config.color,
+      icon: MEDIA_TYPE_ICONS[key],
+      iconColor: MEDIA_TYPE_ICON_COLOR[key],
+    };
   }
-  return { label: mediaType, color: "text-text-muted" };
+  return {
+    label: mediaType,
+    color: "text-text-muted",
+    icon: null,
+    iconColor: colors["text-muted"],
+  };
 }
 
 /** First 4 digits of an ISO date string, mirroring web's yearFromDateString. */
@@ -235,10 +265,15 @@ function MediaDetailBody({
           <Text className="text-2xl font-bold text-text-primary">
             {item.title}
           </Text>
-          <Text className={`text-sm ${type.color}`}>
-            {type.label}
-            {year ? <Text className="text-text-muted"> · {year}</Text> : null}
-          </Text>
+          {/* Media-type line: lucide type icon (accent-colored via the
+              `color` prop — SVG, not className) + accent label + year. */}
+          <View className="flex-row items-center gap-1.5">
+            {type.icon ? <type.icon size={14} color={type.iconColor} /> : null}
+            <Text className={`text-sm ${type.color}`}>
+              {type.label}
+              {year ? <Text className="text-text-muted"> · {year}</Text> : null}
+            </Text>
+          </View>
           {/* Migration 025 COALESCEs avg_rating to 0 for unrated
               items, so gate on rating_count — "★ 0.0 (0 ratings)"
               reads as a terrible score, not an absence of one.
