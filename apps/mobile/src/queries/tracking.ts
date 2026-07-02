@@ -50,6 +50,9 @@
  * status back to "want". Web reaches the same end state in two writes
  * (insert want, then update field); we collapse to one insert — no
  * observable difference now that activity logging is out of band.
+ * Both lazy-create insert paths catch Postgres 23505 (a concurrent
+ * lazy-create won the (user_id, media_id) unique race) and finish as
+ * an update instead of throwing — see `patchOrLazyCreate`'s doc.
  *
  * Cache strategy:
  *   - Every mutation invalidates `media.viewerTracking(user.id, mediaId)`
@@ -195,6 +198,14 @@ function synthesizeOptimisticRow(
  * lazy-create note in the file header). Returns the row's media_id —
  * byId callers get the same row-existence guarantee web has (`.single()`
  * errors when the update matched nothing).
+ *
+ * The lazy-create insert catches Postgres 23505 (unique violation on
+ * (user_id, media_id)) and retries as an update: two lazy-create
+ * mutations can race on an untracked item — e.g. rate it, then
+ * favorite/review before the rate settles. Both read "no row", both
+ * insert, one loses the unique constraint. The loser's intent is still
+ * valid, so it re-looks-up the row the winner created and applies the
+ * patch it would have applied had the first read seen that row.
  */
 async function patchOrLazyCreate(
   userId: string,
@@ -202,19 +213,18 @@ async function patchOrLazyCreate(
   userMediaId: string | undefined,
   patch: { rating?: number | null; review?: string }
 ): Promise<string> {
-  let targetId = userMediaId;
-  if (!targetId) {
-    const { data: existing, error: findError } = await supabase
+  const findByMedia = async (): Promise<string | undefined> => {
+    const { data, error } = await supabase
       .from("user_media")
       .select("id")
       .eq("user_id", userId)
       .eq("media_id", mediaId)
       .maybeSingle();
-    if (findError) throw findError;
-    targetId = existing?.id;
-  }
+    if (error) throw error;
+    return data?.id;
+  };
 
-  if (targetId) {
+  const patchById = async (targetId: string): Promise<string> => {
     const { data, error } = await supabase
       .from("user_media")
       .update(patch)
@@ -224,7 +234,10 @@ async function patchOrLazyCreate(
       .single();
     if (error) throw error;
     return data.media_id;
-  }
+  };
+
+  const targetId = userMediaId ?? (await findByMedia());
+  if (targetId) return patchById(targetId);
 
   const payload: TablesInsert<"user_media"> = {
     user_id: userId,
@@ -237,8 +250,15 @@ async function patchOrLazyCreate(
     .insert(payload)
     .select("media_id")
     .single();
-  if (error) throw error;
-  return data.media_id;
+  if (!error) return data.media_id;
+
+  // 23505: a concurrent lazy-create won the race (see doc above) —
+  // complete as an update on the row it created.
+  if (error.code === "23505") {
+    const racedId = await findByMedia();
+    if (racedId) return patchById(racedId);
+  }
+  throw error;
 }
 
 export type TrackMediaVars = {
@@ -374,6 +394,12 @@ export type UpdateStatusVars = {
  * Optimistic when the viewer's row is cached; a byId update on an
  * uncached row has nothing to merge into, so it just invalidates.
  * Resolves to the row's media_id.
+ *
+ * NOTE: the detail screen's tracking panel deliberately does NOT call
+ * this hook — panel status changes go through `useTrackMediaMutation`
+ * (web parity: web's panel calls `trackMedia`, never
+ * `updateTrackingStatus`). This hook is for byId flows that already
+ * hold a real row id (e.g. shelf rows).
  */
 export function useUpdateStatusMutation() {
   const { user } = useAuth();
@@ -403,17 +429,21 @@ export function useUpdateStatusMutation() {
       if (!user) return undefined;
       const key = queryKeys.media.viewerTracking(user.id, vars.mediaId);
       const previous = await snapshotViewerTracking(queryClient, key);
-      if (previous) {
-        const now = new Date().toISOString();
-        const next: UserMediaRow = {
-          ...previous,
-          status: vars.status,
-          ...(vars.status === "completed" ? { completed_at: now } : {}),
-          ...(vars.status === "in_progress" ? { started_at: now } : {}),
-          updated_at: now,
-        };
-        queryClient.setQueryData<UserMediaRow | null>(key, next);
-      }
+      // No cached row → no optimistic write below, so return NO
+      // context: onError's `!context` guard must skip the rollback,
+      // because "rolling back" a write that never happened would
+      // removeQueries/overwrite an entry a CONCURRENT mutation may
+      // have written after this snapshot.
+      if (!previous) return undefined;
+      const now = new Date().toISOString();
+      const next: UserMediaRow = {
+        ...previous,
+        status: vars.status,
+        ...(vars.status === "completed" ? { completed_at: now } : {}),
+        ...(vars.status === "in_progress" ? { started_at: now } : {}),
+        updated_at: now,
+      };
+      queryClient.setQueryData<UserMediaRow | null>(key, next);
       return { previous };
     },
     onError: (_error, vars, context) => {
@@ -552,15 +582,20 @@ export function useToggleFavoriteMutation() {
 
       // Locate the row (byId when given, else by user+media) and read
       // the current flag in the same round trip.
-      let query = supabase
-        .from("user_media")
-        .select("id, is_favorite")
-        .eq("user_id", user.id);
-      query = vars.userMediaId
-        ? query.eq("id", vars.userMediaId)
-        : query.eq("media_id", vars.mediaId);
-      const { data: current, error: readError } = await query.maybeSingle();
-      if (readError) throw readError;
+      const readCurrent = async () => {
+        let query = supabase
+          .from("user_media")
+          .select("id, is_favorite")
+          .eq("user_id", user.id);
+        query = vars.userMediaId
+          ? query.eq("id", vars.userMediaId)
+          : query.eq("media_id", vars.mediaId);
+        const { data, error } = await query.maybeSingle();
+        if (error) throw error;
+        return data;
+      };
+
+      let current = await readCurrent();
 
       if (!current) {
         // byId callers asserted a row exists — mirror web's error.
@@ -573,8 +608,18 @@ export function useToggleFavoriteMutation() {
           is_favorite: true,
         };
         const { error } = await supabase.from("user_media").insert(payload);
-        if (error) throw error;
-        return true;
+        if (!error) return true;
+        // 23505: a concurrent lazy-create won the (user_id, media_id)
+        // unique race — e.g. rate an untracked item, then favorite it
+        // before the rate settles: both read "no row", both insert,
+        // this one lost. The item IS tracked now, so re-read and fall
+        // through to the flip we'd have done had the first read seen
+        // the row.
+        if (error.code !== "23505") throw error;
+        current = await readCurrent();
+        // Gone again (deleted between the conflict and the re-read) —
+        // surface the original error; the settle-refetch reconciles.
+        if (!current) throw error;
       }
 
       const newValue = !current.is_favorite;
