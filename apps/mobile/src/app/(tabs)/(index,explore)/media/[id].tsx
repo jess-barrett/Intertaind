@@ -1,18 +1,27 @@
 /**
  * Media detail — catalog info (M1) + the viewer's tracking panel (M2).
  *
- * Top-level route (sibling of the `(auth)`/`(tabs)` groups) so it
- * pushes onto the root Stack OVER the tabs with a native back button.
- * The root layout hides headers globally; this screen opts back in via
- * `<Stack.Screen options>` (the expo-router per-screen idiom) because a
- * pushed detail screen needs the native back affordance.
+ * SHARED route inside the tab navigator: this file lives in the
+ * array-group folder `(tabs)/(index,explore)/media/[id].tsx`, so it is
+ * extrapolated into BOTH per-tab Stacks (`(index)` and `(explore)`).
+ * `router.push("/media/<id>")` therefore pushes it onto the CURRENT
+ * tab's Stack — beneath the custom bottom navbar (rendered by
+ * `(tabs)/_layout.tsx`), which stays visible on detail. Native/gesture
+ * back returns within the tab's stack; detail→detail pushes a fresh
+ * instance. The per-tab Stack (`(index,explore)/_layout.tsx`) hides
+ * headers by default; this screen opts a transparent header back in via
+ * `<Stack.Screen options>` (the expo-router per-screen idiom) for the
+ * native back affordance.
  *
- * Route gating: `RootNavigator` only redirects signed-in users away
- * from `(auth)` routes, so this route renders freely for them. Signed-
- * OUT users are redirected to login (`!session && !inAuthGroup`), which
- * makes this screen signed-in-only for now — acceptable while the only
- * entry points are inside the tabs (and why `TrackingPanel` needs no
- * signed-out treatment).
+ * Route gating: under this shared structure the detail URL resolves
+ * under `(tabs)` (`segments[0] === "(tabs)"`), so `RootNavigator`'s
+ * `inAuthGroup` is false and a signed-in `present` user is NOT
+ * redirected off detail. `RootNavigator` only redirects signed-in users
+ * away from `(auth)` routes, so this route renders freely for them.
+ * Signed-OUT users are redirected to login (`!session && !inAuthGroup`),
+ * which makes this screen signed-in-only for now — acceptable while the
+ * only entry points are inside the tabs (and why `TrackingPanel` needs
+ * no signed-out treatment).
  *
  * The screen stays thin: all tracking mutations live inside
  * `TrackingPanel` (components/media/tracking-panel.tsx); this file only

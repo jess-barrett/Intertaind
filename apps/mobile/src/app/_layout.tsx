@@ -31,7 +31,13 @@ function RootNavigator() {
     }
 
     if (profileStatus === "present") {
-      if (inAuthGroup) router.replace("/(tabs)");
+      // "/" is the Trending tab home — its route is now
+      // `(tabs)/(index)` (the tab screens moved into the shared
+      // array-group folder `(tabs)/(index,explore)/`), so `/(tabs)` is
+      // no longer a leaf href. `inAuthGroup` still keys off
+      // `segments[0] === "(auth)"`, so a signed-in user on a `(tabs)`
+      // detail screen (segments[0] === "(tabs)") is NOT redirected.
+      if (inAuthGroup) router.replace("/");
       return;
     }
 

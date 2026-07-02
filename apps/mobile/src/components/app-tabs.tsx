@@ -5,6 +5,18 @@
  * neon component rendering identically on iOS/Android. This replaces the
  * old OS-native `NativeTabs`.
  *
+ * Each tab is its OWN Stack, and the media detail screen is a SHARED
+ * route pushed inside whichever tab is active — see the structure
+ * comment in `(tabs)/(index,explore)/_layout.tsx`. Because of the
+ * array-group folder `(index,explore)/`, this Tabs navigator's children
+ * are the two GROUP routes `(index)` and `(explore)` (expo-router keeps
+ * the parentheses in the route name for group directories). So the
+ * `Tabs.Screen` names — and the custom bar's `ROUTE_ICONS` keys — are
+ * `(index)`/`(explore)`, NOT `index`/`explore`. The bar iterates THIS
+ * navigator's two routes, so it always renders exactly two tabs
+ * (Trending + Explore) and never the nested `media` detail as a phantom
+ * tab; active tab derives from this top-level navigator's `state.index`.
+ *
  * The per-tab visuals (icon, active accent, surface) all live in
  * `BottomTabBar`; here we only declare the tab SET and their labels.
  * `headerShown: false` because screens render their own chrome. Keep
@@ -23,8 +35,8 @@ export default function AppTabs() {
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <BottomTabBar {...props} />}
     >
-      <Tabs.Screen name="index" options={{ title: "Trending" }} />
-      <Tabs.Screen name="explore" options={{ title: "Explore" }} />
+      <Tabs.Screen name="(index)" options={{ title: "Trending" }} />
+      <Tabs.Screen name="(explore)" options={{ title: "Explore" }} />
     </Tabs>
   );
 }

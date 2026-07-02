@@ -39,12 +39,21 @@ import { colors } from "@intertaind/design-system";
 /**
  * Route-name → lucide glyph. Keyed by the file-based route name (the
  * `Tabs.Screen name`), so it stays in lockstep with `app-tabs.tsx`.
+ *
+ * Each tab is now a Stack living in the array-group folder
+ * `(tabs)/(index,explore)/`, so the Tabs navigator's route names are the
+ * GROUP names `(index)`/`(explore)` (expo-router keeps the parentheses
+ * for group directories) — the keys below match those, NOT `index`/
+ * `explore`. The bar iterates the Tabs navigator's two group routes, so
+ * exactly two tabs render (the shared `media` detail lives INSIDE a
+ * stack, never as a sibling tab).
+ *
  * Unknown routes render `Circle` (never crash) — keeps the bar tolerant
  * while tabs are still being decided (see the plan's tab-set follow-up).
  */
 const ROUTE_ICONS: Record<string, LucideIcon> = {
-  index: TrendingUp,
-  explore: Compass,
+  "(index)": TrendingUp,
+  "(explore)": Compass,
 };
 
 export default function BottomTabBar({
