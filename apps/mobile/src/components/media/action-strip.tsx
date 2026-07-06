@@ -328,78 +328,83 @@ export function ActionStrip({
   return (
     // Flat — no container card/border/bg; the buttons sit on the page.
     <View className="gap-3">
-      {/* ── Row 1: bare icon status / Loved / List · divider · stars ──
-          movie: 👁 ♥ 🔖 │ ★★★★★. tv/book/game vary the status slot. */}
-      <View className="flex-row items-center gap-1">
-        {/* Status: icon-only toggle(s), or the game status dropdown. */}
-        {config.statusDropdown ? (
-          <IconAction
-            icon={config.statusDropdown.icon}
-            active={status != null}
-            accent="accent-game"
-            accessibilityLabel="Set game status"
-            onPress={() => open(config.statusDropdown!.opener)}
-          />
-        ) : (
-          config.statusActions.map((action) => (
+      {/* ── Row 1: status / Loved / List icons spread across the left with
+          flexing gutters · gray divider · right-aligned stars. movie:
+          👁 ♥ 🔖 │ ★★★★★; tv/book/game vary the status slot. ────────── */}
+      <View className="flex-row items-center">
+        {/* Icons fill the left; justify-between makes the gutters between
+            them grow/shrink with the screen width. */}
+        <View className="flex-1 flex-row items-center justify-between">
+          {/* Status: icon-only toggle(s), or the game status dropdown. */}
+          {config.statusDropdown ? (
             <IconAction
-              key={action.label}
-              icon={action.icon}
-              active={statusActionActive(action)}
-              accent={action.activeAccent}
-              accessibilityLabel={action.label}
-              disabled={trackMutation.isPending}
-              onPress={() =>
-                action.kind === "toggle"
-                  ? trackStatus(action.status)
-                  : open(action.opener)
-              }
+              icon={config.statusDropdown.icon}
+              active={status != null}
+              accent="accent-game"
+              accessibilityLabel="Set game status"
+              onPress={() => open(config.statusDropdown!.opener)}
             />
-          ))
-        )}
+          ) : (
+            config.statusActions.map((action) => (
+              <IconAction
+                key={action.label}
+                icon={action.icon}
+                active={statusActionActive(action)}
+                accent={action.activeAccent}
+                accessibilityLabel={action.label}
+                disabled={trackMutation.isPending}
+                onPress={() =>
+                  action.kind === "toggle"
+                    ? trackStatus(action.status)
+                    : open(action.opener)
+                }
+              />
+            ))
+          )}
 
-        {/* Loved (pink) — disabled while pending (flip-flop race). */}
-        <IconAction
-          icon={Heart}
-          active={isFavorite}
-          accent="accent-movie"
-          fillWhenActive
-          accessibilityLabel={isFavorite ? "Remove from Loved" : "Mark as Loved"}
-          disabled={favoriteMutation.isPending}
-          onPress={handleFavorite}
-        />
+          {/* Loved (pink) — disabled while pending (flip-flop race). */}
+          <IconAction
+            icon={Heart}
+            active={isFavorite}
+            accent="accent-movie"
+            fillWhenActive
+            accessibilityLabel={isFavorite ? "Remove from Loved" : "Mark as Loved"}
+            disabled={favoriteMutation.isPending}
+            onPress={handleFavorite}
+          />
 
-        {/* List (Watchlist / Add to TBR / Wishlist → want). */}
-        <IconAction
-          icon={Bookmark}
-          active={isWant}
-          accent="brand-light"
-          fillWhenActive
-          accessibilityLabel={config.listLabel}
-          disabled={trackMutation.isPending}
-          onPress={() => trackStatus("want")}
-        />
+          {/* List (Watchlist / Add to TBR / Wishlist → want). */}
+          <IconAction
+            icon={Bookmark}
+            active={isWant}
+            accent="brand-light"
+            fillWhenActive
+            accessibilityLabel={config.listLabel}
+            disabled={trackMutation.isPending}
+            onPress={() => trackStatus("want")}
+          />
+        </View>
 
-        {/* Vertical divider, then the inline stars. */}
-        <View className="mx-2 h-6 w-px bg-surface-border" />
+        {/* Gray line separating the buttons from the stars. */}
+        <View className="mx-3 h-6 w-px bg-surface-border" />
+
+        {/* Stars — right-aligned (StarRating owns the gold color). */}
         <StarRating value={stars} onChange={handleRate} size={24} />
       </View>
 
-      {/* ── Row 2: Review/Log (left) · Intertain (right) · ⋯ (right) ── */}
+      {/* ── Row 2: Review/Log + Intertain fill the width with a small gap
+          between them; ⋯ overflow pinned to the right. ──────────────── */}
       <View className="flex-row items-center gap-2">
-        {/* Log / Review button(s) — outline, left. TV supplies two. */}
+        {/* Log / Review button(s) — outline, flex to fill. TV supplies two. */}
         {config.logButtons.map((btn) => (
           <LogButton key={btn.label} btn={btn} onPress={() => open(btn.opener)} />
         ))}
-
-        {/* Spacer pushes Intertain + overflow to the right. */}
-        <View className="flex-1" />
 
         {/* Intertain friends — the headline hot-pink CTA (M4 sheet). */}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Intertain friends — recommend this to a friend"
-          className="flex-row items-center gap-1.5 rounded-sm bg-brand px-3 py-2 active:opacity-80"
+          className="flex-1 flex-row items-center justify-center gap-1.5 rounded-sm bg-brand px-3 py-2 active:opacity-80"
           onPress={() => {
             setErrorMessage(null);
             setMoreOpen(false);
@@ -407,7 +412,10 @@ export function ActionStrip({
           }}
         >
           <Sparkles size={16} color={colors["text-primary"]} />
-          <Text className="text-sm font-semibold text-text-primary">
+          <Text
+            numberOfLines={1}
+            className="text-sm font-semibold text-text-primary"
+          >
             Intertain friends
           </Text>
         </Pressable>
@@ -469,8 +477,10 @@ export function ActionStrip({
 
 /**
  * The log/review button in row 2 (WITH text). An OUTLINE button (bordered,
- * no fill) per the flat "no gray backgrounds" layout, sitting on the left.
- * TV supplies two (Log Season / Log Episode). Sheet opener.
+ * no fill) per the flat "no gray backgrounds" layout. `flex-1` so it fills
+ * the row width alongside the Intertain CTA (with a small gap between them).
+ * TV supplies two (Log Season / Log Episode), which share the flex space.
+ * Sheet opener.
  */
 function LogButton({
   btn,
@@ -484,7 +494,7 @@ function LogButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={btn.label}
-      className="flex-row items-center gap-1.5 rounded-sm border border-surface-border px-3 py-2 active:opacity-70"
+      className="flex-1 flex-row items-center justify-center gap-1.5 rounded-sm border border-surface-border px-3 py-2 active:opacity-70"
       onPress={onPress}
     >
       <Icon size={16} color={colors["text-secondary"]} />
