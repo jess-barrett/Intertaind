@@ -217,7 +217,13 @@ export function InfoSections({
               accessibilityState={{ selected: isActive }}
               accessibilityLabel={tab.label}
               onPress={() => setActive(tab.key)}
-              className="px-3 pb-2 pt-1 active:opacity-70"
+              // Accent underline = a real bottom border on the active tab
+              // (transparent on the rest so every tab keeps the same height).
+              // A robust replacement for an absolutely-positioned bar, which
+              // rendered unreliably on-device.
+              className={`border-b-2 px-3 pb-2 pt-1 active:opacity-70 ${
+                isActive ? "border-brand" : "border-transparent"
+              }`}
             >
               <Text
                 className={`text-sm font-medium ${
@@ -226,10 +232,6 @@ export function InfoSections({
               >
                 {tab.label}
               </Text>
-              {/* Accent underline under the selected tab (web's brand rule). */}
-              {isActive ? (
-                <View className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-brand" />
-              ) : null}
             </Pressable>
           );
         })}
@@ -269,8 +271,11 @@ export function InfoSections({
 
 /** A label-over-value detail row (web's `Row`, a <dt>/<dd> pair). */
 function Row({ label, value }: { label: string; value: string }) {
+  // No `flex-1`: these rows stack in a single full-width column, so the
+  // View sizes to content and the value Text wraps at the column width.
+  // (`flex-1` inside an auto-height cell collapses the row to 0 in Yoga.)
   return (
-    <View className="flex-1 gap-1">
+    <View className="gap-1">
       <Text className="text-xs font-medium uppercase tracking-wider text-text-muted">
         {label}
       </Text>
@@ -314,14 +319,12 @@ function Chip({ children }: { children: string }) {
 // Panels
 // ---------------------------------------------------------------------------
 
-/** Crew: job → names, in a 2-column grid (web's `dl grid sm:grid-cols-2`). */
+/** Crew: job → names, stacked full-width (web's desktop 2-col → mobile 1-col). */
 function CrewPanel({ crew }: { crew: CrewRow[] }) {
   return (
-    <View className="flex-row flex-wrap gap-y-4">
+    <View className="gap-4">
       {crew.map((row, i) => (
-        <View key={`${row.job}-${i}`} className="w-1/2 pr-4">
-          <Row label={row.job} value={row.names.join(", ")} />
-        </View>
+        <Row key={`${row.job}-${i}`} label={row.job} value={row.names.join(", ")} />
       ))}
     </View>
   );
@@ -403,11 +406,9 @@ function DetailsPanel({
   }
 
   return (
-    <View className="flex-row flex-wrap gap-y-4">
+    <View className="gap-4">
       {rows.map((row, i) => (
-        <View key={i} className="w-1/2 pr-4">
-          {row}
-        </View>
+        <View key={i}>{row}</View>
       ))}
     </View>
   );
@@ -463,11 +464,9 @@ function PlatformsPanel({ platforms }: { platforms: string[] }) {
 function ReleasesPanel({ releases }: { releases: Record<string, string> }) {
   const rows = RELEASE_ORDER.filter((k) => releases[k]);
   return (
-    <View className="flex-row flex-wrap gap-y-4">
+    <View className="gap-4">
       {rows.map((k) => (
-        <View key={k} className="w-1/2 pr-4">
-          <Row label={RELEASE_LABELS[k]} value={formatDate(releases[k])} />
-        </View>
+        <Row key={k} label={RELEASE_LABELS[k]} value={formatDate(releases[k])} />
       ))}
     </View>
   );
@@ -475,11 +474,11 @@ function ReleasesPanel({ releases }: { releases: Record<string, string> }) {
 
 function AltTitlesPanel({ titles }: { titles: AltTitle[] }) {
   return (
-    <View className="flex-row flex-wrap gap-y-2">
+    <View className="gap-2">
       {titles.map((t, i) => (
         <View
           key={`${t.country}-${i}`}
-          className="w-1/2 flex-row items-baseline gap-2 pr-4"
+          className="flex-row items-baseline gap-2"
         >
           <Text className="text-xs font-medium uppercase text-text-muted">
             {t.country}

@@ -85,13 +85,19 @@ export function AboutTheAuthor({
       ? rawBio.trim()
       : null;
 
+  // Avatar: the full square when we actually have a photo; a compact round
+  // placeholder otherwise, so a name-only author (today's common case, until
+  // Open Library enrichment lands) reads as an intentional byline row rather
+  // than a large empty box.
+  const avatarSize = photoUrl ? PHOTO_SIZE : 44;
+
   return (
     <View className="gap-4">
       <SectionHeading>About the author</SectionHeading>
-      <View className="flex-row items-start gap-4">
+      <View className="flex-row items-center gap-3">
         <View
-          style={{ width: PHOTO_SIZE, height: PHOTO_SIZE }}
-          className="items-center justify-center overflow-hidden rounded-sm border border-surface-border bg-surface-overlay"
+          style={{ width: avatarSize, height: avatarSize }}
+          className="items-center justify-center overflow-hidden rounded-full border border-surface-border bg-surface-overlay"
         >
           {photoUrl ? (
             <Image
@@ -102,9 +108,7 @@ export function AboutTheAuthor({
               accessibilityLabel={name}
             />
           ) : (
-            // No photo (the common case today) — a muted lucide User
-            // glyph, mirroring web's fallback slot.
-            <User size={32} color={colors["text-muted"]} />
+            <User size={20} color={colors["text-secondary"]} />
           )}
         </View>
         <View className="flex-1 gap-1">
