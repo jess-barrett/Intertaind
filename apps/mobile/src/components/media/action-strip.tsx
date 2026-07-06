@@ -413,7 +413,7 @@ export function ActionStrip({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Intertain friends — recommend this to a friend"
-          className="flex-1 flex-row items-center justify-center gap-1.5 rounded-sm bg-brand px-3 py-2 active:opacity-80"
+          className="flex-1 flex-row items-center justify-center gap-1.5 rounded-sm border border-brand bg-brand px-3 py-2 active:opacity-80"
           onPress={() => {
             setErrorMessage(null);
             setMoreOpen(false);
