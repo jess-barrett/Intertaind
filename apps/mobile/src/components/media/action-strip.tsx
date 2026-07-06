@@ -333,7 +333,7 @@ export function ActionStrip({
           with screen width); a gray divider sits just before the
           right-aligned stars as the boundary. movie: 👁 ♥ 🔖 │ ★★★★★;
           tv/book/game vary the status slot. ──────────────────────────── */}
-      <View className="flex-row items-center justify-between">
+      <View className="flex-row items-center justify-between rounded-sm border border-surface-border bg-surface-raised px-3 py-2">
         {/* Status: icon-only toggle(s), or the game status dropdown. */}
         {config.statusDropdown ? (
           <IconAction
@@ -387,7 +387,16 @@ export function ActionStrip({
             boundary just before the stars (part of this last flex item, so
             justify-between keeps the icon→divider gap even with the rest). */}
         <View className="flex-row items-center">
-          <View className="mr-3 h-6 w-px bg-surface-border" />
+          {/* Explicit width via style — NativeWind's `w-px` was compiling to
+              zero width here, so the 1px line never showed. */}
+          <View
+            className="mr-3"
+            style={{
+              width: 1,
+              height: 20,
+              backgroundColor: colors["surface-border"],
+            }}
+          />
           <StarRating value={stars} onChange={handleRate} size={24} />
         </View>
       </View>
