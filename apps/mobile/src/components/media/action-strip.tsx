@@ -75,6 +75,7 @@ import {
 import type { Tables } from "@intertaind/supabase";
 
 import StarRating from "@/components/star-rating";
+import { trackingErrorMessage } from "@/lib/tracking-errors";
 import type { MediaDetailItem } from "@/queries/media";
 import {
   OPTIMISTIC_ID,
@@ -119,27 +120,6 @@ export type ActionStripHandlers = {
   /** book "Change cover" · movie/tv/game "Change backdrop" (M4). */
   onChangeArt?: () => void;
 };
-
-/**
- * Map a mutation rejection to a user-facing string. NEVER render the raw
- * error — Supabase/fetch errors leak internals ("JWT expired", PostgREST
- * codes). Raw error → console.warn. (Salvaged verbatim from the old
- * tracking panel; the network-vs-generic split is deliberate.)
- */
-function trackingErrorMessage(err: unknown): string {
-  console.warn("[action-strip] mutation failed:", err);
-  // Read .message off non-Error shapes too: postgrest-js resolves a
-  // failed fetch into a PLAIN object whose message is "TypeError: Network
-  // request failed" — not an Error instance, and String(obj) hides it.
-  const message =
-    typeof err === "object" && err !== null && "message" in err
-      ? String((err as { message: unknown }).message)
-      : String(err);
-  if (err instanceof TypeError || /network request failed/i.test(message)) {
-    return "Couldn't save — check your connection and try again.";
-  }
-  return "Something went wrong saving your changes.";
-}
 
 /** Resolve which parent callback a config `opener` maps to. */
 function openerCallback(
@@ -309,7 +289,7 @@ export function ActionStrip({
     viewerRow?.rating != null ? ratingToStars(Number(viewerRow.rating)) : null;
 
   const reportError = (err: unknown) =>
-    setErrorMessage(trackingErrorMessage(err));
+    setErrorMessage(trackingErrorMessage(err, "your changes", "action-strip"));
 
   function trackStatus(next: TrackingStatus) {
     // No-op re-tapping the active status (touch fat-finger safety — the

@@ -44,6 +44,7 @@
  * same byline/secondary-line/tagline/stat composition. Web is the
  * source of truth; keep the two in lockstep.
  */
+import { useRef } from "react";
 import { Stack, useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
@@ -73,6 +74,8 @@ import { ActionStrip } from "@/components/media/action-strip";
 import { CastSlider } from "@/components/media/cast-slider";
 import { InfoSections } from "@/components/media/info-sections";
 import { SeasonCards } from "@/components/media/season-cards";
+import MovieLogSheet from "@/components/media/sheets/movie-log-sheet";
+import type { AppSheetRef } from "@/components/sheet/app-sheet";
 import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
 import { useBottomInset } from "@/lib/use-bottom-inset";
 import {
@@ -144,7 +147,7 @@ function yearFrom(dateString: string | null): string | null {
  */
 function attributionFor(
   mediaType: Tables<"media_items">["media_type"],
-  metadata: Record<string, unknown> | null
+  metadata: Record<string, unknown> | null,
 ): string | null {
   if (!metadata) return null;
   switch (mediaType) {
@@ -162,10 +165,8 @@ function attributionFor(
     }
     case "video_game": {
       const raw = metadata.developers as
-        | (string | { id?: number; name: string })[]
-        | undefined;
-      const names =
-        raw?.map((d) => (typeof d === "string" ? d : d.name)) ?? [];
+        (string | { id?: number; name: string })[] | undefined;
+      const names = raw?.map((d) => (typeof d === "string" ? d : d.name)) ?? [];
       return names.length ? `Developed by ${names.join(", ")}` : null;
     }
     default:
@@ -188,7 +189,7 @@ function attributionFor(
 function secondaryMetaFor(
   mediaType: Tables<"media_items">["media_type"],
   metadata: Record<string, unknown> | null,
-  seriesPosition: number | null
+  seriesPosition: number | null,
 ): string[] {
   if (!metadata) return [];
   const parts: string[] = [];
@@ -236,8 +237,16 @@ function communityStatsFor(item: MediaDetailItem): StatDescriptor[] {
   const lists = item.lists_count;
   const loved = item.favorites_count;
 
-  const listsStat: StatDescriptor = { icon: List, count: lists, label: "In lists" };
-  const lovedStat: StatDescriptor = { icon: Heart, count: loved, label: "Loved" };
+  const listsStat: StatDescriptor = {
+    icon: List,
+    count: lists,
+    label: "In lists",
+  };
+  const lovedStat: StatDescriptor = {
+    icon: Heart,
+    count: loved,
+    label: "Loved",
+  };
 
   switch (item.media_type) {
     case "movie":
@@ -377,7 +386,7 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
   const secondaryMeta = secondaryMetaFor(
     item.media_type,
     metadata,
-    item.series_position
+    item.series_position,
   );
   // Tagline is TMDb-sourced and only meaningful for movies + TV shows
   // (web gates it on media_type implicitly by only enriching those).
@@ -397,79 +406,87 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
   // Reserve space so content clears the persistent bottom navbar (added
   // on top of the 48pt content breathing room at the end of the scroll).
   const bottomInset = useBottomInset();
+  // The movie log/review sheet (Task 2.4). Only meaningful for movies —
+  // the strip's movie "Review or log…" opener presents it; the sheet
+  // self-gates its render to movies below.
+  const movieLogRef = useRef<AppSheetRef>(null);
+  const isMovie = item.media_type === "movie";
 
   return (
-    <ScrollView
-      className="flex-1"
-      contentContainerStyle={{ paddingBottom: 48 + bottomInset }}
-    >
-      {/* Full-bleed backdrop hero with its bottom fade. */}
-      <BackdropHero backdropUrl={item.backdrop_url} />
+    <>
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ paddingBottom: 48 + bottomInset }}
+      >
+        {/* Full-bleed backdrop hero with its bottom fade. */}
+        <BackdropHero backdropUrl={item.backdrop_url} />
 
-      {/* Poster + title block, pulled up to straddle the hero fade
+        {/* Poster + title block, pulled up to straddle the hero fade
           (the mobile detail-screen overlap pattern). */}
-      <View className="-mt-24 flex-row gap-4 px-4">
-        {item.cover_image_url ? (
-          <Image
-            source={{ uri: item.cover_image_url }}
-            // 112pt-wide 2:3 cover, sharp corners + hairline border to
-            // match web's poster treatment; shadow lifts it off the bg.
-            className="aspect-[2/3] w-28 rounded-sm border border-surface-border bg-surface-overlay"
-            contentFit="cover"
-            accessible
-            accessibilityLabel={`${item.title} cover`}
-            // iOS drop shadow to lift the poster off the faded hero.
-            // (expo-image's ImageStyle omits Android `elevation`; the
-            // hairline border carries the separation on Android.)
-            style={{
-              shadowColor: colors["surface-default"],
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.5,
-              shadowRadius: 8,
-            }}
-          />
-        ) : (
-          <View className="aspect-[2/3] w-28 items-center justify-center rounded-sm border border-surface-border bg-surface-overlay">
-            <Text className="text-xs text-text-muted">No cover</Text>
-          </View>
-        )}
+        <View className="-mt-24 flex-row gap-4 px-4">
+          {item.cover_image_url ? (
+            <Image
+              source={{ uri: item.cover_image_url }}
+              // 112pt-wide 2:3 cover, sharp corners + hairline border to
+              // match web's poster treatment; shadow lifts it off the bg.
+              className="aspect-[2/3] w-28 rounded-sm border border-surface-border bg-surface-overlay"
+              contentFit="cover"
+              accessible
+              accessibilityLabel={`${item.title} cover`}
+              // iOS drop shadow to lift the poster off the faded hero.
+              // (expo-image's ImageStyle omits Android `elevation`; the
+              // hairline border carries the separation on Android.)
+              style={{
+                shadowColor: colors["surface-default"],
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.5,
+                shadowRadius: 8,
+              }}
+            />
+          ) : (
+            <View className="aspect-[2/3] w-28 items-center justify-center rounded-sm border border-surface-border bg-surface-overlay">
+              <Text className="text-xs text-text-muted">No cover</Text>
+            </View>
+          )}
 
-        {/* Title block — bottom-aligned so it sits on the poster's lower
+          {/* Title block — bottom-aligned so it sits on the poster's lower
             half where the hero has fully faded. Ordered top-to-bottom to
             mirror web: accent type line, title + year, byline. */}
-        <View className="flex-1 justify-end gap-1 pb-1">
-          {/* Media-type line: lucide type icon (accent-colored via the
+          <View className="flex-1 justify-end gap-1 pb-1">
+            {/* Media-type line: lucide type icon (accent-colored via the
               `color` prop — SVG, not className) + accent label. */}
-          <View className="flex-row items-center gap-1.5">
-            {type.icon ? <type.icon size={14} color={type.iconColor} /> : null}
-            <Text
-              className={`text-xs font-semibold uppercase tracking-wider ${type.color}`}
-            >
-              {type.label}
-            </Text>
-          </View>
-
-          {/* Title + year — year is the muted trailing companion, web's
-              `<h1> {year}` baseline pairing. */}
-          <Text className="text-2xl font-bold text-text-primary">
-            {item.title}
-            {year ? (
-              <Text className="text-lg font-normal text-text-muted">
-                {"  "}
-                {year}
+            <View className="flex-row items-center gap-1.5">
+              {type.icon ? (
+                <type.icon size={14} color={type.iconColor} />
+              ) : null}
+              <Text
+                className={`text-xs font-semibold uppercase tracking-wider ${type.color}`}
+              >
+                {type.label}
               </Text>
+            </View>
+
+            {/* Title + year — year is the muted trailing companion, web's
+              `<h1> {year}` baseline pairing. */}
+            <Text className="text-2xl font-bold text-text-primary">
+              {item.title}
+              {year ? (
+                <Text className="text-lg font-normal text-text-muted">
+                  {"  "}
+                  {year}
+                </Text>
+              ) : null}
+            </Text>
+
+            {/* Byline — Directed by / Created by / by / Developed by. */}
+            {attribution ? (
+              <Text className="text-sm text-text-secondary">{attribution}</Text>
             ) : null}
-          </Text>
-
-          {/* Byline — Directed by / Created by / by / Developed by. */}
-          {attribution ? (
-            <Text className="text-sm text-text-secondary">{attribution}</Text>
-          ) : null}
+          </View>
         </View>
-      </View>
 
-      <View className="gap-5 px-4 pt-5">
-        {/* Config-driven per-type action strip — the viewer's tracking
+        <View className="gap-5 px-4 pt-5">
+          {/* Config-driven per-type action strip — the viewer's tracking
             controls (status · Loved · list · inline stars · Log/Review ·
             Intertain · secondary), mounted PROMINENTLY right after the
             header block per the locked "inline action strip under the
@@ -477,81 +494,83 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
             actions wire to the existing tracking mutations; sheet-opener
             actions call the stub handlers below (Tasks 2.4–2.7 / M4 swap
             these no-ops for real sheet refs). */}
-        <ActionStrip
-          media={item}
-          viewerRow={tracking.data ?? null}
-          trackingPending={tracking.isPending}
-          handlers={{
-            // TODO(2.4): movie log/review sheet.
-            onOpenLog: () => {},
-            // TODO(2.6): TV log-season / log-episode / current-episode sheets.
-            onOpenLogSeason: () => {},
-            onOpenLogEpisode: () => {},
-            onOpenWatching: () => {},
-            // TODO(2.5): book read (finished/DNF) + current-reading sheets.
-            onOpenReading: () => {},
-            onOpenReadFinished: () => {},
-            // TODO(2.7): game status dropdown sheet.
-            onOpenStatusPicker: () => {},
-            // TODO(M4): Intertain-friends recommend sheet.
-            onIntertain: () => {},
-            // TODO(M4): show-activity screen.
-            onShowActivity: () => {},
-            // TODO(M4): change cover (book) / backdrop (movie/TV/game) sheet.
-            onChangeArt: () => {},
-          }}
-        />
+          <ActionStrip
+            media={item}
+            viewerRow={tracking.data ?? null}
+            trackingPending={tracking.isPending}
+            handlers={{
+              // Movie log/review sheet (Task 2.4) — present the ref-driven
+              // sheet mounted below. (Only movies route here; the strip
+              // shows this opener for movies.)
+              onOpenLog: () => movieLogRef.current?.present(),
+              // TODO(2.6): TV log-season / log-episode / current-episode sheets.
+              onOpenLogSeason: () => {},
+              onOpenLogEpisode: () => {},
+              onOpenWatching: () => {},
+              // TODO(2.5): book read (finished/DNF) + current-reading sheets.
+              onOpenReading: () => {},
+              onOpenReadFinished: () => {},
+              // TODO(2.7): game status dropdown sheet.
+              onOpenStatusPicker: () => {},
+              // TODO(M4): Intertain-friends recommend sheet.
+              onIntertain: () => {},
+              // TODO(M4): show-activity screen.
+              onShowActivity: () => {},
+              // TODO(M4): change cover (book) / backdrop (movie/TV/game) sheet.
+              onChangeArt: () => {},
+            }}
+          />
 
-        {/* Secondary meta line — runtime/pages/seasons/genres per type. */}
-        {secondaryMeta.length > 0 ? (
-          <Text className="text-xs text-text-muted">
-            {secondaryMeta.join(" · ")}
-          </Text>
-        ) : null}
+          {/* Secondary meta line — runtime/pages/seasons/genres per type. */}
+          {secondaryMeta.length > 0 ? (
+            <Text className="text-xs text-text-muted">
+              {secondaryMeta.join(" · ")}
+            </Text>
+          ) : null}
 
-        {/* Rating — avg_rating is already 0–5 (SQL-divided, migration
+          {/* Rating — avg_rating is already 0–5 (SQL-divided, migration
             025): render toFixed(1), NEVER ÷2. Gated on rating_count so an
             unrated item (COALESCEd avg_rating of 0) reads as "no ratings"
             rather than a terrible 0.0 score. */}
-        {(item.rating_count ?? 0) > 0 && item.avg_rating != null ? (
-          <Text className="text-sm text-text-secondary">
-            <Text style={{ color: colors["accent-game"] }}>★</Text>{" "}
-            {Number(item.avg_rating).toFixed(1)}
-            <Text className="text-text-muted">
-              {" "}
-              ({item.rating_count}{" "}
-              {item.rating_count === 1 ? "rating" : "ratings"})
+          {(item.rating_count ?? 0) > 0 && item.avg_rating != null ? (
+            <Text className="text-sm text-text-secondary">
+              <Text style={{ color: colors["accent-game"] }}>★</Text>{" "}
+              {Number(item.avg_rating).toFixed(1)}
+              <Text className="text-text-muted">
+                {" "}
+                ({item.rating_count}{" "}
+                {item.rating_count === 1 ? "rating" : "ratings"})
+              </Text>
             </Text>
-          </Text>
-        ) : (
-          <Text className="text-sm text-text-muted">No ratings yet</Text>
-        )}
+          ) : (
+            <Text className="text-sm text-text-muted">No ratings yet</Text>
+          )}
 
-        {/* Tagline (movie / TV only) — uppercase muted, above the
+          {/* Tagline (movie / TV only) — uppercase muted, above the
             description, matching web's Letterboxd treatment. */}
-        {tagline ? (
-          <Text className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-            {tagline}
-          </Text>
-        ) : null}
+          {tagline ? (
+            <Text className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+              {tagline}
+            </Text>
+          ) : null}
 
-        {/* Description */}
-        {item.description ? (
-          <Text className="text-sm leading-relaxed text-text-secondary">
-            {item.description}
-          </Text>
-        ) : null}
+          {/* Description */}
+          {item.description ? (
+            <Text className="text-sm leading-relaxed text-text-secondary">
+              {item.description}
+            </Text>
+          ) : null}
 
-        {/* Cast slider (movie/TV) / about-the-author (book) — Task 1.3.
+          {/* Cast slider (movie/TV) / about-the-author (book) — Task 1.3.
             Web's relative order is description → cast/about-author → info
             tabs; the hybrid info tabs / seasons (Task 1.4) mount AFTER
             these. Each component self-gates by media type and renders
             null when its metadata is absent/empty, so both mount
             unconditionally and only the relevant one shows. */}
-        <CastSlider mediaType={item.media_type} metadata={metadata} />
-        <AboutTheAuthor mediaType={item.media_type} metadata={metadata} />
+          <CastSlider mediaType={item.media_type} metadata={metadata} />
+          <AboutTheAuthor mediaType={item.media_type} metadata={metadata} />
 
-        {/* Hybrid info area (Task 1.4) — mirrors web's content-column flow
+          {/* Hybrid info area (Task 1.4) — mirrors web's content-column flow
             (description → cast/about-author → info sections). TV seasons
             render INLINE as cards ABOVE the tab strip (a locked design
             decision — seasons are the headline structured content for a
@@ -560,24 +579,37 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
             horizontal tab strip below. Both self-gate by media type +
             metadata presence and render null when empty, so they mount
             unconditionally and only relevant content shows. */}
-        <SeasonCards mediaType={item.media_type} metadata={metadata} />
-        <InfoSections mediaType={item.media_type} metadata={metadata} />
+          <SeasonCards mediaType={item.media_type} metadata={metadata} />
+          <InfoSections mediaType={item.media_type} metadata={metadata} />
 
-        {/* Community stats — a clean spaced row (icon + count over label),
+          {/* Community stats — a clean spaced row (icon + count over label),
             per-media-type set mirroring web. */}
-        <View className="flex-row flex-wrap gap-x-6 gap-y-3 rounded-sm border border-surface-border bg-surface-raised px-4 py-3">
-          {stats.map((stat) => (
-            <StatBlock
-              key={stat.label}
-              icon={stat.icon}
-              count={stat.count}
-              label={stat.label}
-            />
-          ))}
+          <View className="flex-row flex-wrap gap-x-6 gap-y-3 rounded-sm border border-surface-border bg-surface-raised px-4 py-3">
+            {stats.map((stat) => (
+              <StatBlock
+                key={stat.label}
+                icon={stat.icon}
+                count={stat.count}
+                label={stat.label}
+              />
+            ))}
+          </View>
         </View>
+      </ScrollView>
 
-      </View>
-    </ScrollView>
+      {/* Movie log/review sheet (Task 2.4). Ref-driven overlay (a
+          BottomSheetModal portal), so it mounts as a sibling of the
+          scroll content, not inside it. Only for movies — the action
+          strip only exposes this opener for movies, and the sheet's
+          fields (watched-on / rewatch) are movie-specific. */}
+      {isMovie ? (
+        <MovieLogSheet
+          ref={movieLogRef}
+          media={item}
+          viewerRow={tracking.data ?? null}
+        />
+      ) : null}
+    </>
   );
 }
 
