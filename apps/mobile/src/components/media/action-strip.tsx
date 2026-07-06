@@ -328,109 +328,112 @@ export function ActionStrip({
   return (
     // Flat — no container card/border/bg; the buttons sit on the page.
     <View className="gap-3">
-      {/* ── Row 1: status / Loved / List icons spread across the left with
-          flexing gutters · gray divider · right-aligned stars. movie:
-          👁 ♥ 🔖 │ ★★★★★; tv/book/game vary the status slot. ────────── */}
-      <View className="flex-row items-center">
-        {/* Icons fill the left; justify-between makes the gutters between
-            them grow/shrink with the screen width. */}
-        <View className="flex-1 flex-row items-center justify-between">
-          {/* Status: icon-only toggle(s), or the game status dropdown. */}
-          {config.statusDropdown ? (
+      {/* ── Row 1: status / Loved / List icons + the stars distributed
+          EVENLY across the row (justify-between → equal gutters that flex
+          with screen width); a gray divider sits just before the
+          right-aligned stars as the boundary. movie: 👁 ♥ 🔖 │ ★★★★★;
+          tv/book/game vary the status slot. ──────────────────────────── */}
+      <View className="flex-row items-center justify-between">
+        {/* Status: icon-only toggle(s), or the game status dropdown. */}
+        {config.statusDropdown ? (
+          <IconAction
+            icon={config.statusDropdown.icon}
+            active={status != null}
+            accent="accent-game"
+            accessibilityLabel="Set game status"
+            onPress={() => open(config.statusDropdown!.opener)}
+          />
+        ) : (
+          config.statusActions.map((action) => (
             <IconAction
-              icon={config.statusDropdown.icon}
-              active={status != null}
-              accent="accent-game"
-              accessibilityLabel="Set game status"
-              onPress={() => open(config.statusDropdown!.opener)}
+              key={action.label}
+              icon={action.icon}
+              active={statusActionActive(action)}
+              accent={action.activeAccent}
+              accessibilityLabel={action.label}
+              disabled={trackMutation.isPending}
+              onPress={() =>
+                action.kind === "toggle"
+                  ? trackStatus(action.status)
+                  : open(action.opener)
+              }
             />
-          ) : (
-            config.statusActions.map((action) => (
-              <IconAction
-                key={action.label}
-                icon={action.icon}
-                active={statusActionActive(action)}
-                accent={action.activeAccent}
-                accessibilityLabel={action.label}
-                disabled={trackMutation.isPending}
-                onPress={() =>
-                  action.kind === "toggle"
-                    ? trackStatus(action.status)
-                    : open(action.opener)
-                }
-              />
-            ))
-          )}
+          ))
+        )}
 
-          {/* Loved (pink) — disabled while pending (flip-flop race). */}
-          <IconAction
-            icon={Heart}
-            active={isFavorite}
-            accent="accent-movie"
-            fillWhenActive
-            accessibilityLabel={isFavorite ? "Remove from Loved" : "Mark as Loved"}
-            disabled={favoriteMutation.isPending}
-            onPress={handleFavorite}
-          />
+        {/* Loved (pink) — disabled while pending (flip-flop race). */}
+        <IconAction
+          icon={Heart}
+          active={isFavorite}
+          accent="accent-movie"
+          fillWhenActive
+          accessibilityLabel={isFavorite ? "Remove from Loved" : "Mark as Loved"}
+          disabled={favoriteMutation.isPending}
+          onPress={handleFavorite}
+        />
 
-          {/* List (Watchlist / Add to TBR / Wishlist → want). */}
-          <IconAction
-            icon={Bookmark}
-            active={isWant}
-            accent="brand-light"
-            fillWhenActive
-            accessibilityLabel={config.listLabel}
-            disabled={trackMutation.isPending}
-            onPress={() => trackStatus("want")}
-          />
+        {/* List (Watchlist / Add to TBR / Wishlist → want). */}
+        <IconAction
+          icon={Bookmark}
+          active={isWant}
+          accent="brand-light"
+          fillWhenActive
+          accessibilityLabel={config.listLabel}
+          disabled={trackMutation.isPending}
+          onPress={() => trackStatus("want")}
+        />
+
+        {/* Divider + right-aligned stars, grouped so the line reads as the
+            boundary just before the stars (part of this last flex item, so
+            justify-between keeps the icon→divider gap even with the rest). */}
+        <View className="flex-row items-center">
+          <View className="mr-3 h-6 w-px bg-surface-border" />
+          <StarRating value={stars} onChange={handleRate} size={24} />
         </View>
-
-        {/* Gray line separating the buttons from the stars. */}
-        <View className="mx-3 h-6 w-px bg-surface-border" />
-
-        {/* Stars — right-aligned (StarRating owns the gold color). */}
-        <StarRating value={stars} onChange={handleRate} size={24} />
       </View>
 
-      {/* ── Row 2: Review/Log + Intertain fill the width with a small gap
-          between them; ⋯ overflow pinned to the right. ──────────────── */}
+      {/* ── Row 2: Review/Log takes HALF the row; the other half is shared
+          by the Intertain CTA (fills it) + the ⋯ overflow. ──────────── */}
       <View className="flex-row items-center gap-2">
-        {/* Log / Review button(s) — outline, flex to fill. TV supplies two. */}
+        {/* Log / Review button(s) — half the row (outline). TV supplies two. */}
         {config.logButtons.map((btn) => (
           <LogButton key={btn.label} btn={btn} onPress={() => open(btn.opener)} />
         ))}
 
-        {/* Intertain friends — the headline hot-pink CTA (M4 sheet). */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Intertain friends — recommend this to a friend"
-          className="flex-1 flex-row items-center justify-center gap-1.5 rounded-sm bg-brand px-3 py-2 active:opacity-80"
-          onPress={() => {
-            setErrorMessage(null);
-            setMoreOpen(false);
-            handlers.onIntertain?.();
-          }}
-        >
-          <Sparkles size={16} color={colors["text-primary"]} />
-          <Text
-            numberOfLines={1}
-            className="text-sm font-semibold text-text-primary"
+        {/* The other half: Intertain CTA (fills it) + the ⋯ overflow. */}
+        <View className="flex-1 flex-row items-center gap-2">
+          {/* Intertain friends — the headline hot-pink CTA (M4 sheet). */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Intertain friends — recommend this to a friend"
+            className="flex-1 flex-row items-center justify-center gap-1.5 rounded-sm bg-brand px-3 py-2 active:opacity-80"
+            onPress={() => {
+              setErrorMessage(null);
+              setMoreOpen(false);
+              handlers.onIntertain?.();
+            }}
           >
-            Intertain friends
-          </Text>
-        </Pressable>
+            <Sparkles size={16} color={colors["text-primary"]} />
+            <Text
+              numberOfLines={1}
+              className="text-sm font-semibold text-text-primary"
+            >
+              Intertain friends
+            </Text>
+          </Pressable>
 
-        {/* ⋯ overflow → Show activity + Change backdrop/cover (M4). */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="More options"
-          accessibilityState={{ expanded: moreOpen }}
-          hitSlop={6}
-          className="p-1.5 active:opacity-60"
-          onPress={() => setMoreOpen((v) => !v)}
-        >
-          <MoreHorizontal size={22} color={colors["text-secondary"]} />
-        </Pressable>
+          {/* ⋯ overflow → Show activity + Change backdrop/cover (M4). */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="More options"
+            accessibilityState={{ expanded: moreOpen }}
+            hitSlop={6}
+            className="p-1.5 active:opacity-60"
+            onPress={() => setMoreOpen((v) => !v)}
+          >
+            <MoreHorizontal size={22} color={colors["text-secondary"]} />
+          </Pressable>
+        </View>
       </View>
 
       {/* ── ⋯ overflow menu — the M4 secondary actions, right-aligned. ── */}
