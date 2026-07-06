@@ -328,67 +328,72 @@ export function ActionStrip({
   return (
     // Flat — no container card/border/bg; the buttons sit on the page.
     <View className="gap-3">
-      {/* ── Row 1: status / Loved / List icons + the stars distributed
-          EVENLY across the row (justify-between → equal gutters that flex
-          with screen width); a gray divider sits just before the
-          right-aligned stars as the boundary. movie: 👁 ♥ 🔖 │ ★★★★★;
-          tv/book/game vary the status slot. ──────────────────────────── */}
-      <View className="flex-row items-center justify-between rounded-sm border border-surface-border bg-surface-raised px-3 py-2">
-        {/* Status: icon-only toggle(s), or the game status dropdown. */}
-        {config.statusDropdown ? (
-          <IconAction
-            icon={config.statusDropdown.icon}
-            active={status != null}
-            accent="accent-game"
-            accessibilityLabel="Set game status"
-            onPress={() => open(config.statusDropdown!.opener)}
-          />
-        ) : (
-          config.statusActions.map((action) => (
+      {/* ── Row 1: a fixed LEFT group (status / Loved / List icons + the
+          divider) and an INDEPENDENT right zone for the stars. The left
+          group is content-width, so the icons + line never move; the stars
+          sit in a flex-1, right-aligned zone — so clearing/rating a rating
+          only shifts the STARS within that zone, while the icons + line
+          stay put. movie: 👁 ♥ 🔖 │ ★★★★★; tv/book/game vary the status
+          slot. ─────────────────────────────────────────────────────── */}
+      <View className="flex-row items-center rounded-sm border border-surface-border bg-surface-raised px-3 py-2">
+        {/* Left group — content-width icons with a fixed gap, independent of
+            the stars' width. */}
+        <View className="flex-row items-center gap-8">
+          {/* Status: icon-only toggle(s), or the game status dropdown. */}
+          {config.statusDropdown ? (
             <IconAction
-              key={action.label}
-              icon={action.icon}
-              active={statusActionActive(action)}
-              accent={action.activeAccent}
-              accessibilityLabel={action.label}
-              disabled={trackMutation.isPending}
-              onPress={() =>
-                action.kind === "toggle"
-                  ? trackStatus(action.status)
-                  : open(action.opener)
-              }
+              icon={config.statusDropdown.icon}
+              active={status != null}
+              accent="accent-game"
+              accessibilityLabel="Set game status"
+              onPress={() => open(config.statusDropdown!.opener)}
             />
-          ))
-        )}
+          ) : (
+            config.statusActions.map((action) => (
+              <IconAction
+                key={action.label}
+                icon={action.icon}
+                active={statusActionActive(action)}
+                accent={action.activeAccent}
+                accessibilityLabel={action.label}
+                disabled={trackMutation.isPending}
+                onPress={() =>
+                  action.kind === "toggle"
+                    ? trackStatus(action.status)
+                    : open(action.opener)
+                }
+              />
+            ))
+          )}
 
-        {/* Loved (pink) — disabled while pending (flip-flop race). */}
-        <IconAction
-          icon={Heart}
-          active={isFavorite}
-          accent="accent-movie"
-          fillWhenActive
-          accessibilityLabel={isFavorite ? "Remove from Loved" : "Mark as Loved"}
-          disabled={favoriteMutation.isPending}
-          onPress={handleFavorite}
-        />
+          {/* Loved (pink) — disabled while pending (flip-flop race). */}
+          <IconAction
+            icon={Heart}
+            active={isFavorite}
+            accent="accent-movie"
+            fillWhenActive
+            accessibilityLabel={isFavorite ? "Remove from Loved" : "Mark as Loved"}
+            disabled={favoriteMutation.isPending}
+            onPress={handleFavorite}
+          />
 
-        {/* List (Watchlist / Add to TBR / Wishlist → want). */}
-        <IconAction
-          icon={Bookmark}
-          active={isWant}
-          accent="brand-light"
-          fillWhenActive
-          accessibilityLabel={config.listLabel}
-          disabled={trackMutation.isPending}
-          onPress={() => trackStatus("want")}
-        />
+          {/* List (Watchlist / Add to TBR / Wishlist → want). */}
+          <IconAction
+            icon={Bookmark}
+            active={isWant}
+            accent="brand-light"
+            fillWhenActive
+            accessibilityLabel={config.listLabel}
+            disabled={trackMutation.isPending}
+            onPress={() => trackStatus("want")}
+          />
+        </View>
 
-        {/* Divider — a STANDALONE flex item, so justify-between gives it
-            EQUAL gaps on both sides (symmetric padding) and an even separator
-            between the icons and the stars. Explicit width via style —
-            NativeWind's `w-px` compiled to zero width, so the line never
-            showed; 2px reads clearly. */}
+        {/* Divider — the fixed boundary between the icon group and the
+            stars (2px surface-border via explicit style; NativeWind's `w-px`
+            compiled to zero width). */}
         <View
+          className="mx-3"
           style={{
             width: 2,
             height: 22,
@@ -396,8 +401,12 @@ export function ActionStrip({
           }}
         />
 
-        {/* Stars — right-aligned (StarRating owns the gold color). */}
-        <StarRating value={stars} onChange={handleRate} size={24} />
+        {/* Right zone — stars right-aligned in a flex-1 container whose width
+            is constant (left group + divider are content-width), so clearing
+            or rating only shifts the stars here; the icons/line don't move. */}
+        <View className="flex-1 flex-row items-center justify-end">
+          <StarRating value={stars} onChange={handleRate} size={24} />
+        </View>
       </View>
 
       {/* ── Row 2: Review/Log + Intertain are EQUAL width (both flex-1);

@@ -196,7 +196,7 @@ export default function StarRating({
           className="rounded px-2 py-1 active:opacity-70"
           onPress={() => onChange?.(null)}
         >
-          <Text className="text-xs text-text-muted">Clear</Text>
+          <Text className="text-base leading-none text-text-muted">✕</Text>
         </Pressable>
       ) : null}
     </View>
