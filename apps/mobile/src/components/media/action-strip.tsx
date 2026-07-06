@@ -336,9 +336,10 @@ export function ActionStrip({
           stay put. movie: 👁 ♥ 🔖 │ ★★★★★; tv/book/game vary the status
           slot. ─────────────────────────────────────────────────────── */}
       <View className="flex-row items-center rounded-sm border border-surface-border bg-surface-raised px-3 py-2">
-        {/* Left HALF — the icons, evenly spread to fill it (flex-1 +
-            justify-between). */}
-        <View className="flex-1 flex-row items-center justify-between">
+        {/* Left HALF — the icons spread to fill it WITH edge space on both
+            ends: justify-around gives margin to the left of the eye and to
+            the right of the bookmark (justify-between left them flush). */}
+        <View className="flex-1 flex-row items-center justify-around">
           {/* Status: icon-only toggle(s), or the game status dropdown. */}
           {config.statusDropdown ? (
             <IconAction
@@ -402,24 +403,28 @@ export function ActionStrip({
           }}
         />
 
-        {/* Right HALF — the stars, CENTERED. The ✕ (clear) is absolutely
-            pinned to the right edge, so rating/clearing never shifts the
-            stars' centered position — the ✕ is just added on the right.
-            `starsOnly` drops StarRating's built-in value/clear so we own
-            the ✕. */}
-        <View className="flex-1 items-center justify-center">
-          <StarRating value={stars} onChange={handleRate} size={20} starsOnly />
-          {stars != null ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Clear rating"
-              hitSlop={8}
-              className="absolute inset-y-0 right-0 justify-center px-1 active:opacity-70"
-              onPress={() => handleRate(null)}
-            >
-              <Text className="text-base leading-none text-text-muted">✕</Text>
-            </Pressable>
-          ) : null}
+        {/* Right HALF — the stars CENTERED, with the ✕ (clear) in a fixed
+            slot to their right and a MATCHING invisible spacer on their
+            left. The equal slots keep the stars centered whether or not a
+            rating is set, and the ✕ lives in its own slot so it can never
+            overlap the stars — rating just fills the slot. `starsOnly` drops
+            StarRating's built-in value/clear so we own the ✕. */}
+        <View className="flex-1 flex-row items-center justify-center">
+          <View style={{ width: 20 }} />
+          <StarRating value={stars} onChange={handleRate} size={18} starsOnly />
+          <View style={{ width: 20 }} className="items-center justify-center">
+            {stars != null ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Clear rating"
+                hitSlop={10}
+                className="active:opacity-70"
+                onPress={() => handleRate(null)}
+              >
+                <Text className="text-base leading-none text-text-muted">✕</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
       </View>
 
