@@ -66,6 +66,8 @@ import { MEDIA_TYPE_CONFIG, type MediaType } from "@intertaind/types";
 import type { Tables } from "@intertaind/supabase";
 
 import { Image } from "@/components/image";
+import { AboutTheAuthor } from "@/components/media/about-the-author";
+import { CastSlider } from "@/components/media/cast-slider";
 import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
 import { useBottomInset } from "@/lib/use-bottom-inset";
 import { useMediaDetail, type MediaDetailItem } from "@/queries/media";
@@ -492,6 +494,15 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
             {item.description}
           </Text>
         ) : null}
+
+        {/* Cast slider (movie/TV) / about-the-author (book) — Task 1.3.
+            Web's relative order is description → cast/about-author → info
+            tabs; the hybrid info tabs / seasons (Task 1.4) mount AFTER
+            these. Each component self-gates by media type and renders
+            null when its metadata is absent/empty, so both mount
+            unconditionally and only the relevant one shows. */}
+        <CastSlider mediaType={item.media_type} metadata={metadata} />
+        <AboutTheAuthor mediaType={item.media_type} metadata={metadata} />
 
         {/* Community stats — a clean spaced row (icon + count over label),
             per-media-type set mirroring web. */}
