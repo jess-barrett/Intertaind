@@ -429,16 +429,16 @@ export function ActionStrip({
           </Text>
         </Pressable>
 
-        {/* ⋯ overflow → Show activity + Change backdrop/cover (M4). */}
+        {/* ⋯ overflow → Show activity + Change backdrop/cover (M4). Same
+            bordered surface-raised box as the Review/Log button. */}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="More options"
           accessibilityState={{ expanded: moreOpen }}
-          hitSlop={6}
-          className="p-1.5 active:opacity-60"
+          className="items-center justify-center rounded-sm border border-surface-border bg-surface-raised px-2.5 py-2 active:opacity-70"
           onPress={() => setMoreOpen((v) => !v)}
         >
-          <MoreHorizontal size={22} color={colors["text-secondary"]} />
+          <MoreHorizontal size={20} color={colors["text-secondary"]} />
         </Pressable>
       </View>
 
@@ -503,7 +503,7 @@ function LogButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={btn.label}
-      className="flex-1 flex-row items-center justify-center gap-1.5 rounded-sm border border-surface-border px-3 py-2 active:opacity-70"
+      className="flex-1 flex-row items-center justify-center gap-1.5 rounded-sm border border-surface-border bg-surface-raised px-3 py-2 active:opacity-70"
       onPress={onPress}
     >
       <Icon size={16} color={colors["text-secondary"]} />
