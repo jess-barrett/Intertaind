@@ -1,3 +1,4 @@
+export * from "./progress.ts";
 export * from "./rating.ts";
 export * from "./username.ts";
 
