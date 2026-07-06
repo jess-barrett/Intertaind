@@ -46,6 +46,8 @@ import { colors } from "@intertaind/design-system";
 import type { Tables } from "@intertaind/supabase";
 
 import { Image } from "@/components/image";
+import { SectionHeading } from "@/components/media/section-heading";
+import { asArray } from "@/lib/metadata";
 
 /** Square author-photo slot in pt — web's `w-28` aspect-square analogue. */
 const PHOTO_SIZE = 96;
@@ -63,10 +65,8 @@ export function AboutTheAuthor({
 
   // Primary author only — web shows just authors[0] ("multi-author books
   // would clutter the column"). authors is names-only (string[]).
-  // Untyped JSONB — guard the array shape before indexing.
-  const authors = Array.isArray(metadata.authors)
-    ? (metadata.authors as string[])
-    : [];
+  // Untyped JSONB — asArray guards the shape before indexing.
+  const authors = asArray<string>(metadata.authors);
   const name = typeof authors[0] === "string" ? authors[0].trim() : undefined;
   // Graceful empty: no author name → render nothing, never a bare heading.
   if (!name) return null;
@@ -119,15 +119,5 @@ export function AboutTheAuthor({
         </View>
       </View>
     </View>
-  );
-}
-
-/**
- * Section heading styled like web's `SectionHeader` — a semibold
- * primary-text lead-in matching the cast slider's heading.
- */
-function SectionHeading({ children }: { children: string }) {
-  return (
-    <Text className="text-lg font-semibold text-text-primary">{children}</Text>
   );
 }

@@ -36,6 +36,8 @@ import { colors } from "@intertaind/design-system";
 import type { Tables } from "@intertaind/supabase";
 
 import { Image } from "@/components/image";
+import { SectionHeading } from "@/components/media/section-heading";
+import { asArray } from "@/lib/metadata";
 
 /**
  * One cast entry as stored in `metadata.cast`. Field names mirror web's
@@ -64,11 +66,8 @@ export function CastSlider({
   if (mediaType !== "movie" && mediaType !== "tv_show") return null;
   if (!metadata) return null;
 
-  // Untyped JSONB — guard against a non-array shape (malformed row / an
-  // upstream metadata change) rather than trusting `cast` blindly.
-  const cast = Array.isArray(metadata.cast)
-    ? (metadata.cast as CastMember[])
-    : [];
+  // Untyped JSONB — asArray guards against a non-array shape.
+  const cast = asArray<CastMember>(metadata.cast);
   // Graceful empty: no cast → render nothing, never an empty heading.
   if (cast.length === 0) return null;
 
@@ -131,16 +130,5 @@ function CastCard({ member }: { member: CastMember }) {
         </Text>
       ) : null}
     </View>
-  );
-}
-
-/**
- * Section heading styled like web's `SectionHeader` ("Cast" /
- * "About the author") — a semibold primary-text lead-in for a content
- * section. Shared shape with the about-the-author component's heading.
- */
-function SectionHeading({ children }: { children: string }) {
-  return (
-    <Text className="text-lg font-semibold text-text-primary">{children}</Text>
   );
 }

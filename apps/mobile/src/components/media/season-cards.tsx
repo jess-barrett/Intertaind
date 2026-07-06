@@ -46,6 +46,8 @@ import { colors } from "@intertaind/design-system";
 import type { Tables } from "@intertaind/supabase";
 
 import { Image } from "@/components/image";
+import { SectionHeading } from "@/components/media/section-heading";
+import { asArray } from "@/lib/metadata";
 
 /**
  * One season as stored in `metadata.season_details`. Field names mirror
@@ -101,11 +103,8 @@ export function SeasonCards({
   if (mediaType !== "tv_show") return null;
   if (!metadata) return null;
 
-  // Untyped JSONB — guard against a non-array shape (malformed row / an
-  // upstream metadata change) rather than trusting `season_details` blindly.
-  const seasons = Array.isArray(metadata.season_details)
-    ? (metadata.season_details as SeasonDetail[])
-    : [];
+  // Untyped JSONB — asArray guards against a non-array shape.
+  const seasons = asArray<SeasonDetail>(metadata.season_details);
   // Graceful empty: no seasons → render nothing, never an empty heading.
   if (seasons.length === 0) return null;
 
@@ -113,11 +112,8 @@ export function SeasonCards({
     <View className="gap-4">
       <SectionHeading>Seasons</SectionHeading>
       <View className="gap-3">
-        {seasons.map((season, i) => (
-          <SeasonCard
-            key={`${season.season_number}-${i}`}
-            season={season}
-          />
+        {seasons.map((season) => (
+          <SeasonCard key={season.season_number} season={season} />
         ))}
       </View>
     </View>
@@ -190,15 +186,5 @@ function SeasonCard({ season }: { season: SeasonDetail }) {
         ) : null}
       </View>
     </View>
-  );
-}
-
-/**
- * Section heading styled like web's `SectionHeader` and the cast slider /
- * about-the-author headings — a semibold primary-text section lead-in.
- */
-function SectionHeading({ children }: { children: string }) {
-  return (
-    <Text className="text-lg font-semibold text-text-primary">{children}</Text>
   );
 }

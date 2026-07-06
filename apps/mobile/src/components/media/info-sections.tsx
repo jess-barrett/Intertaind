@@ -41,6 +41,8 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import type { Tables } from "@intertaind/supabase";
 
+import { asArray } from "@/lib/metadata";
+
 type MediaType = Tables<"media_items">["media_type"];
 
 // ---------------------------------------------------------------------------
@@ -106,11 +108,6 @@ function formatDate(iso: string): string {
 
 function normalizeStudio(s: GameStudio): { id?: number; name: string } {
   return typeof s === "string" ? { name: s } : s;
-}
-
-/** Untyped-JSONB helper: return the value as `T[]` only if it's an array. */
-function asArray<T>(value: unknown): T[] {
-  return Array.isArray(value) ? (value as T[]) : [];
 }
 
 type TabKey =
