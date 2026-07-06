@@ -68,6 +68,7 @@ import {
   Bookmark,
   Heart,
   History,
+  MoreHorizontal,
   Sparkles,
   type LucideIcon,
 } from "lucide-react-native";
@@ -161,25 +162,11 @@ function openerCallback(
 type IconAccent = StatusAccent | "accent-movie" | "brand-light";
 
 /**
- * Active-state background tints as LITERAL class strings (dynamic
- * `bg-${accent}/15` can't be scanned by the content globber). Covers the
- * per-type status accents (green completed / purple TV-watching / gold
- * book-reading) plus Loved (pink accent-movie) and List (brand).
- */
-const ICON_ACTIVE_BG: Record<IconAccent, string> = {
-  "accent-book": "bg-accent-book/15",
-  "accent-tv": "bg-accent-tv/15",
-  "accent-game": "bg-accent-game/15",
-  "accent-movie": "bg-accent-movie/15",
-  "brand-light": "bg-brand/15",
-};
-
-/**
- * An ICON-ONLY action button for the compact primary row (status / Loved /
- * List). Active → the accent glyph on a subtle accent/15 tint; inactive →
- * a muted glyph on the overlay surface. `fillWhenActive` fills the glyph
- * (Heart/Bookmark) when active. Icons color via the `color` prop, never a
- * className. The a11y label carries the meaning the missing text would.
+ * A BARE icon-only action for the primary row (status / Loved / List) — no
+ * background box, per the flat "buttons sit on the page" layout. Active →
+ * the accent-colored glyph (filled for Heart/Bookmark via `fillWhenActive`);
+ * inactive → a muted glyph. Icons color via the `color` prop (never a
+ * className); the a11y label carries the meaning the missing text would.
  */
 function IconAction({
   icon: Icon,
@@ -204,13 +191,12 @@ function IconAction({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected: active, disabled: !!disabled }}
       disabled={disabled}
-      className={`items-center justify-center rounded-sm p-2.5 active:opacity-70 ${
-        active ? ICON_ACTIVE_BG[accent] : "bg-surface-overlay"
-      } ${disabled ? "opacity-50" : ""}`}
+      hitSlop={6}
+      className={`p-1.5 active:opacity-60 ${disabled ? "opacity-50" : ""}`}
       onPress={onPress}
     >
       <Icon
-        size={20}
+        size={24}
         color={active ? colors[accent] : colors["text-secondary"]}
         fill={fillWhenActive && active ? colors[accent] : "none"}
       />
@@ -268,6 +254,8 @@ export function ActionStrip({
   const rateMutation = useRateMediaMutation();
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // The ⋯ overflow menu (Show activity · Change backdrop/cover).
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // The media DB enum is a superset of MediaType (board_game). Fall back
   // to the movie grammar for unknown types so the strip still renders a
@@ -328,27 +316,21 @@ export function ActionStrip({
     openerCallback(opener, handlers)?.();
   }
 
-  // Viewer row still in flight — the same "…" freeze the M1 badge used,
-  // so a tracked item never flashes untracked controls before it loads.
+  // Viewer row still in flight — a quiet "…" freeze (no container, matching
+  // the flat layout) so a tracked item never flashes untracked controls.
   if (trackingPending) {
-    return (
-      <View className="items-center rounded-sm border border-surface-border bg-surface-raised px-4 py-6">
-        <Text className="text-sm text-text-muted">…</Text>
-      </View>
-    );
+    return <Text className="py-2 text-sm text-text-muted">…</Text>;
   }
 
   const statusActionActive = (action: StatusAction): boolean =>
     status != null && action.activeWhen.includes(status);
 
   return (
-    <View className="gap-2.5 rounded-sm border border-surface-border bg-surface-raised p-3">
-      {/* ── Primary action row ───────────────────────────────────────
-          Icon-only status / Loved / List, then the log button(s) WITH
-          text, a vertical divider, then the inline stars — all on one
-          line. movie: [Watched][Loved][Watchlist][Review or log…] │ ★★★★★
-          tv/book/game vary the status + log slots via the config. */}
-      <View className="flex-row items-center gap-1.5">
+    // Flat — no container card/border/bg; the buttons sit on the page.
+    <View className="gap-3">
+      {/* ── Row 1: bare icon status / Loved / List · divider · stars ──
+          movie: 👁 ♥ 🔖 │ ★★★★★. tv/book/game vary the status slot. */}
+      <View className="flex-row items-center gap-1">
         {/* Status: icon-only toggle(s), or the game status dropdown. */}
         {config.statusDropdown ? (
           <IconAction
@@ -398,48 +380,72 @@ export function ActionStrip({
           onPress={() => trackStatus("want")}
         />
 
-        {/* Log / Review button(s) WITH text — flex to fill the remaining
-            width (truncates); TV supplies two. Sheet openers. */}
+        {/* Vertical divider, then the inline stars. */}
+        <View className="mx-2 h-6 w-px bg-surface-border" />
+        <StarRating value={stars} onChange={handleRate} size={24} />
+      </View>
+
+      {/* ── Row 2: Review/Log (left) · Intertain (right) · ⋯ (right) ── */}
+      <View className="flex-row items-center gap-2">
+        {/* Log / Review button(s) — outline, left. TV supplies two. */}
         {config.logButtons.map((btn) => (
           <LogButton key={btn.label} btn={btn} onPress={() => open(btn.opener)} />
         ))}
 
-        {/* Vertical divider before the rating. */}
-        <View className="mx-0.5 h-7 w-px bg-surface-border" />
+        {/* Spacer pushes Intertain + overflow to the right. */}
+        <View className="flex-1" />
 
-        {/* Inline star rating (gold; StarRating owns the color). */}
-        <StarRating value={stars} onChange={handleRate} size={20} />
+        {/* Intertain friends — the headline hot-pink CTA (M4 sheet). */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Intertain friends — recommend this to a friend"
+          className="flex-row items-center gap-1.5 rounded-sm bg-brand px-3 py-2 active:opacity-80"
+          onPress={() => {
+            setErrorMessage(null);
+            setMoreOpen(false);
+            handlers.onIntertain?.();
+          }}
+        >
+          <Sparkles size={16} color={colors["text-primary"]} />
+          <Text className="text-sm font-semibold text-text-primary">
+            Intertain friends
+          </Text>
+        </Pressable>
+
+        {/* ⋯ overflow → Show activity + Change backdrop/cover (M4). */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="More options"
+          accessibilityState={{ expanded: moreOpen }}
+          hitSlop={6}
+          className="p-1.5 active:opacity-60"
+          onPress={() => setMoreOpen((v) => !v)}
+        >
+          <MoreHorizontal size={22} color={colors["text-secondary"]} />
+        </Pressable>
       </View>
 
-      {/* ── Intertain friends — the headline hot-pink CTA (M4 sheet). ── */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Intertain friends — recommend this to a friend"
-        className="mt-0.5 flex-row items-center justify-center gap-2 rounded-sm bg-brand px-3 py-3 active:opacity-80"
-        onPress={() => {
-          setErrorMessage(null);
-          handlers.onIntertain?.();
-        }}
-      >
-        <Sparkles size={18} color={colors["text-primary"]} />
-        <Text className="text-base font-semibold text-text-primary">
-          Intertain friends
-        </Text>
-      </Pressable>
-
-      {/* ── Secondary row: Show activity · Change backdrop/cover (M4). ─ */}
-      <View className="border-t border-surface-border pt-1">
-        <RowButton
-          label="Show activity"
-          icon={History}
-          onPress={() => open("showActivity")}
-        />
-        <RowButton
-          label={config.changeArt.label}
-          icon={CHANGE_ART_ICON}
-          onPress={() => open(config.changeArt.opener)}
-        />
-      </View>
+      {/* ── ⋯ overflow menu — the M4 secondary actions, right-aligned. ── */}
+      {moreOpen ? (
+        <View className="gap-1 self-end rounded-sm border border-surface-border bg-surface-overlay p-1">
+          <RowButton
+            label="Show activity"
+            icon={History}
+            onPress={() => {
+              setMoreOpen(false);
+              open("showActivity");
+            }}
+          />
+          <RowButton
+            label={config.changeArt.label}
+            icon={CHANGE_ART_ICON}
+            onPress={() => {
+              setMoreOpen(false);
+              open(config.changeArt.opener);
+            }}
+          />
+        </View>
+      ) : null}
 
       {/* Inline, dismissible error line (mapped message, never raw). */}
       {errorMessage ? (
@@ -462,11 +468,9 @@ export function ActionStrip({
 }
 
 /**
- * The log/review button that sits inline in the primary row (WITH text) —
- * the one text-labeled control in that row. Flexes to fill the width left
- * between the icon buttons and the rating, truncating its label if the row
- * is tight; TV supplies two, which share the flex space. `surface-overlay`
- * raised bg so it reads as the row's prominent action. Sheet opener.
+ * The log/review button in row 2 (WITH text). An OUTLINE button (bordered,
+ * no fill) per the flat "no gray backgrounds" layout, sitting on the left.
+ * TV supplies two (Log Season / Log Episode). Sheet opener.
  */
 function LogButton({
   btn,
@@ -480,11 +484,11 @@ function LogButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={btn.label}
-      className="min-w-0 flex-1 flex-row items-center justify-center gap-1.5 rounded-sm bg-surface-overlay px-2.5 py-2.5 active:opacity-70"
+      className="flex-row items-center gap-1.5 rounded-sm border border-surface-border px-3 py-2 active:opacity-70"
       onPress={onPress}
     >
-      <Icon size={16} color={colors["text-primary"]} />
-      <Text numberOfLines={1} className="text-sm font-medium text-text-primary">
+      <Icon size={16} color={colors["text-secondary"]} />
+      <Text numberOfLines={1} className="text-sm font-medium text-text-secondary">
         {btn.label}
       </Text>
     </Pressable>
