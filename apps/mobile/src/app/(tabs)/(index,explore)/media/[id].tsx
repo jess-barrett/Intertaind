@@ -68,6 +68,8 @@ import type { Tables } from "@intertaind/supabase";
 import { Image } from "@/components/image";
 import { AboutTheAuthor } from "@/components/media/about-the-author";
 import { CastSlider } from "@/components/media/cast-slider";
+import { InfoSections } from "@/components/media/info-sections";
+import { SeasonCards } from "@/components/media/season-cards";
 import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
 import { useBottomInset } from "@/lib/use-bottom-inset";
 import { useMediaDetail, type MediaDetailItem } from "@/queries/media";
@@ -503,6 +505,18 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
             unconditionally and only the relevant one shows. */}
         <CastSlider mediaType={item.media_type} metadata={metadata} />
         <AboutTheAuthor mediaType={item.media_type} metadata={metadata} />
+
+        {/* Hybrid info area (Task 1.4) — mirrors web's content-column flow
+            (description → cast/about-author → info sections). TV seasons
+            render INLINE as cards ABOVE the tab strip (a locked design
+            decision — seasons are the headline structured content for a
+            show and don't read well behind a tab); Crew/Details/Genres/
+            Platforms/Releases/Alternative-titles sit behind the compact
+            horizontal tab strip below. Both self-gate by media type +
+            metadata presence and render null when empty, so they mount
+            unconditionally and only relevant content shows. */}
+        <SeasonCards mediaType={item.media_type} metadata={metadata} />
+        <InfoSections mediaType={item.media_type} metadata={metadata} />
 
         {/* Community stats — a clean spaced row (icon + count over label),
             per-media-type set mirroring web. */}
