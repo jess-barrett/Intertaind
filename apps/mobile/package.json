@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo/ui": "~56.0.17",
+    "@gorhom/bottom-sheet": "^5.2.14",
     "@intertaind/design-system": "workspace:*",
     "@intertaind/media": "workspace:*",
     "@intertaind/supabase": "workspace:*",

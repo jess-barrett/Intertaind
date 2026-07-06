@@ -8,6 +8,8 @@
 
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 
 import { AuthProvider } from "./auth-provider";
 
@@ -50,8 +52,22 @@ export default function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(buildQueryClient);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>{children}</AuthProvider>
-    </QueryClientProvider>
+    // GestureHandlerRootView must be a real flex-1 View at the ROOT of the
+    // rendered tree — @gorhom/bottom-sheet v5 (and gesture-handler itself)
+    // require it, and it needs `flex: 1` so it fills the screen instead of
+    // collapsing to zero height. RootLayout renders <Providers> as the
+    // outermost app element (only Expo Router's own root is above it), so
+    // this is the correct root anchor.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          {/* BottomSheetModalProvider wraps the whole app tree so any
+              screen can present a BottomSheetModal. It lives INSIDE
+              GestureHandlerRootView (a v5 requirement) and inside the
+              auth/query providers so sheet content can use their hooks. */}
+          <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }
