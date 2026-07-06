@@ -22,12 +22,14 @@
  * which makes this screen signed-in-only for now — acceptable while the
  * only entry points are inside the tabs.
  *
- * SCOPE (M1): this screen renders the read-only catalog — hero, per-type
- * header/meta/tagline/description, and the community stats row. The
- * viewer's tracking action strip is M2; the cast slider is Task 1.3 and
- * the hybrid info tabs / seasons are Task 1.4. A commented placeholder
- * `View` marks where M2's action strip mounts (see below) so the M1
- * display layout reads clean in review.
+ * SCOPE: this screen renders the per-type catalog — hero, header/meta/
+ * tagline/description, community stats row (M1) — plus the viewer's
+ * config-driven action strip (M2, Task 2.3), mounted right after the
+ * header block. The cast slider is Task 1.3 and the hybrid info tabs /
+ * seasons are Task 1.4. The action strip's one-tap actions are wired to
+ * the tracking mutations here; its sheet-opener actions (Log/Review/
+ * Intertain/etc.) receive stub handlers until Tasks 2.4–2.7 / M4 wire
+ * their real bottom sheets.
  *
  * Visual language (Intertaind, mirroring the web app): a full-bleed
  * backdrop hero fades into the near-black `surface-default` via a
@@ -67,12 +69,17 @@ import type { Tables } from "@intertaind/supabase";
 
 import { Image } from "@/components/image";
 import { AboutTheAuthor } from "@/components/media/about-the-author";
+import { ActionStrip } from "@/components/media/action-strip";
 import { CastSlider } from "@/components/media/cast-slider";
 import { InfoSections } from "@/components/media/info-sections";
 import { SeasonCards } from "@/components/media/season-cards";
 import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
 import { useBottomInset } from "@/lib/use-bottom-inset";
-import { useMediaDetail, type MediaDetailItem } from "@/queries/media";
+import {
+  useMediaDetail,
+  useViewerTracking,
+  type MediaDetailItem,
+} from "@/queries/media";
 
 /** Hero height in pt — the backdrop + its gradient fade. */
 const HERO_HEIGHT = 288;
@@ -382,6 +389,11 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
       ? rawTagline.trim()
       : null;
   const stats = communityStatsFor(item);
+  // The viewer's own tracking row seeds the action strip's current state
+  // (active status / Loved / rating). Null while untracked; `isPending`
+  // freezes the strip to a skeleton so a tracked item never flashes
+  // untracked controls.
+  const tracking = useViewerTracking(item.id);
   // Reserve space so content clears the persistent bottom navbar (added
   // on top of the 48pt content breathing room at the end of the scroll).
   const bottomInset = useBottomInset();
@@ -457,6 +469,39 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
       </View>
 
       <View className="gap-5 px-4 pt-5">
+        {/* Config-driven per-type action strip — the viewer's tracking
+            controls (status · Loved · list · inline stars · Log/Review ·
+            Intertain · secondary), mounted PROMINENTLY right after the
+            header block per the locked "inline action strip under the
+            hero" decision (above tagline/description/cast/tabs). One-tap
+            actions wire to the existing tracking mutations; sheet-opener
+            actions call the stub handlers below (Tasks 2.4–2.7 / M4 swap
+            these no-ops for real sheet refs). */}
+        <ActionStrip
+          media={item}
+          viewerRow={tracking.data ?? null}
+          trackingPending={tracking.isPending}
+          handlers={{
+            // TODO(2.4): movie log/review sheet.
+            onOpenLog: () => {},
+            // TODO(2.6): TV log-season / log-episode / current-episode sheets.
+            onOpenLogSeason: () => {},
+            onOpenLogEpisode: () => {},
+            onOpenWatching: () => {},
+            // TODO(2.5): book read (finished/DNF) + current-reading sheets.
+            onOpenReading: () => {},
+            onOpenReadFinished: () => {},
+            // TODO(2.7): game status dropdown sheet.
+            onOpenStatusPicker: () => {},
+            // TODO(M4): Intertain-friends recommend sheet.
+            onIntertain: () => {},
+            // TODO(M4): show-activity screen.
+            onShowActivity: () => {},
+            // TODO(M4): change cover (book) / backdrop (movie/TV/game) sheet.
+            onChangeArt: () => {},
+          }}
+        />
+
         {/* Secondary meta line — runtime/pages/seasons/genres per type. */}
         {secondaryMeta.length > 0 ? (
           <Text className="text-xs text-text-muted">
@@ -531,15 +576,6 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
           ))}
         </View>
 
-        {/*
-          M2 ACTION STRIP MOUNTS HERE.
-          The viewer's tracking controls (status / rating / review /
-          favorite / remove) are M2. The earlier `TrackingPanel` used a
-          domain-wrong model and was removed for M1; M2 re-adds the
-          action strip (and re-imports `useViewerTracking`) in its place.
-          This empty spacer keeps the M1 display layout clean for review.
-        */}
-        <View />
       </View>
     </ScrollView>
   );
