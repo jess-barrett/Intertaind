@@ -435,10 +435,10 @@ export function ActionStrip({
           accessibilityRole="button"
           accessibilityLabel="More options"
           accessibilityState={{ expanded: moreOpen }}
-          className="items-center justify-center rounded-sm border border-surface-border bg-surface-raised px-2.5 py-2 active:opacity-70"
+          className="items-center justify-center rounded-sm border border-surface-border bg-surface-raised px-4 py-2 active:opacity-70"
           onPress={() => setMoreOpen((v) => !v)}
         >
-          <MoreHorizontal size={20} color={colors["text-secondary"]} />
+          <MoreHorizontal size={18} color={colors["text-secondary"]} />
         </Pressable>
       </View>
 
