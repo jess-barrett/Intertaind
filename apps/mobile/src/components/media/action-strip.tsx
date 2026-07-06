@@ -336,9 +336,9 @@ export function ActionStrip({
           stay put. movie: 👁 ♥ 🔖 │ ★★★★★; tv/book/game vary the status
           slot. ─────────────────────────────────────────────────────── */}
       <View className="flex-row items-center rounded-sm border border-surface-border bg-surface-raised px-3 py-2">
-        {/* Left group — content-width icons with a fixed gap, independent of
-            the stars' width. */}
-        <View className="flex-row items-center gap-8">
+        {/* Left HALF — the icons, evenly spread to fill it (flex-1 +
+            justify-between). */}
+        <View className="flex-1 flex-row items-center justify-between">
           {/* Status: icon-only toggle(s), or the game status dropdown. */}
           {config.statusDropdown ? (
             <IconAction
@@ -389,8 +389,9 @@ export function ActionStrip({
           />
         </View>
 
-        {/* Divider — the fixed boundary between the icon group and the
-            stars (2px surface-border via explicit style; NativeWind's `w-px`
+        {/* Divider — dead center: it sits between two equal flex-1 halves
+            with symmetric margins, so it splits the row exactly down the
+            middle (2px surface-border via explicit style; NativeWind's `w-px`
             compiled to zero width). */}
         <View
           className="mx-3"
@@ -401,11 +402,24 @@ export function ActionStrip({
           }}
         />
 
-        {/* Right zone — stars right-aligned in a flex-1 container whose width
-            is constant (left group + divider are content-width), so clearing
-            or rating only shifts the stars here; the icons/line don't move. */}
-        <View className="flex-1 flex-row items-center justify-end">
-          <StarRating value={stars} onChange={handleRate} size={24} />
+        {/* Right HALF — the stars, CENTERED. The ✕ (clear) is absolutely
+            pinned to the right edge, so rating/clearing never shifts the
+            stars' centered position — the ✕ is just added on the right.
+            `starsOnly` drops StarRating's built-in value/clear so we own
+            the ✕. */}
+        <View className="flex-1 items-center justify-center">
+          <StarRating value={stars} onChange={handleRate} size={20} starsOnly />
+          {stars != null ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Clear rating"
+              hitSlop={8}
+              className="absolute inset-y-0 right-0 justify-center px-1 active:opacity-70"
+              onPress={() => handleRate(null)}
+            >
+              <Text className="text-base leading-none text-text-muted">✕</Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
 

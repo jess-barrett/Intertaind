@@ -107,6 +107,7 @@ export default function StarRating({
   onChange,
   readOnly,
   size = 28,
+  starsOnly,
 }: {
   /** Display-scale stars, 0.5–5.0 in half steps; null = unrated. */
   value: number | null;
@@ -115,6 +116,12 @@ export default function StarRating({
   readOnly?: boolean;
   /** Star edge length in pt. Default 28 — each tap half is then 14pt. */
   size?: number;
+  /**
+   * Render ONLY the 5 stars — no numeric value, no clear button. Lets a
+   * caller (e.g. the action strip) center just the stars and supply its own
+   * clear affordance, so the value/clear can't shift the stars' position.
+   */
+  starsOnly?: boolean;
 }) {
   // useId output contains ":" — strip to stay a safe SVG id fragment.
   const clipPrefix = useId().replace(/[^a-zA-Z0-9_-]/g, "");
@@ -176,7 +183,7 @@ export default function StarRating({
       </View>
 
       {/* Numeric readout, web parity ("3.5" in the star accent). */}
-      {valueLabel != null ? (
+      {!starsOnly && valueLabel != null ? (
         <Text
           className="text-sm font-medium"
           style={{ color: colors["accent-game"] }}
@@ -188,7 +195,7 @@ export default function StarRating({
       ) : null}
 
       {/* Explicit clear, mirroring web's ✕ button (see file header). */}
-      {interactive && value != null ? (
+      {!starsOnly && interactive && value != null ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Clear rating"
