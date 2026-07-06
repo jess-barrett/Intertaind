@@ -486,41 +486,6 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
         </View>
 
         <View className="gap-5 px-4 pt-5">
-          {/* Config-driven per-type action strip — the viewer's tracking
-            controls (status · Loved · list · inline stars · Log/Review ·
-            Intertain · secondary), mounted PROMINENTLY right after the
-            header block per the locked "inline action strip under the
-            hero" decision (above tagline/description/cast/tabs). One-tap
-            actions wire to the existing tracking mutations; sheet-opener
-            actions call the stub handlers below (Tasks 2.4–2.7 / M4 swap
-            these no-ops for real sheet refs). */}
-          <ActionStrip
-            media={item}
-            viewerRow={tracking.data ?? null}
-            trackingPending={tracking.isPending}
-            handlers={{
-              // Movie log/review sheet (Task 2.4) — present the ref-driven
-              // sheet mounted below. (Only movies route here; the strip
-              // shows this opener for movies.)
-              onOpenLog: () => movieLogRef.current?.present(),
-              // TODO(2.6): TV log-season / log-episode / current-episode sheets.
-              onOpenLogSeason: () => {},
-              onOpenLogEpisode: () => {},
-              onOpenWatching: () => {},
-              // TODO(2.5): book read (finished/DNF) + current-reading sheets.
-              onOpenReading: () => {},
-              onOpenReadFinished: () => {},
-              // TODO(2.7): game status dropdown sheet.
-              onOpenStatusPicker: () => {},
-              // TODO(M4): Intertain-friends recommend sheet.
-              onIntertain: () => {},
-              // TODO(M4): show-activity screen.
-              onShowActivity: () => {},
-              // TODO(M4): change cover (book) / backdrop (movie/TV/game) sheet.
-              onChangeArt: () => {},
-            }}
-          />
-
           {/* Secondary meta line — runtime/pages/seasons/genres per type. */}
           {secondaryMeta.length > 0 ? (
             <Text className="text-xs text-text-muted">
@@ -560,6 +525,38 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
               {item.description}
             </Text>
           ) : null}
+
+          {/* Config-driven per-type action strip — the viewer's tracking
+            controls (icon-only status · Loved · list, the log button with
+            text, a divider, then inline stars), mounted BENEATH the
+            description per Jess's layout call. One-tap actions wire to the
+            tracking mutations; sheet openers call the stub handlers below
+            (Tasks 2.4–2.7 / M4 swap the no-ops for real sheet refs). */}
+          <ActionStrip
+            media={item}
+            viewerRow={tracking.data ?? null}
+            trackingPending={tracking.isPending}
+            handlers={{
+              // Movie log/review sheet (Task 2.4) — present the ref-driven
+              // sheet mounted below. (Only movies route here.)
+              onOpenLog: () => movieLogRef.current?.present(),
+              // TODO(2.6): TV log-season / log-episode / current-episode sheets.
+              onOpenLogSeason: () => {},
+              onOpenLogEpisode: () => {},
+              onOpenWatching: () => {},
+              // TODO(2.5): book read (finished/DNF) + current-reading sheets.
+              onOpenReading: () => {},
+              onOpenReadFinished: () => {},
+              // TODO(2.7): game status dropdown sheet.
+              onOpenStatusPicker: () => {},
+              // TODO(M4): Intertain-friends recommend sheet.
+              onIntertain: () => {},
+              // TODO(M4): show-activity screen.
+              onShowActivity: () => {},
+              // TODO(M4): change cover (book) / backdrop (movie/TV/game) sheet.
+              onChangeArt: () => {},
+            }}
+          />
 
           {/* Cast slider (movie/TV) / about-the-author (book) — Task 1.3.
             Web's relative order is description → cast/about-author → info

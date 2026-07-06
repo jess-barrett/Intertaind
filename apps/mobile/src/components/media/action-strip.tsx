@@ -64,7 +64,13 @@
  */
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { Heart, History, Sparkles, ListPlus } from "lucide-react-native";
+import {
+  Bookmark,
+  Heart,
+  History,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 import {
   ratingToStars,
@@ -151,66 +157,63 @@ function openerCallback(
   }
 }
 
+/** Accent token keys an IconAction can light up in. */
+type IconAccent = StatusAccent | "accent-movie" | "brand-light";
+
 /**
- * Static NativeWind classes per active accent. Dynamic `bg-${accent}/15`
- * can't be scanned by the content globber, so map the accent token key to
- * literal class strings. Mirrors web's per-type active states (green
- * completed / purple TV-watching / gold book-reading).
+ * Active-state background tints as LITERAL class strings (dynamic
+ * `bg-${accent}/15` can't be scanned by the content globber). Covers the
+ * per-type status accents (green completed / purple TV-watching / gold
+ * book-reading) plus Loved (pink accent-movie) and List (brand).
  */
-const STATUS_ACTIVE_BG: Record<StatusAccent, string> = {
+const ICON_ACTIVE_BG: Record<IconAccent, string> = {
   "accent-book": "bg-accent-book/15",
   "accent-tv": "bg-accent-tv/15",
   "accent-game": "bg-accent-game/15",
-};
-const STATUS_ACTIVE_TEXT: Record<StatusAccent, string> = {
-  "accent-book": "text-accent-book",
-  "accent-tv": "text-accent-tv",
-  "accent-game": "text-accent-game",
+  "accent-movie": "bg-accent-movie/15",
+  "brand-light": "bg-brand/15",
 };
 
 /**
- * A status pill in the primary row. The active color is the action's
- * `activeAccent` (green for a completed Watched/Read, purple for TV
- * "Watching", gold for book "Reading") — mirroring web's per-type active
- * states rather than a flat green. Icons color via the `color` prop.
+ * An ICON-ONLY action button for the compact primary row (status / Loved /
+ * List). Active → the accent glyph on a subtle accent/15 tint; inactive →
+ * a muted glyph on the overlay surface. `fillWhenActive` fills the glyph
+ * (Heart/Bookmark) when active. Icons color via the `color` prop, never a
+ * className. The a11y label carries the meaning the missing text would.
  */
-function StatusPill({
-  action,
+function IconAction({
+  icon: Icon,
   active,
+  accent,
+  fillWhenActive,
+  accessibilityLabel,
   disabled,
   onPress,
 }: {
-  action: StatusAction;
+  icon: LucideIcon;
   active: boolean;
-  disabled: boolean;
+  accent: IconAccent;
+  fillWhenActive?: boolean;
+  accessibilityLabel: string;
+  disabled?: boolean;
   onPress: () => void;
 }) {
-  const Icon = action.icon;
-  const accent = action.activeAccent;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={action.label}
-      accessibilityState={{ selected: active, disabled }}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected: active, disabled: !!disabled }}
       disabled={disabled}
-      className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-sm px-2 py-2.5 active:opacity-70 ${
-        active ? STATUS_ACTIVE_BG[accent] : "bg-surface-overlay"
+      className={`items-center justify-center rounded-sm p-2.5 active:opacity-70 ${
+        active ? ICON_ACTIVE_BG[accent] : "bg-surface-overlay"
       } ${disabled ? "opacity-50" : ""}`}
       onPress={onPress}
     >
       <Icon
-        size={16}
+        size={20}
         color={active ? colors[accent] : colors["text-secondary"]}
+        fill={fillWhenActive && active ? colors[accent] : "none"}
       />
-      <Text
-        className={`text-sm ${
-          active
-            ? `font-semibold ${STATUS_ACTIVE_TEXT[accent]}`
-            : "text-text-secondary"
-        }`}
-      >
-        {action.label}
-      </Text>
     </Pressable>
   );
 }
@@ -340,23 +343,29 @@ export function ActionStrip({
 
   return (
     <View className="gap-2.5 rounded-sm border border-surface-border bg-surface-raised p-3">
-      {/* ── Status slot ──────────────────────────────────────────────
-          movie: one Watched toggle · tv: Watched + Watching · book:
-          Read + Reading · game: a single status dropdown (sheet). */}
-      {config.statusDropdown ? (
-        <RowButton
-          label={status != null ? "Update status…" : config.statusDropdown.label}
-          icon={config.statusDropdown.icon}
-          onPress={() => open(config.statusDropdown!.opener)}
-          accessibilityLabel="Set game status"
-        />
-      ) : config.statusActions.length > 0 ? (
-        <View className="flex-row gap-2">
-          {config.statusActions.map((action) => (
-            <StatusPill
+      {/* ── Primary action row ───────────────────────────────────────
+          Icon-only status / Loved / List, then the log button(s) WITH
+          text, a vertical divider, then the inline stars — all on one
+          line. movie: [Watched][Loved][Watchlist][Review or log…] │ ★★★★★
+          tv/book/game vary the status + log slots via the config. */}
+      <View className="flex-row items-center gap-1.5">
+        {/* Status: icon-only toggle(s), or the game status dropdown. */}
+        {config.statusDropdown ? (
+          <IconAction
+            icon={config.statusDropdown.icon}
+            active={status != null}
+            accent="accent-game"
+            accessibilityLabel="Set game status"
+            onPress={() => open(config.statusDropdown!.opener)}
+          />
+        ) : (
+          config.statusActions.map((action) => (
+            <IconAction
               key={action.label}
-              action={action}
+              icon={action.icon}
               active={statusActionActive(action)}
+              accent={action.activeAccent}
+              accessibilityLabel={action.label}
               disabled={trackMutation.isPending}
               onPress={() =>
                 action.kind === "toggle"
@@ -364,91 +373,42 @@ export function ActionStrip({
                   : open(action.opener)
               }
             />
-          ))}
-        </View>
-      ) : null}
+          ))
+        )}
 
-      {/* ── Loved (pink) + List (brand) row — both one-tap ─────────── */}
-      <View className="flex-row gap-2">
-        {/* Loved — optimistic flip; disabled while pending (double-tap
-            flip-flop race: the server flip reads the DB value). */}
-        <Pressable
-          accessibilityRole="button"
+        {/* Loved (pink) — disabled while pending (flip-flop race). */}
+        <IconAction
+          icon={Heart}
+          active={isFavorite}
+          accent="accent-movie"
+          fillWhenActive
           accessibilityLabel={isFavorite ? "Remove from Loved" : "Mark as Loved"}
-          accessibilityState={{
-            selected: isFavorite,
-            disabled: favoriteMutation.isPending,
-          }}
           disabled={favoriteMutation.isPending}
-          className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-sm px-2 py-2.5 active:opacity-70 ${
-            isFavorite ? "bg-accent-movie/15" : "bg-surface-overlay"
-          } ${favoriteMutation.isPending ? "opacity-50" : ""}`}
           onPress={handleFavorite}
-        >
-          <Heart
-            size={16}
-            color={isFavorite ? colors["accent-movie"] : colors["text-secondary"]}
-            fill={isFavorite ? colors["accent-movie"] : "none"}
-          />
-          <Text
-            className={`text-sm ${
-              isFavorite
-                ? "font-semibold text-accent-movie"
-                : "text-text-secondary"
-            }`}
-          >
-            Loved
-          </Text>
-        </Pressable>
-
-        {/* List (Watchlist / Add to TBR / Wishlist) → want. One-tap,
-            optimistic. Active reads brand (web's want treatment). */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={config.listLabel}
-          accessibilityState={{
-            selected: isWant,
-            disabled: trackMutation.isPending,
-          }}
-          disabled={trackMutation.isPending}
-          className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-sm px-2 py-2.5 active:opacity-70 ${
-            isWant ? "bg-brand/15" : "bg-surface-overlay"
-          } ${trackMutation.isPending ? "opacity-50" : ""}`}
-          onPress={() => trackStatus("want")}
-        >
-          <ListPlus
-            size={16}
-            color={isWant ? colors["brand-light"] : colors["text-secondary"]}
-          />
-          <Text
-            className={`text-sm ${
-              isWant ? "font-semibold text-brand-light" : "text-text-secondary"
-            }`}
-          >
-            {config.listLabel}
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* ── Log / Review button(s) — full-width, sheet openers (stubbed).
-          TV gets two side-by-side; others one. Prominent (raised bg). */}
-      {config.logButtons.length > 1 ? (
-        <View className="flex-row gap-2">
-          {config.logButtons.map((btn) => (
-            <LogButton key={btn.label} btn={btn} onPress={() => open(btn.opener)} />
-          ))}
-        </View>
-      ) : config.logButtons.length === 1 ? (
-        <LogButton
-          btn={config.logButtons[0]}
-          fullWidth
-          onPress={() => open(config.logButtons[0].opener)}
         />
-      ) : null}
 
-      {/* ── Inline star rating (gold; StarRating owns the color). ───── */}
-      <View className="border-t border-surface-border pt-3">
-        <StarRating value={stars} onChange={handleRate} size={30} />
+        {/* List (Watchlist / Add to TBR / Wishlist → want). */}
+        <IconAction
+          icon={Bookmark}
+          active={isWant}
+          accent="brand-light"
+          fillWhenActive
+          accessibilityLabel={config.listLabel}
+          disabled={trackMutation.isPending}
+          onPress={() => trackStatus("want")}
+        />
+
+        {/* Log / Review button(s) WITH text — flex to fill the remaining
+            width (truncates); TV supplies two. Sheet openers. */}
+        {config.logButtons.map((btn) => (
+          <LogButton key={btn.label} btn={btn} onPress={() => open(btn.opener)} />
+        ))}
+
+        {/* Vertical divider before the rating. */}
+        <View className="mx-0.5 h-7 w-px bg-surface-border" />
+
+        {/* Inline star rating (gold; StarRating owns the color). */}
+        <StarRating value={stars} onChange={handleRate} size={20} />
       </View>
 
       {/* ── Intertain friends — the headline hot-pink CTA (M4 sheet). ── */}
@@ -502,17 +462,17 @@ export function ActionStrip({
 }
 
 /**
- * A prominent full-width (or half-width for TV's split) log/review button.
- * `surface-overlay` raised bg so it reads more prominent than the plain
- * secondary rows — the "Log/Review button prominent" grammar.
+ * The log/review button that sits inline in the primary row (WITH text) —
+ * the one text-labeled control in that row. Flexes to fill the width left
+ * between the icon buttons and the rating, truncating its label if the row
+ * is tight; TV supplies two, which share the flex space. `surface-overlay`
+ * raised bg so it reads as the row's prominent action. Sheet opener.
  */
 function LogButton({
   btn,
-  fullWidth,
   onPress,
 }: {
   btn: LogButtonConfig;
-  fullWidth?: boolean;
   onPress: () => void;
 }) {
   const Icon = btn.icon;
@@ -520,13 +480,13 @@ function LogButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={btn.label}
-      className={`flex-row items-center justify-center gap-2 rounded-sm bg-surface-overlay px-3 py-2.5 active:opacity-70 ${
-        fullWidth ? "w-full" : "flex-1"
-      }`}
+      className="min-w-0 flex-1 flex-row items-center justify-center gap-1.5 rounded-sm bg-surface-overlay px-2.5 py-2.5 active:opacity-70"
       onPress={onPress}
     >
       <Icon size={16} color={colors["text-primary"]} />
-      <Text className="text-sm font-medium text-text-primary">{btn.label}</Text>
+      <Text numberOfLines={1} className="text-sm font-medium text-text-primary">
+        {btn.label}
+      </Text>
     </Pressable>
   );
 }
