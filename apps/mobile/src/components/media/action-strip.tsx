@@ -69,7 +69,7 @@ import {
   Heart,
   History,
   MoreHorizontal,
-  Sparkles,
+  Share2,
   type LucideIcon,
 } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
@@ -383,66 +383,63 @@ export function ActionStrip({
           onPress={() => trackStatus("want")}
         />
 
-        {/* Divider + right-aligned stars, grouped so the line reads as the
-            boundary just before the stars (part of this last flex item, so
-            justify-between keeps the icon→divider gap even with the rest). */}
-        <View className="flex-row items-center">
-          {/* Explicit width via style — NativeWind's `w-px` was compiling to
-              zero width here, so the 1px line never showed. */}
-          <View
-            className="mr-3"
-            style={{
-              width: 1,
-              height: 20,
-              backgroundColor: colors["surface-border"],
-            }}
-          />
-          <StarRating value={stars} onChange={handleRate} size={24} />
-        </View>
+        {/* Divider — a STANDALONE flex item, so justify-between gives it
+            EQUAL gaps on both sides (symmetric padding) and an even separator
+            between the icons and the stars. Explicit width via style —
+            NativeWind's `w-px` compiled to zero width, so the line never
+            showed; 2px reads clearly. */}
+        <View
+          style={{
+            width: 2,
+            height: 22,
+            backgroundColor: colors["surface-border"],
+          }}
+        />
+
+        {/* Stars — right-aligned (StarRating owns the gold color). */}
+        <StarRating value={stars} onChange={handleRate} size={24} />
       </View>
 
-      {/* ── Row 2: Review/Log takes HALF the row; the other half is shared
-          by the Intertain CTA (fills it) + the ⋯ overflow. ──────────── */}
+      {/* ── Row 2: Review/Log + Intertain are EQUAL width (both flex-1);
+          the ⋯ overflow is pinned right. ─────────────────────────────── */}
       <View className="flex-row items-center gap-2">
-        {/* Log / Review button(s) — half the row (outline). TV supplies two. */}
+        {/* Log / Review button(s) — same size as Intertain (outline). TV: two. */}
         {config.logButtons.map((btn) => (
           <LogButton key={btn.label} btn={btn} onPress={() => open(btn.opener)} />
         ))}
 
-        {/* The other half: Intertain CTA (fills it) + the ⋯ overflow. */}
-        <View className="flex-1 flex-row items-center gap-2">
-          {/* Intertain friends — the headline hot-pink CTA (M4 sheet). */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Intertain friends — recommend this to a friend"
-            className="flex-1 flex-row items-center justify-center gap-1.5 rounded-sm bg-brand px-3 py-2 active:opacity-80"
-            onPress={() => {
-              setErrorMessage(null);
-              setMoreOpen(false);
-              handlers.onIntertain?.();
-            }}
+        {/* Intertain friends — the headline hot-pink CTA (M4 sheet); same
+            size as Review/Log (flex-1). Web's button uses the Share2 glyph. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Intertain friends — recommend this to a friend"
+          className="flex-1 flex-row items-center justify-center gap-1.5 rounded-sm bg-brand px-3 py-2 active:opacity-80"
+          onPress={() => {
+            setErrorMessage(null);
+            setMoreOpen(false);
+            handlers.onIntertain?.();
+          }}
+        >
+          <Share2 size={16} color={colors["text-primary"]} />
+          <Text
+            numberOfLines={1}
+            className="text-sm font-semibold text-text-primary"
           >
-            <Sparkles size={16} color={colors["text-primary"]} />
-            <Text
-              numberOfLines={1}
-              className="text-sm font-semibold text-text-primary"
-            >
-              Intertain friends
-            </Text>
-          </Pressable>
+            Intertain friends
+          </Text>
+        </Pressable>
 
-          {/* ⋯ overflow → Show activity + Change backdrop/cover (M4). */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="More options"
-            accessibilityState={{ expanded: moreOpen }}
-            hitSlop={6}
-            className="p-1.5 active:opacity-60"
-            onPress={() => setMoreOpen((v) => !v)}
-          >
-            <MoreHorizontal size={22} color={colors["text-secondary"]} />
-          </Pressable>
-        </View>
+        {/* ⋯ overflow → Show activity + Change backdrop/cover (M4). */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="More options"
+          accessibilityState={{ expanded: moreOpen }}
+          hitSlop={6}
+          className="p-1.5 active:opacity-60"
+          onPress={() => setMoreOpen((v) => !v)}
+        >
+          <MoreHorizontal size={22} color={colors["text-secondary"]} />
+        </Pressable>
       </View>
 
       {/* ── ⋯ overflow menu — the M4 secondary actions, right-aligned. ── */}
