@@ -265,13 +265,13 @@ describe("setEpisodeLog", () => {
         },
         1,
         2,
-        { rating: 8 }
+        { rating: 8, review: "" }
       )
     ).toEqual({
       current_season: 1,
       current_episode: 2,
       watched_episodes: { "1": [1, 2] },
-      episode_logs: { "1": { "2": { rating: 8 } } },
+      episode_logs: { "1": { "2": { rating: 8, review: "" } } },
       custom_backdrop_url: "https://cdn/b.jpg",
     });
   });
