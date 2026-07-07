@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   tmdbImageUrl,
   mergeCredits,
@@ -60,10 +60,16 @@ export default function FilmographyList({
   const [visibleCount, setVisibleCount] = useState(FILMOGRAPHY_PAGE_SIZE);
 
   // Reset to the first page whenever any filter or sort changes — saves
-  // the user from having to scroll back up after refining the list.
-  useEffect(() => {
+  // the user from having to scroll back up after refining the list. Uses
+  // React's "adjust state during render" pattern (a stored prev signature)
+  // rather than an effect, so it's lint-clean (no set-state-in-effect) and
+  // matches the mobile FilmographyList.
+  const filterKey = `${sort}|${role}|${decade}|${genre}|${type}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey);
     setVisibleCount(FILMOGRAPHY_PAGE_SIZE);
-  }, [sort, role, decade, genre, type]);
+  }
 
   const filtered = useMemo(
     () => filterCredits(merged, { role, type, decade, genre }),
