@@ -541,6 +541,132 @@ export type Database = {
           },
         ]
       }
+      people: {
+        Row: {
+          biography: string | null
+          birthday: string | null
+          created_at: string
+          deathday: string | null
+          enriched_at: string
+          id: string
+          known_for_department: string | null
+          name: string
+          place_of_birth: string | null
+          popularity: number | null
+          profile_path: string | null
+          tmdb_id: number
+          updated_at: string
+        }
+        Insert: {
+          biography?: string | null
+          birthday?: string | null
+          created_at?: string
+          deathday?: string | null
+          enriched_at?: string
+          id?: string
+          known_for_department?: string | null
+          name: string
+          place_of_birth?: string | null
+          popularity?: number | null
+          profile_path?: string | null
+          tmdb_id: number
+          updated_at?: string
+        }
+        Update: {
+          biography?: string | null
+          birthday?: string | null
+          created_at?: string
+          deathday?: string | null
+          enriched_at?: string
+          id?: string
+          known_for_department?: string | null
+          name?: string
+          place_of_birth?: string | null
+          popularity?: number | null
+          profile_path?: string | null
+          tmdb_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      person_credits: {
+        Row: {
+          billing_order: number | null
+          character: string | null
+          credit_type: string
+          department: string | null
+          enriched_at: string
+          genre_ids: number[]
+          id: string
+          job: string | null
+          media_item_id: string | null
+          media_tmdb_id: number
+          media_type: string
+          overview: string | null
+          person_tmdb_id: number
+          poster_path: string | null
+          release_date: string | null
+          title: string
+          vote_average: number
+          vote_count: number
+        }
+        Insert: {
+          billing_order?: number | null
+          character?: string | null
+          credit_type: string
+          department?: string | null
+          enriched_at?: string
+          genre_ids?: number[]
+          id?: string
+          job?: string | null
+          media_item_id?: string | null
+          media_tmdb_id: number
+          media_type: string
+          overview?: string | null
+          person_tmdb_id: number
+          poster_path?: string | null
+          release_date?: string | null
+          title: string
+          vote_average?: number
+          vote_count?: number
+        }
+        Update: {
+          billing_order?: number | null
+          character?: string | null
+          credit_type?: string
+          department?: string | null
+          enriched_at?: string
+          genre_ids?: number[]
+          id?: string
+          job?: string | null
+          media_item_id?: string | null
+          media_tmdb_id?: number
+          media_type?: string
+          overview?: string | null
+          person_tmdb_id?: number
+          poster_path?: string | null
+          release_date?: string | null
+          title?: string
+          vote_average?: number
+          vote_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "person_credits_media_item_id_fkey"
+            columns: ["media_item_id"]
+            isOneToOne: false
+            referencedRelation: "media_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_credits_person_tmdb_id_fkey"
+            columns: ["person_tmdb_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["tmdb_id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
