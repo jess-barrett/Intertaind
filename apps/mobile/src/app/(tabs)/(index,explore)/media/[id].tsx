@@ -71,9 +71,10 @@ import type { Tables } from "@intertaind/supabase";
 import { Image } from "@/components/image";
 import { AboutTheAuthor } from "@/components/media/about-the-author";
 import { ActionStrip } from "@/components/media/action-strip";
-import { CastSlider } from "@/components/media/cast-slider";
 import { InfoSections } from "@/components/media/info-sections";
+import { RatingsHistogram } from "@/components/media/ratings-histogram";
 import { SeasonCards } from "@/components/media/season-cards";
+import GameStatusSheet from "@/components/media/sheets/game-status-sheet";
 import MovieLogSheet from "@/components/media/sheets/movie-log-sheet";
 import type { AppSheetRef } from "@/components/sheet/app-sheet";
 import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
@@ -411,6 +412,10 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
   // self-gates its render to movies below.
   const movieLogRef = useRef<AppSheetRef>(null);
   const isMovie = item.media_type === "movie";
+  // The game status picker sheet (Task 2.7) — only for video games; the
+  // strip's game status pill presents it via onOpenStatusPicker.
+  const gameStatusRef = useRef<AppSheetRef>(null);
+  const isGame = item.media_type === "video_game";
 
   return (
     <>
@@ -421,9 +426,12 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
         {/* Full-bleed backdrop hero with its bottom fade. */}
         <BackdropHero backdropUrl={item.backdrop_url} />
 
-        {/* Poster + title block, pulled up to straddle the hero fade
-          (the mobile detail-screen overlap pattern). */}
-        <View className="-mt-24 flex-row gap-4 px-4">
+        {/* Poster + title block + stats, pulled up to straddle the hero
+          fade (the mobile detail-screen overlap pattern). `items-end`
+          bottom-aligns all three columns; if the stats stack is ever taller
+          than the poster (4-stat types) the row grows UPWARD into the hero,
+          keeping poster + title anchored at the bottom. */}
+        <View className="-mt-24 flex-row items-end gap-4 px-4">
           {item.cover_image_url ? (
             <Image
               source={{ uri: item.cover_image_url }}
@@ -483,6 +491,21 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
               <Text className="text-sm text-text-secondary">{attribution}</Text>
             ) : null}
           </View>
+
+          {/* Community stats — stacked vertically in the header's right
+            column (Jess's layout call), bottom-aligned with the title block
+            via the row's `items-end`. Each block is icon + count over
+            label; the title block (flex-1) keeps priority on width. */}
+          <View className="gap-3 pb-1">
+            {stats.map((stat) => (
+              <StatBlock
+                key={stat.label}
+                icon={stat.icon}
+                count={stat.count}
+                label={stat.label}
+              />
+            ))}
+          </View>
         </View>
 
         <View className="gap-5 px-4 pt-5">
@@ -493,26 +516,8 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
             </Text>
           ) : null}
 
-          {/* Rating — avg_rating is already 0–5 (SQL-divided, migration
-            025): render toFixed(1), NEVER ÷2. Gated on rating_count so an
-            unrated item (COALESCEd avg_rating of 0) reads as "no ratings"
-            rather than a terrible 0.0 score. */}
-          {(item.rating_count ?? 0) > 0 && item.avg_rating != null ? (
-            <Text className="text-sm text-text-secondary">
-              <Text style={{ color: colors["accent-game"] }}>★</Text>{" "}
-              {Number(item.avg_rating).toFixed(1)}
-              <Text className="text-text-muted">
-                {" "}
-                ({item.rating_count}{" "}
-                {item.rating_count === 1 ? "rating" : "ratings"})
-              </Text>
-            </Text>
-          ) : (
-            <Text className="text-sm text-text-muted">No ratings yet</Text>
-          )}
-
-          {/* Tagline (movie / TV only) — uppercase muted, above the
-            description, matching web's Letterboxd treatment. */}
+          {/* Tagline (movie / TV only) — uppercase muted, matching web's
+            Letterboxd treatment. */}
           {tagline ? (
             <Text className="text-xs font-semibold uppercase tracking-wider text-text-muted">
               {tagline}
@@ -525,6 +530,22 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
               {item.description}
             </Text>
           ) : null}
+
+          {/* Community ratings distribution — the histogram replaces the
+            old single average line, sitting between the description and
+            the action strip (Jess's layout call). Reads the denormalized
+            `rating_distribution` / `rating_count` / `avg_rating` columns
+            (migration 028) — no per-view aggregation. Renders a compact
+            "No ratings yet" when the title is unrated. */}
+          <RatingsHistogram
+            buckets={item.rating_distribution ?? []}
+            total={item.rating_count ?? 0}
+            average={
+              (item.rating_count ?? 0) > 0 && item.avg_rating != null
+                ? Number(item.avg_rating)
+                : null
+            }
+          />
 
           {/* Config-driven per-type action strip — the viewer's tracking
             controls (icon-only status · Loved · list, the log button with
@@ -547,8 +568,9 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
               // TODO(2.5): book read (finished/DNF) + current-reading sheets.
               onOpenReading: () => {},
               onOpenReadFinished: () => {},
-              // TODO(2.7): game status dropdown sheet.
-              onOpenStatusPicker: () => {},
+              // Game status picker sheet (Task 2.7) — present the ref-driven
+              // sheet mounted below. (Only games route here.)
+              onOpenStatusPicker: () => gameStatusRef.current?.present(),
               // TODO(M4): Intertain-friends recommend sheet.
               onIntertain: () => {},
               // TODO(M4): show-activity screen.
@@ -558,13 +580,10 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
             }}
           />
 
-          {/* Cast slider (movie/TV) / about-the-author (book) — Task 1.3.
-            Web's relative order is description → cast/about-author → info
-            tabs; the hybrid info tabs / seasons (Task 1.4) mount AFTER
-            these. Each component self-gates by media type and renders
-            null when its metadata is absent/empty, so both mount
-            unconditionally and only the relevant one shows. */}
-          <CastSlider mediaType={item.media_type} metadata={metadata} />
+          {/* About-the-author (book) — Task 1.3. Cast (movie/TV) is no
+            longer a standalone slider here; it's the first/default tab of
+            the info strip below (InfoSections). AboutTheAuthor self-gates
+            by media type → null for non-books. */}
           <AboutTheAuthor mediaType={item.media_type} metadata={metadata} />
 
           {/* Hybrid info area (Task 1.4) — mirrors web's content-column flow
@@ -578,19 +597,6 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
             unconditionally and only relevant content shows. */}
           <SeasonCards mediaType={item.media_type} metadata={metadata} />
           <InfoSections mediaType={item.media_type} metadata={metadata} />
-
-          {/* Community stats — a clean spaced row (icon + count over label),
-            per-media-type set mirroring web. */}
-          <View className="flex-row flex-wrap gap-x-6 gap-y-3 rounded-sm border border-surface-border bg-surface-raised px-4 py-3">
-            {stats.map((stat) => (
-              <StatBlock
-                key={stat.label}
-                icon={stat.icon}
-                count={stat.count}
-                label={stat.label}
-              />
-            ))}
-          </View>
         </View>
       </ScrollView>
 
@@ -606,10 +612,25 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
           viewerRow={tracking.data ?? null}
         />
       ) : null}
+
+      {/* Game status picker sheet (Task 2.7). Ref-driven overlay, mounted
+          as a sibling of the scroll content. Only for games — the strip's
+          game status pill is the only opener. */}
+      {isGame ? (
+        <GameStatusSheet
+          ref={gameStatusRef}
+          media={item}
+          viewerRow={tracking.data ?? null}
+        />
+      ) : null}
     </>
   );
 }
 
+/**
+ * One community stat — icon + count stacked ON TOP of the label, so the
+ * set reads as a horizontal row of compact blocks under the cover/header.
+ */
 function StatBlock({
   icon: Icon,
   count,

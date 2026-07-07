@@ -398,6 +398,7 @@ export type Database = {
           media_type: Database["public"]["Enums"]["media_type"]
           metadata: Json | null
           rating_count: number | null
+          rating_distribution: number[]
           recommendations_count: number
           recommended_for_count: number
           release_date: string | null
@@ -424,6 +425,7 @@ export type Database = {
           media_type: Database["public"]["Enums"]["media_type"]
           metadata?: Json | null
           rating_count?: number | null
+          rating_distribution?: number[]
           recommendations_count?: number
           recommended_for_count?: number
           release_date?: string | null
@@ -450,6 +452,7 @@ export type Database = {
           media_type?: Database["public"]["Enums"]["media_type"]
           metadata?: Json | null
           rating_count?: number | null
+          rating_distribution?: number[]
           recommendations_count?: number
           recommended_for_count?: number
           release_date?: string | null

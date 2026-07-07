@@ -63,7 +63,8 @@ export function useTrendingMedia() {
 /**
  * Shape pulled for the media detail screen. Everything the read-only
  * detail view renders: hero art, title block, description, aggregate
- * rating, denormalized community counts, and series metadata.
+ * rating + distribution histogram, denormalized community counts, and
+ * series metadata.
  */
 export type MediaDetailItem = Pick<
   Tables<"media_items">,
@@ -78,6 +79,7 @@ export type MediaDetailItem = Pick<
   | "external_ids"
   | "avg_rating"
   | "rating_count"
+  | "rating_distribution"
   | "tracking_count"
   | "completed_count"
   | "in_progress_count"
@@ -104,7 +106,7 @@ export function useMediaDetail(mediaId: string) {
       const { data, error } = await supabase
         .from("media_items")
         .select(
-          "id, media_type, title, description, cover_image_url, backdrop_url, release_date, metadata, external_ids, avg_rating, rating_count, tracking_count, completed_count, in_progress_count, favorites_count, lists_count, series_id, series_name, series_position, series_status"
+          "id, media_type, title, description, cover_image_url, backdrop_url, release_date, metadata, external_ids, avg_rating, rating_count, rating_distribution, tracking_count, completed_count, in_progress_count, favorites_count, lists_count, series_id, series_name, series_position, series_status"
         )
         .eq("id", mediaId)
         .single();

@@ -7,10 +7,17 @@
  * render INLINE as cards ABOVE this strip (see `season-cards.tsx`), so
  * this component deliberately OMITS the "seasons" tab that web carries.
  * Everything else mirrors web: a compact horizontal, scrollable tab strip
- * with tabs Crew · Details · Genres · Platforms (games) · Releases ·
+ * with tabs Cast · Crew · Details · Genres · Platforms (games) · Releases ·
  * Alternative titles. The selected tab carries the accent (`brand`)
  * underline (web parity). Each tab appears ONLY if `metadata` has that
  * data (per-tab presence conditions mirror web exactly).
+ *
+ * CAST is a mobile-specific FIRST/DEFAULT tab (movie/TV): web renders the
+ * cast as its own section above the tabs, but on a phone folding it in as
+ * the default tab keeps the detail screen short. It reuses `CastRow`
+ * (cast-slider.tsx) for the card list; the tab shows only when
+ * `metadata.cast` is non-empty, so for books/games (no cast) the first
+ * visible tab falls through to Crew/Details as before.
  *
  * Metadata field names + per-tab presence conditions (verified against
  * web media-info-tabs.tsx — do NOT rename):
@@ -41,6 +48,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import type { Tables } from "@intertaind/supabase";
 
+import { CastRow, type CastMember } from "@/components/media/cast-slider";
 import { asArray } from "@/lib/metadata";
 
 type MediaType = Tables<"media_items">["media_type"];
@@ -111,6 +119,7 @@ function normalizeStudio(s: GameStudio): { id?: number; name: string } {
 }
 
 type TabKey =
+  | "cast"
   | "crew"
   | "details"
   | "genres"
@@ -131,6 +140,12 @@ export function InfoSections({
 }) {
   // Read every field defensively (null-guard container, array-guard each
   // list). Field names + game-only gating mirror web exactly.
+  // Cast is movie/TV only (mirrors cast-slider.tsx's gating); it becomes
+  // the first, default tab below.
+  const cast =
+    mediaType === "movie" || mediaType === "tv_show"
+      ? asArray<CastMember>(metadata?.cast)
+      : [];
   const crew = asArray<CrewRow>(metadata?.key_crew);
   const genres = asArray<string>(metadata?.genres);
   const themes = asArray<string>(metadata?.keywords);
@@ -168,6 +183,7 @@ export function InfoSections({
   // rendering an empty tab (mirrors web). NOTE: no "seasons" tab — TV
   // seasons render inline above the strip (see season-cards.tsx).
   const tabs: { key: TabKey; label: string; show: boolean }[] = [
+    { key: "cast", label: "Cast", show: cast.length > 0 },
     { key: "crew", label: "Crew", show: crew.length > 0 },
     { key: "details", label: "Details", show: hasDetails },
     {
@@ -237,6 +253,7 @@ export function InfoSections({
         })}
       </ScrollView>
 
+      {activeKey === "cast" ? <CastRow cast={cast} /> : null}
       {activeKey === "crew" ? <CrewPanel crew={crew} /> : null}
       {activeKey === "details" ? (
         <DetailsPanel

@@ -1,8 +1,15 @@
 /**
- * Cast slider for the media detail screen (movie / TV only) — the RN
- * mirror of web's `MediaCastSection` (apps/web/src/components/media/
- * media-info-sections.tsx). A horizontal row of cast cards (poster-shaped
- * profile image + name + character) read from `metadata.cast`.
+ * Cast card row for the media detail screen (movie / TV) — the RN mirror
+ * of web's `MediaCastSection` (apps/web/src/components/media/
+ * media-info-sections.tsx). A horizontal, scrollable row of cast cards
+ * (poster-shaped profile image + name + character) read from
+ * `metadata.cast`.
+ *
+ * `CastRow` renders JUST the horizontal card list — no "Cast" heading, no
+ * gating. Cast is presented as the FIRST (default) tab of the info tab
+ * strip (`info-sections.tsx`), which owns the "Cast" label + the
+ * show-only-when-present gating. Callers pass an already-extracted cast
+ * array (movie/TV only; empty for other types).
  *
  * Metadata shape (verified against web `media-info-sections.tsx`):
  *   metadata.cast: { tmdb_id?: number; name: string; character: string;
@@ -11,11 +18,6 @@
  * — the SAME construction web uses (@intertaind/media). A missing
  * `profile_path` (or a null URL) falls back to a lucide `User` glyph on
  * the raised card, matching web's fallback.
- *
- * Per-type gating + graceful empty: renders `null` for anything that
- * isn't a movie or TV show, when `metadata` is absent, or when `cast` is
- * empty — so no "Cast" heading is ever shown over nothing (the locked
- * design grammar: no empty headings).
  *
  * TODO(M4): cast members are NON-TAPPABLE for now. Web links each card to
  * `/person/{tmdb_id}`, but a `person` detail screen doesn't exist in the
@@ -33,63 +35,52 @@ import { FlatList, Text, View } from "react-native";
 import { User } from "lucide-react-native";
 import { tmdbImageUrl } from "@intertaind/media";
 import { colors } from "@intertaind/design-system";
-import type { Tables } from "@intertaind/supabase";
 
 import { Image } from "@/components/image";
-import { SectionHeading } from "@/components/media/section-heading";
-import { asArray } from "@/lib/metadata";
 
 /**
  * One cast entry as stored in `metadata.cast`. Field names mirror web's
  * `CastMember` interface exactly (media-info-sections.tsx) — do not
  * rename. `tmdb_id` is optional (used by M4's person route) and
- * `profile_path` is nullable (→ fallback glyph).
+ * `profile_path` is nullable (→ fallback glyph). Exported so the info tab
+ * strip can type the cast array it extracts.
  */
-interface CastMember {
+export interface CastMember {
   tmdb_id?: number;
   name: string;
   character: string;
   profile_path: string | null;
 }
 
-/** Card width in pt — a compact 2:3 profile card, web's `w-24` analogue. */
-const CARD_WIDTH = 96;
+/** Card width in pt — a compact 2:3 profile card. Deliberately smaller
+ *  than web's `w-24` (96pt) so the cast row takes less vertical/horizontal
+ *  space on a phone; more faces fit per screen. */
+const CARD_WIDTH = 72;
 
-export function CastSlider({
-  mediaType,
-  metadata,
-}: {
-  mediaType: Tables<"media_items">["media_type"];
-  metadata: Record<string, unknown> | null;
-}) {
-  // Per-type gating — cast only exists for screen media (mirrors web).
-  if (mediaType !== "movie" && mediaType !== "tv_show") return null;
-  if (!metadata) return null;
-
-  // Untyped JSONB — asArray guards against a non-array shape.
-  const cast = asArray<CastMember>(metadata.cast);
-  // Graceful empty: no cast → render nothing, never an empty heading.
+/**
+ * The horizontal cast card row. Rendered inside the info tab strip's
+ * "Cast" tab (see file header) — the caller gates on presence, so this
+ * just maps the cards. Renders `null` for an empty array as a cheap guard.
+ */
+export function CastRow({ cast }: { cast: CastMember[] }) {
   if (cast.length === 0) return null;
 
   return (
-    <View className="gap-4">
-      <SectionHeading>Cast</SectionHeading>
-      <FlatList
-        horizontal
-        data={cast}
-        showsHorizontalScrollIndicator={false}
-        // Best-effort key: cast entries aren't guaranteed a unique id, so
-        // fall back to the row index. Safe only because this list is static
-        // (never reordered/filtered) — an index key would risk reconciliation
-        // bugs in a mutable list.
-        keyExtractor={(c, i) => `${c.name}-${c.character}-${c.tmdb_id ?? i}`}
-        // 12pt gap between cards. The list inherits the screen's horizontal
-        // padding (the parent content column's `px-4`), so the first card
-        // aligns with the surrounding text rather than bleeding to the edge.
-        contentContainerStyle={{ gap: 12 }}
-        renderItem={({ item }) => <CastCard member={item} />}
-      />
-    </View>
+    <FlatList
+      horizontal
+      data={cast}
+      showsHorizontalScrollIndicator={false}
+      // Best-effort key: cast entries aren't guaranteed a unique id, so
+      // fall back to the row index. Safe only because this list is static
+      // (never reordered/filtered) — an index key would risk reconciliation
+      // bugs in a mutable list.
+      keyExtractor={(c, i) => `${c.name}-${c.character}-${c.tmdb_id ?? i}`}
+      // 12pt gap between cards. The list inherits the info strip's horizontal
+      // padding (the parent content column's `px-4`), so the first card
+      // aligns with the surrounding content rather than bleeding to the edge.
+      contentContainerStyle={{ gap: 12 }}
+      renderItem={({ item }) => <CastCard member={item} />}
+    />
   );
 }
 
@@ -114,7 +105,7 @@ function CastCard({ member }: { member: CastMember }) {
           // No profile image — a muted lucide User glyph on the raised
           // card, mirroring web's fallback.
           <View className="h-full w-full items-center justify-center">
-            <User size={24} color={colors["text-muted"]} />
+            <User size={20} color={colors["text-muted"]} />
           </View>
         )}
       </View>

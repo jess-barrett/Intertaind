@@ -27,6 +27,12 @@ export interface MediaItem {
   external_ids: Record<string, unknown> | null;
   avg_rating: number | null;
   rating_count: number;
+  /** Denormalized per-half-star rating distribution — `int[10]`, 1-indexed
+      to the DB rating scale (index 0 = rating 1 = 0.5★ … index 9 = rating
+      10 = 5.0★). Maintained by the rating-aggregate trigger (migration
+      028) so the histogram reads O(1) instead of re-aggregating every raw
+      rating row per view. */
+  rating_distribution: number[];
   tracking_count: number;
   /** Denormalized count of user_media rows with status='completed'. */
   completed_count: number;

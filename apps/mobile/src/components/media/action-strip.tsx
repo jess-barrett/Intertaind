@@ -66,6 +66,8 @@ import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import {
   Bookmark,
+  ChevronDown,
+  Gamepad2,
   Heart,
   History,
   MoreHorizontal,
@@ -76,6 +78,7 @@ import { colors } from "@intertaind/design-system";
 import {
   ratingToStars,
   starsToRating,
+  type GameSubStatus,
   type MediaType,
   type TrackingStatus,
 } from "@intertaind/types";
@@ -92,7 +95,9 @@ import {
 } from "@/queries/tracking";
 import {
   CHANGE_ART_ICON,
+  GAME_STATUSES,
   TRACKING_CONFIG,
+  type GameStatusOption,
   type LogButton as LogButtonConfig,
   type StatusAccent,
   type StatusAction,
@@ -204,6 +209,54 @@ function IconAction({
   );
 }
 
+/**
+ * The GAME status control — a labeled PILL, not a bare icon. Games have 6
+ * play-statuses (Playing/Completed/Played/Shelved/Retired/Abandoned), so
+ * the control must NAME the current one, which the icon-only toggles of the
+ * other types can't. Shows the current status's colored glyph + label (its
+ * color follows the mapped TrackingStatus — see GAME_STATUSES), or a muted
+ * "Set status" when none is set, with a chevron hinting it opens the picker
+ * sheet. `subStatus` is read from `progress.sub_status` (the real source of
+ * truth — Completed/Played and Shelved/Retired share a DB status). Tapping
+ * fires the parent's `onOpenStatusPicker` (the `gameStatus` opener).
+ */
+function GameStatusPill({
+  subStatus,
+  onPress,
+}: {
+  subStatus: GameSubStatus | null;
+  onPress: () => void;
+}) {
+  const entry: GameStatusOption | undefined = subStatus
+    ? GAME_STATUSES.find((s) => s.key === subStatus)
+    : undefined;
+  const Icon = entry?.icon ?? Gamepad2;
+  const glyphColor = entry ? colors[entry.accent] : colors["text-muted"];
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ expanded: false }}
+      accessibilityLabel={
+        entry ? `Game status: ${entry.label}. Change status` : "Set game status"
+      }
+      hitSlop={4}
+      className="shrink flex-row items-center gap-1.5 rounded-sm border border-surface-border bg-surface-overlay px-2 py-1.5 active:opacity-70"
+      onPress={onPress}
+    >
+      <Icon size={16} color={glyphColor} />
+      <Text
+        numberOfLines={1}
+        className={`shrink text-xs font-medium ${
+          entry ? "text-text-primary" : "text-text-muted"
+        }`}
+      >
+        {entry ? entry.label : "Set status"}
+      </Text>
+      <ChevronDown size={12} color={colors["text-muted"]} />
+    </Pressable>
+  );
+}
+
 /** A full-width secondary-row action (log / activity / change-art). */
 function RowButton({
   label,
@@ -274,6 +327,13 @@ export function ActionStrip({
   const status = viewerRow?.status ?? null;
   const isFavorite = viewerRow?.is_favorite ?? false;
   const isWant = status === "want";
+  // Games carry their play-status in `progress.sub_status` (NOT the DB
+  // status column — Completed/Played and Shelved/Retired share one), and
+  // present it as a labeled pill rather than an icon toggle.
+  const isGame = !!config.statusDropdown;
+  const gameSubStatus =
+    (viewerRow?.progress as { sub_status?: GameSubStatus } | null)
+      ?.sub_status ?? null;
   // rating is the 1–10 DB scale; null-guard BEFORE Number() (Number(null)
   // is 0, which ratingToStars would clamp to half a star).
   const stars =
@@ -336,19 +396,23 @@ export function ActionStrip({
           stay put. movie: 👁 ♥ 🔖 │ ★★★★★; tv/book/game vary the status
           slot. ─────────────────────────────────────────────────────── */}
       <View className="flex-row items-center rounded-sm border border-surface-border bg-surface-raised px-3 py-2">
-        {/* Left HALF — icons spread with justify-between plus equal edge
-            padding (px-3) so the eye and bookmark aren't flush to the ends.
-            `min-w-0` forces this to be exactly half (otherwise the stars
-            side, with wider content, steals width and smooshes the icons),
-            so the icons get the full left half to spread across. */}
-        <View className="min-w-0 flex-1 flex-row items-center justify-between px-3">
-          {/* Status: icon-only toggle(s), or the game status dropdown. */}
-          {config.statusDropdown ? (
-            <IconAction
-              icon={config.statusDropdown.icon}
-              active={status != null}
-              accent="accent-game"
-              accessibilityLabel="Set game status"
+        {/* Left group. movie/tv/book: icon-only toggles spread across an
+            exact half (justify-between + `min-w-0 flex-1`, so the stars
+            side can't steal width and smoosh them). GAMES differ — the
+            status is a labeled PILL (see GameStatusPill), which needs room,
+            so the group is content-width (`shrink`, packed with gap-2) and
+            the stars take the remaining space to its right. */}
+        <View
+          className={
+            isGame
+              ? "shrink flex-row items-center gap-2"
+              : "min-w-0 flex-1 flex-row items-center justify-between px-3"
+          }
+        >
+          {/* Status: the game status pill, or the icon-only toggle(s). */}
+          {isGame ? (
+            <GameStatusPill
+              subStatus={gameSubStatus}
               onPress={() => open(config.statusDropdown!.opener)}
             />
           ) : (
@@ -392,10 +456,11 @@ export function ActionStrip({
           />
         </View>
 
-        {/* Divider — dead center: it sits between two equal flex-1 halves
-            with symmetric margins, so it splits the row exactly down the
-            middle (2px surface-border via explicit style; NativeWind's `w-px`
-            compiled to zero width). */}
+        {/* Divider between the controls and the stars. movie/tv/book: the
+            two halves are equal (flex-1) so it lands dead center. game: the
+            left group is content-width, so it sits just right of the
+            pill/loved/list. 2px surface-border via explicit style
+            (NativeWind's `w-px` compiled to zero width). */}
         <View
           className="mx-3"
           style={{

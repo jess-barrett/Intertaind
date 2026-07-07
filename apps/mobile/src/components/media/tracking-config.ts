@@ -43,18 +43,27 @@
  * class), which names the per-type active color the strip then applies.
  */
 import {
+  Archive,
   BookOpen,
   BookOpenCheck,
+  Check,
   Clapperboard,
   Eye,
   Gamepad2,
   GalleryHorizontalEnd,
   ImageIcon,
   MessageSquare,
+  Pause,
+  Play,
   TvMinimalPlay,
+  X,
   type LucideIcon,
 } from "lucide-react-native";
-import type { MediaType, TrackingStatus } from "@intertaind/types";
+import type {
+  GameSubStatus,
+  MediaType,
+  TrackingStatus,
+} from "@intertaind/types";
 
 /**
  * Names of the parent-supplied sheet-opener callbacks. A `sheet`-kind
@@ -250,3 +259,92 @@ export const TRACKING_CONFIG: Record<MediaType, TrackingConfig> = {
 
 /** The change-art icon is shared (both cover + backdrop use the image glyph). */
 export const CHANGE_ART_ICON = ImageIcon;
+
+/**
+ * Token key for a game status's glyph color. Games have no per-status
+ * color of their own on web — each inherits the color of the DB
+ * `TrackingStatus` it maps to (status-badge.tsx): in_progress → gold
+ * (`accent-game`), completed → green (`accent-book`), on_hold → gray
+ * (`text-secondary`), dropped → pink (`accent-movie`). Mirrored here so
+ * the mobile pill + picker read in lockstep with web.
+ */
+export type GameStatusAccent =
+  | "accent-game"
+  | "accent-book"
+  | "accent-movie"
+  | "text-secondary";
+
+/**
+ * A single game play-status option — the RN mirror of web's
+ * `GAME_STATUSES` (media-detail-client.tsx). Six sub-statuses collapse to
+ * FOUR DB `TrackingStatus` values (Completed + Played both → completed;
+ * Shelved + Retired both → on_hold), so `progress.sub_status` — the `key`
+ * here — is the real source of truth for which one is set; `tracking` is
+ * the DB status column it writes. `icon`/`accent` are mobile display only
+ * (web's dropdown is text; mobile gives each a leading glyph).
+ */
+export type GameStatusOption = {
+  key: GameSubStatus;
+  label: string;
+  desc: string;
+  tracking: TrackingStatus;
+  icon: LucideIcon;
+  accent: GameStatusAccent;
+};
+
+/**
+ * The ordered game play-statuses, mirroring web's `GAME_STATUSES` list +
+ * mapping exactly (order, labels, descriptions, tracking targets). Colors
+ * follow the mapped TrackingStatus (see `GameStatusAccent`); icons are the
+ * mobile choices (web renders no per-status icon).
+ */
+export const GAME_STATUSES: GameStatusOption[] = [
+  {
+    key: "playing",
+    label: "Playing",
+    desc: "Currently playing",
+    tracking: "in_progress",
+    icon: Play,
+    accent: "accent-game",
+  },
+  {
+    key: "completed",
+    label: "Completed",
+    desc: "Finished main objective",
+    tracking: "completed",
+    icon: Check,
+    accent: "accent-book",
+  },
+  {
+    key: "played",
+    label: "Played",
+    desc: "Played, not specific",
+    tracking: "completed",
+    icon: Gamepad2,
+    accent: "accent-book",
+  },
+  {
+    key: "shelved",
+    label: "Shelved",
+    desc: "Paused, may return",
+    tracking: "on_hold",
+    icon: Pause,
+    accent: "text-secondary",
+  },
+  {
+    key: "retired",
+    label: "Retired",
+    desc: "No longer playing",
+    tracking: "on_hold",
+    icon: Archive,
+    accent: "text-secondary",
+  },
+  {
+    key: "abandoned",
+    label: "Abandoned",
+    desc: "Won't pick back up",
+    tracking: "dropped",
+    icon: X,
+    accent: "accent-movie",
+  },
+];

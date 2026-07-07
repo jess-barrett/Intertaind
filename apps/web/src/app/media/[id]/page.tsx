@@ -164,7 +164,6 @@ export default async function MediaDetailPage({
     inProgressCountRes,
     favoriteCountRes,
     listCountRes,
-    ratingRowsRes,
   ] = await Promise.all([
     isGame
       ? supabase
@@ -191,15 +190,6 @@ export default async function MediaDetailPage({
       .from("list_items")
       .select("id", { count: "exact", head: true })
       .eq("media_id", id),
-    // Raw rating values for the histogram. Rating is stored 1–10 (each
-    // step = 0.5 stars). Group + count happens in JS — fine while user
-    // counts are small. Swap to a SQL aggregate / materialized view if
-    // a single title ever pulls thousands of rows.
-    supabase
-      .from("user_media")
-      .select("rating")
-      .eq("media_id", id)
-      .not("rating", "is", null),
   ]);
 
   const stats = {
@@ -281,17 +271,19 @@ export default async function MediaDetailPage({
     }
   }
 
-  // Build the 10-bucket rating histogram (1..10 → 0.5..5.0 stars).
-  const ratingValues =
-    ((ratingRowsRes.data as { rating: number | null }[] | null) ?? [])
-      .map((r) => r.rating)
-      .filter((r): r is number => r != null && r >= 1 && r <= 10);
-  const ratingBuckets = new Array(10).fill(0) as number[];
-  for (const r of ratingValues) ratingBuckets[r - 1]++;
-  const ratingTotal = ratingValues.length;
+  // Rating histogram (1..10 → 0.5..5.0 stars) — read straight from the
+  // denormalized columns the rating-aggregate trigger maintains
+  // (migration 028). No more fetching + bucketing every rating row per
+  // page load; a popular title could pull tens of thousands of rows just
+  // to draw 10 bars. `rating_distribution` is int[10], 1-indexed to the
+  // DB rating scale; `avg_rating` is already on the 0–5 display scale.
+  const ratingBuckets = media.rating_distribution;
+  const ratingTotal = media.rating_count;
+  // `avg_rating` is a Postgres `numeric` — supabase-js can hand it back as
+  // a string, so coerce before the histogram's `.toFixed()`.
   const ratingAverage =
-    ratingTotal > 0
-      ? ratingValues.reduce((a, b) => a + b, 0) / ratingTotal / 2
+    ratingTotal > 0 && media.avg_rating != null
+      ? Number(media.avg_rating)
       : null;
 
   const attribution = getAttribution(media.media_type, metadata);
