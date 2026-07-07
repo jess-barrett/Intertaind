@@ -51,15 +51,20 @@ export function FilmographyList({
   tracking,
   mediaMeta,
   header,
+  onMutated,
 }: {
   credits: PersonCreditInput[];
   /** Viewer tracking per catalog-linked media_id — drives per-card rating +
-      heart. Empty while the tracking query is loading / signed out. */
+      heart AND each card's quick-actions active states. Empty while the
+      tracking query is loading / signed out. */
   tracking: Map<string, PersonTrackingEntry>;
   /** Community avg_rating (0–5) per catalog-linked media_id — the card's
       fallback rating. Empty while the media-meta query is loading. */
   mediaMeta: Map<string, number | null>;
   header: React.ReactNode;
+  /** Forwarded to each card's quick-actions tab: called after a write so
+      the screen can refetch the batched tracking / media-meta maps. */
+  onMutated?: () => void;
 }) {
   const bottomInset = useBottomInset();
 
@@ -123,8 +128,8 @@ export function FilmographyList({
       // Clear the persistent bottom navbar (mobile scroll convention).
       contentContainerStyle={{ paddingBottom: bottomInset }}
       renderItem={({ item }) => {
-        // Per-card viewer rating / loved / community-avg are keyed by the
-        // credit's catalog id — null/false/absent for uncataloged credits.
+        // Per-card tracking / community-avg are keyed by the credit's
+        // catalog id — null/absent for uncataloged credits.
         const id = item.media_item_id;
         return (
           // flex-1 wrapper so the two columns split the row evenly regardless
@@ -132,9 +137,9 @@ export function FilmographyList({
           <View className="flex-1">
             <MediaCard
               credit={item}
-              viewerRating={id ? tracking.get(id)?.rating ?? null : null}
-              favorite={id ? tracking.get(id)?.is_favorite ?? false : false}
+              tracking={id ? tracking.get(id) ?? null : null}
               avgRating={id ? mediaMeta.get(id) ?? null : null}
+              onMutated={onMutated}
             />
           </View>
         );

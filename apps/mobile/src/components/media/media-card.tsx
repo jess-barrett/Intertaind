@@ -7,11 +7,19 @@
  *
  * ── Meta row (web parity) ──────────────────────────────────────────────
  * The row mirrors web's card: the star rating shows the VIEWER's own rating
- * first (`viewerRating`, DB scale → stars) and falls back to the community
- * average (`avgRating`, already 0–5 display scale) when they haven't rated
- * it; a loved heart in the movie accent when `favorite`; then the year. Web
- * has NO watched-eye badge — the viewer's own rating conveys engagement — so
- * this card doesn't either (dropped from the previous version).
+ * first (`tracking.rating`, DB scale → stars) and falls back to the
+ * community average (`avgRating`, already 0–5 display scale) when they
+ * haven't rated it; a loved heart in the movie accent when the viewer loves
+ * it; then the year. Web has NO watched-eye badge — the viewer's own rating
+ * conveys engagement — so this card doesn't either.
+ *
+ * ── Quick actions (tap-to-slide-out tab) ───────────────────────────────
+ * A media-type-colored notched tab sits at the poster's bottom-left
+ * (`CardActions`). TAPPING it slides out a row of quick actions (status ·
+ * Loved · ⋯) and the ⋯ opens a per-type bottom sheet — the touch analogue
+ * of web's card hover actions. It reads the viewer's `tracking` for its
+ * active states and calls `onMutated` after a write so the parent can
+ * refresh the batched tracking map. See `card-actions.tsx`.
  *
  * ── Always clickable (tap-to-enrich) ───────────────────────────────────
  * EVERY card is a Pressable. A cataloged credit (`media_item_id` set)
@@ -38,27 +46,36 @@ import { colors } from "@intertaind/design-system";
 
 import { Image } from "@/components/image";
 import StarRating from "@/components/star-rating";
+import { CardActions } from "@/components/media/card-actions";
 import { useMediaUpsertMutation } from "@/queries/media";
 
 /**
  * Poster grid card for one filmography credit. Width-flexible: fills its
  * grid cell (the list owns the column width). Always tappable — cataloged
  * navigates, uncataloged enriches via `media-upsert` then navigates. See the
- * file header for the meta row and the tap-to-enrich busy state.
+ * file header for the meta row, the quick-actions tab, and the
+ * tap-to-enrich busy state.
  */
 export function MediaCard({
   credit,
-  viewerRating,
-  favorite = false,
+  tracking,
   avgRating,
+  onMutated,
 }: {
   credit: MergedCredit;
-  /** The viewer's own rating (1–10 DB scale) — takes priority in the row. */
-  viewerRating?: number | null;
-  /** The viewer has loved this title → a filled heart in the movie accent. */
-  favorite?: boolean;
+  /** The viewer's tracking row for this catalog id (null = untracked /
+      uncataloged). Drives the meta-row rating/heart AND the quick-actions
+      tab's active states. */
+  tracking?: {
+    status: string;
+    rating: number | null;
+    is_favorite: boolean;
+  } | null;
   /** Community average (0–5 display scale) — fallback when unrated. */
   avgRating?: number | null;
+  /** Called after a quick-action write so the parent can refresh the
+      batched tracking map (the card's active states then update). */
+  onMutated?: () => void;
 }) {
   const router = useRouter();
   const upsert = useMediaUpsertMutation();
@@ -69,15 +86,16 @@ export function MediaCard({
   // raised card when TMDb has no art for this title.
   const FallbackIcon = credit.media_type === "tv" ? Tv : Film;
 
-  // Stars are DISPLAY scale (0.5–5.0). Viewer rating comes off the DB scale
-  // (1–10) so it converts via ratingToStars; the community avg is already
-  // display scale (migration 025), so it's used as-is.
+  // Stars are DISPLAY scale (0.5–5.0). The viewer's rating comes off the DB
+  // scale (1–10) so it converts via ratingToStars; the community avg is
+  // already display scale (migration 025), so it's used as-is.
   const displayStars =
-    viewerRating != null
-      ? ratingToStars(Number(viewerRating))
+    tracking?.rating != null
+      ? ratingToStars(Number(tracking.rating))
       : avgRating != null
         ? Number(avgRating)
         : null;
+  const favorite = tracking?.is_favorite ?? false;
 
   const onPress = async () => {
     if (credit.media_item_id) {
@@ -134,6 +152,15 @@ export function MediaCard({
             <ActivityIndicator color={colors["text-primary"]} />
           </View>
         ) : null}
+
+        {/* Quick-actions tab — bottom-left, notched, tap-to-slide-out. Sits
+            inside the poster's overflow-hidden wrapper (its collapsed glyph
+            + slide-out row clip to the poster). See card-actions.tsx. */}
+        <CardActions
+          credit={credit}
+          tracking={tracking ?? null}
+          onMutated={onMutated}
+        />
       </View>
 
       <Text

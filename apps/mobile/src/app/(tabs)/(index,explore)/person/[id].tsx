@@ -19,6 +19,7 @@
  */
 import { Stack, useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { User } from "lucide-react-native";
 import { tmdbImageUrl } from "@intertaind/media";
 import { colors } from "@intertaind/design-system";
@@ -28,6 +29,7 @@ import { Image } from "@/components/image";
 import { useAuth } from "@/components/auth-provider";
 import { BiographyText } from "@/components/media/biography-text";
 import { FilmographyList } from "@/components/media/filmography-list";
+import { queryKeys } from "@/queries/keys";
 import {
   usePerson,
   usePersonMediaMeta,
@@ -54,7 +56,21 @@ export default function PersonScreen() {
   const tmdbId = Number(id);
 
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const detail = usePerson(tmdbId);
+
+  // After a card quick-action writes, the batched per-person tracking map
+  // (and the community media-meta map, if a rating shifted an aggregate) is
+  // now stale — invalidate both so every card's active states + fallback
+  // rating refresh. Keyed exactly as usePersonTracking / usePersonMediaMeta.
+  const onMutated = () => {
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.person.tracking(user?.id ?? "anon", tmdbId),
+    });
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.person.mediaMeta(tmdbId),
+    });
+  };
 
   // Hooks can't be conditional — derive the catalog-linked ids from whatever
   // data is loaded (empty until then) and call the tracking/meta hooks
@@ -130,6 +146,7 @@ export default function PersonScreen() {
           credits={detail.data.credits}
           tracking={trackingMap}
           mediaMeta={mediaMetaMap}
+          onMutated={onMutated}
           header={
             <PersonHeader
               person={detail.data.person}
