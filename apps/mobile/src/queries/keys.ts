@@ -56,6 +56,21 @@ export const queryKeys = {
     activity: (userId: string) =>
       [...queryKeys.user.all, userId, "activity"] as const,
   },
+  person: {
+    all: ["person"] as const,
+    // Catalog data for one person (bio + credits), keyed by TMDB id — no
+    // user in the key, so it's shared across viewers. tmdb_id is the
+    // stable natural key the person Edge Function enriches against.
+    detail: (tmdbId: number) =>
+      [...queryKeys.person.all, "detail", tmdbId] as const,
+    // The signed-in viewer's watched set among this person's
+    // catalog-linked films. Per-viewer, so keyed by userId too (a
+    // person-only key would serve user A's watched set to user B after an
+    // account switch within staleTime); "anon" placeholder keeps the key
+    // stable while signed out but never fetches (see usePersonWatched).
+    watched: (userId: string, tmdbId: number) =>
+      [...queryKeys.person.all, "watched", userId, tmdbId] as const,
+  },
   activity: {
     all: ["activity"] as const,
     feed: () => [...queryKeys.activity.all, "feed"] as const,
