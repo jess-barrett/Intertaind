@@ -12,10 +12,14 @@
  *     JWT), waits for it, then re-reads. The UI can pass the returned
  *     `credits` straight to `mergeCredits`/`filterCredits`/`sortCredits`
  *     from `@intertaind/media`.
- *   - `usePersonWatched` is the viewer's watched set — the media_ids the
- *     viewer has completed/in_progress among this person's catalog-linked
- *     cast films. USER-specific; disabled while signed out or with no
- *     catalog-linked films to check.
+ *   - `usePersonTracking` is the viewer's tracking map — status + rating +
+ *     is_favorite per media_id among this person's catalog-linked titles.
+ *     The screen derives the watched set AND each card's rating/heart from
+ *     it. USER-specific; disabled while signed out or with no catalog-linked
+ *     titles to check.
+ *   - `usePersonMediaMeta` is the catalog aggregate (community avg_rating)
+ *     per catalog-linked title — the fallback a card shows when the viewer
+ *     hasn't rated it. Public catalog data (no user in the key).
  *
  * Conventions (same as ./media.ts and ./tracking.ts): keys come from
  * ./keys.ts (never inline arrays); throw raw Supabase errors inside
@@ -152,31 +156,83 @@ export function usePerson(tmdbId: number) {
   });
 }
 
+/** One catalog-linked title's tracking state for the viewer. */
+export type PersonTrackingEntry = {
+  status: string;
+  rating: number | null;
+  is_favorite: boolean;
+};
+
 /**
- * The viewer's watched set among this person's catalog-linked films — the
- * `media_id`s the viewer has `completed` or `in_progress`, intersected with
- * the `media_item_id`s the Person page already resolved from the credits.
+ * The viewer's tracking rows among this person's catalog-linked titles —
+ * a `Map<media_id, { status, rating, is_favorite }>` over the
+ * `media_item_id`s the Person page resolved from the credits. The screen
+ * derives BOTH the "X of Y watched" stat (statuses) AND each card's
+ * viewer-rating/loved-heart from this one map, so it replaces the old
+ * watched-only `Set`.
  *
  * USER-specific and RLS'd to the owner, so it's disabled while signed out;
  * also disabled when there are no catalog-linked ids to check (nothing to
- * intersect). Mirrors `useViewerTracking`'s signed-out handling: the key
- * uses `user?.id ?? "anon"` to stay stable, and `enabled` gates the fetch
- * so every fetched entry is keyed by a real `user.id`.
+ * fetch). Mirrors `useViewerTracking`'s signed-out handling: the key uses
+ * `user?.id ?? "anon"` to stay stable, and `enabled` gates the fetch so
+ * every fetched entry is keyed by a real `user.id`.
  */
-export function usePersonWatched(tmdbId: number, mediaItemIds: string[]) {
+export function usePersonTracking(tmdbId: number, mediaItemIds: string[]) {
   const { user } = useAuth();
   return useQuery({
-    queryKey: queryKeys.person.watched(user?.id ?? "anon", tmdbId),
+    queryKey: queryKeys.person.tracking(user?.id ?? "anon", tmdbId),
     enabled: !!user && mediaItemIds.length > 0,
-    queryFn: async (): Promise<Set<string>> => {
+    queryFn: async (): Promise<Map<string, PersonTrackingEntry>> => {
       const { data, error } = await supabase
         .from("user_media")
-        .select("media_id")
+        .select("media_id, status, rating, is_favorite")
         .eq("user_id", user!.id)
-        .in("media_id", mediaItemIds)
-        .in("status", ["completed", "in_progress"]);
+        .in("media_id", mediaItemIds);
       if (error) throw error;
-      return new Set((data ?? []).map((row) => row.media_id));
+      return new Map(
+        (data ?? []).map((row) => [
+          row.media_id,
+          {
+            status: row.status,
+            rating: row.rating,
+            // `is_favorite` is nullable in the DB row; a null favorite means
+            // "not favorited", so normalize to a strict boolean here.
+            is_favorite: row.is_favorite ?? false,
+          },
+        ])
+      );
+    },
+  });
+}
+
+/**
+ * The community aggregate rating per catalog-linked title — a
+ * `Map<media_id, avg_rating>` where `avg_rating` is the 0–5 display scale
+ * (migration 025, no ÷2). This is the fallback a card shows beneath its
+ * poster when the viewer hasn't rated the title themselves.
+ *
+ * Public catalog data (RLS allows anon reads on `media_items`), so NO user
+ * in the key — shared across viewers and works pre-auth. Disabled when
+ * there are no catalog-linked ids to fetch. `avg_rating` can come back as a
+ * numeric string from PostgREST, so it's coerced with `Number()` (null
+ * stays null).
+ */
+export function usePersonMediaMeta(tmdbId: number, mediaItemIds: string[]) {
+  return useQuery({
+    queryKey: queryKeys.person.mediaMeta(tmdbId),
+    enabled: mediaItemIds.length > 0,
+    queryFn: async (): Promise<Map<string, number | null>> => {
+      const { data, error } = await supabase
+        .from("media_items")
+        .select("id, avg_rating")
+        .in("id", mediaItemIds);
+      if (error) throw error;
+      return new Map(
+        (data ?? []).map((row) => [
+          row.id,
+          row.avg_rating == null ? null : Number(row.avg_rating),
+        ])
+      );
     },
   });
 }

@@ -19,7 +19,7 @@
  *     which the calling component can turn into a UI treatment.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Tables } from "@intertaind/supabase";
 import { useAuth } from "@/components/auth-provider";
 import { supabase } from "@/lib/supabase";
@@ -198,6 +198,41 @@ export function useSeriesSiblings(seriesId: string | null | undefined) {
         .order("series_position", { ascending: true, nullsFirst: false });
       if (error) throw error;
       return data ?? [];
+    },
+  });
+}
+
+/**
+ * Mobile analogue of web's upsert-on-click (web's `MediaCardLink`): enriches
+ * an uncataloged title via the `media-upsert` Edge Function and returns its
+ * `media_items` id, so a card whose credit has no `media_item_id` yet can
+ * still navigate to `/media/[id]` on first tap.
+ *
+ * `media-upsert` holds the server-side external-API secrets (the anon JWT is
+ * forwarded automatically by `functions.invoke`, mirroring `usePerson`'s
+ * `person` invoke); it get-or-creates the catalog row from a TMDb id and
+ * returns `{ id }`. Throws on a transport/function error or a missing id so
+ * the caller can keep the "enriching…" state off and not navigate nowhere.
+ *
+ * No cache invalidation: the row it creates isn't in any list this app has
+ * cached, and the destination media-detail screen fetches its own fresh copy.
+ */
+export function useMediaUpsertMutation() {
+  return useMutation({
+    mutationFn: async ({
+      mediaType,
+      tmdbId,
+    }: {
+      mediaType: "movie" | "tv";
+      tmdbId: number;
+    }): Promise<string> => {
+      const { data, error } = await supabase.functions.invoke<{ id: string }>(
+        "media-upsert",
+        { body: { media_type: mediaType, tmdb_id: tmdbId } }
+      );
+      if (error) throw error;
+      if (!data?.id) throw new Error("media-upsert returned no id.");
+      return data.id;
     },
   });
 }

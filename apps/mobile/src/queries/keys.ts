@@ -63,13 +63,21 @@ export const queryKeys = {
     // stable natural key the person Edge Function enriches against.
     detail: (tmdbId: number) =>
       [...queryKeys.person.all, "detail", tmdbId] as const,
-    // The signed-in viewer's watched set among this person's
-    // catalog-linked films. Per-viewer, so keyed by userId too (a
-    // person-only key would serve user A's watched set to user B after an
-    // account switch within staleTime); "anon" placeholder keeps the key
-    // stable while signed out but never fetches (see usePersonWatched).
-    watched: (userId: string, tmdbId: number) =>
-      [...queryKeys.person.all, "watched", userId, tmdbId] as const,
+    // The signed-in viewer's tracking rows for this person's
+    // catalog-linked titles (status/rating/is_favorite per media_id). The
+    // screen derives the watched set AND each card's rating/heart from it.
+    // Per-viewer, so keyed by userId too (a person-only key would serve
+    // user A's tracking to user B after an account switch within staleTime);
+    // "anon" placeholder keeps the key stable while signed out but never
+    // fetches (see usePersonTracking).
+    tracking: (userId: string, tmdbId: number) =>
+      [...queryKeys.person.all, "tracking", userId, tmdbId] as const,
+    // Catalog aggregate (community avg_rating) for this person's
+    // catalog-linked titles — the fallback the card shows when the viewer
+    // hasn't rated a title. Public catalog data, so NO user in the key:
+    // shared across viewers and works pre-auth.
+    mediaMeta: (tmdbId: number) =>
+      [...queryKeys.person.all, "media-meta", tmdbId] as const,
   },
   activity: {
     all: ["activity"] as const,

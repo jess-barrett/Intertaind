@@ -28,7 +28,12 @@ import { Image } from "@/components/image";
 import { useAuth } from "@/components/auth-provider";
 import { BiographyText } from "@/components/media/biography-text";
 import { FilmographyList } from "@/components/media/filmography-list";
-import { usePerson, usePersonWatched } from "@/queries/person";
+import {
+  usePerson,
+  usePersonMediaMeta,
+  usePersonTracking,
+  type PersonTrackingEntry,
+} from "@/queries/person";
 
 /**
  * Format an ISO date for the Born/Died meta rows — the RN port of web's
@@ -51,20 +56,40 @@ export default function PersonScreen() {
   const { user } = useAuth();
   const detail = usePerson(tmdbId);
 
-  // Hooks can't be conditional — derive the catalog-linked cast ids from
-  // whatever data is loaded (empty until then) and call usePersonWatched
-  // unconditionally. It's `enabled`-gated in the hook, so an empty list
-  // pre-load is a no-op.
+  // Hooks can't be conditional — derive the catalog-linked ids from whatever
+  // data is loaded (empty until then) and call the tracking/meta hooks
+  // unconditionally. Both are `enabled`-gated on a non-empty id list, so a
+  // pre-load empty list is a no-op.
   const credits = detail.data?.credits ?? [];
   const castCredits = credits.filter((c) => c.credit_type === "cast");
   const total = castCredits.length;
-  const linkedCastIds = castCredits
-    .map((c) => c.media_item_id)
-    .filter((x): x is string => !!x);
+  // ALL credits, not just cast: any card (crew titles too) may be cataloged
+  // and wants its viewer-rating/heart/community-avg on the poster.
+  const linkedIds = Array.from(
+    new Set(
+      credits.map((c) => c.media_item_id).filter((x): x is string => !!x)
+    )
+  );
 
-  const watched = usePersonWatched(tmdbId, linkedCastIds);
-  const watchedIds = watched.data ?? new Set<string>();
-  const watchedCount = watchedIds.size;
+  const tracking = usePersonTracking(tmdbId, linkedIds);
+  const mediaMeta = usePersonMediaMeta(tmdbId, linkedIds);
+  const trackingMap =
+    tracking.data ?? new Map<string, PersonTrackingEntry>();
+  const mediaMetaMap = mediaMeta.data ?? new Map<string, number | null>();
+
+  // "X of Y watched" — Y is the cast-credit count (as before); X is the
+  // number of DISTINCT cast credits whose catalog id has a tracking entry in
+  // a watched status (completed/in_progress). Distinct via a Set so a title
+  // credited twice (e.g. two roles merged) can't double-count.
+  const watchedCount = new Set(
+    castCredits
+      .map((c) => c.media_item_id)
+      .filter((id): id is string => {
+        if (!id) return false;
+        const status = trackingMap.get(id)?.status;
+        return status === "completed" || status === "in_progress";
+      })
+  ).size;
 
   // Invalid route param → the same error treatment as a failed load.
   if (Number.isNaN(tmdbId)) {
@@ -103,7 +128,8 @@ export default function PersonScreen() {
       ) : (
         <FilmographyList
           credits={detail.data.credits}
-          watchedIds={watchedIds}
+          tracking={trackingMap}
+          mediaMeta={mediaMetaMap}
           header={
             <PersonHeader
               person={detail.data.person}

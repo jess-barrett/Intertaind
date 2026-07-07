@@ -39,6 +39,7 @@ import {
 import { MediaCard } from "@/components/media/media-card";
 import { FilterPicker } from "@/components/media/filter-picker";
 import { SectionHeading } from "@/components/media/section-heading";
+import type { PersonTrackingEntry } from "@/queries/person";
 import { useBottomInset } from "@/lib/use-bottom-inset";
 
 // Cards rendered per "page" of the filmography. 24 = 12 rows of the
@@ -47,11 +48,17 @@ const FILMOGRAPHY_PAGE_SIZE = 24;
 
 export function FilmographyList({
   credits,
-  watchedIds,
+  tracking,
+  mediaMeta,
   header,
 }: {
   credits: PersonCreditInput[];
-  watchedIds: Set<string>;
+  /** Viewer tracking per catalog-linked media_id — drives per-card rating +
+      heart. Empty while the tracking query is loading / signed out. */
+  tracking: Map<string, PersonTrackingEntry>;
+  /** Community avg_rating (0–5) per catalog-linked media_id — the card's
+      fallback rating. Empty while the media-meta query is loading. */
+  mediaMeta: Map<string, number | null>;
   header: React.ReactNode;
 }) {
   const bottomInset = useBottomInset();
@@ -115,16 +122,23 @@ export function FilmographyList({
       ItemSeparatorComponent={() => <View className="h-4" />}
       // Clear the persistent bottom navbar (mobile scroll convention).
       contentContainerStyle={{ paddingBottom: bottomInset }}
-      renderItem={({ item }) => (
-        // flex-1 wrapper so the two columns split the row evenly regardless
-        // of each card's intrinsic width.
-        <View className="flex-1">
-          <MediaCard
-            credit={item}
-            watched={!!item.media_item_id && watchedIds.has(item.media_item_id)}
-          />
-        </View>
-      )}
+      renderItem={({ item }) => {
+        // Per-card viewer rating / loved / community-avg are keyed by the
+        // credit's catalog id — null/false/absent for uncataloged credits.
+        const id = item.media_item_id;
+        return (
+          // flex-1 wrapper so the two columns split the row evenly regardless
+          // of each card's intrinsic width.
+          <View className="flex-1">
+            <MediaCard
+              credit={item}
+              viewerRating={id ? tracking.get(id)?.rating ?? null : null}
+              favorite={id ? tracking.get(id)?.is_favorite ?? false : false}
+              avgRating={id ? mediaMeta.get(id) ?? null : null}
+            />
+          </View>
+        );
+      }}
       ListHeaderComponent={
         <View>
           {header}
