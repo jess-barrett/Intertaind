@@ -1,15 +1,51 @@
 import { notFound } from "next/navigation";
 import { User } from "lucide-react";
-import {
-  getPersonDetails,
-  getPersonCombinedCredits,
-} from "@/lib/api/tmdb";
 import { tmdbImageUrl } from "@intertaind/media";
+import type { PersonCreditInput } from "@intertaind/media";
 import { createClient } from "@/lib/supabase/server";
 import BackButton from "@/components/back-button";
 import BiographyText from "@/components/media/biography-text";
 import FilmographyList from "@/components/media/filmography-list";
 import type { MediaItem, UserMedia } from "@intertaind/types";
+
+/**
+ * The `people` columns this page renders. Web's Supabase client is untyped
+ * (it doesn't depend on `@intertaind/supabase` the way mobile does), so —
+ * like the existing `MediaItem`/`UserMedia` casts below — we assert the
+ * shape of the read. These fields map 1:1 to the `people` table.
+ */
+type Person = {
+  tmdb_id: number;
+  enriched_at: string;
+  name: string;
+  biography: string | null;
+  birthday: string | null;
+  deathday: string | null;
+  place_of_birth: string | null;
+  profile_path: string | null;
+};
+
+/** How old a `people` row may be before we re-enrich it. */
+const STALE_AFTER_DAYS = 30;
+
+/**
+ * A `people` row is stale when it was last enriched more than `days` ago.
+ * An unparseable timestamp is treated as stale (re-enrich rather than trust
+ * garbage). Mirrors mobile's `isStale` in `apps/mobile/src/queries/person.ts`.
+ */
+function isStale(enrichedAt: string, days = STALE_AFTER_DAYS): boolean {
+  const enrichedMs = Date.parse(enrichedAt);
+  if (Number.isNaN(enrichedMs)) return true;
+  return Date.now() - enrichedMs > days * 24 * 60 * 60 * 1000;
+}
+
+// The `person_credits` columns `PersonCreditInput` needs. Kept as one
+// select string so it can't drift from the read below. Mirrors mobile's
+// `PERSON_CREDIT_COLUMNS`. The row's `media_type`/`credit_type` are stored
+// as CHECK-constrained text ('movie'|'tv', 'cast'|'crew') — exactly the
+// unions `PersonCreditInput` declares — so the cast below is safe.
+const PERSON_CREDIT_COLUMNS =
+  "media_tmdb_id, media_type, title, release_date, poster_path, overview, character, billing_order, job, department, credit_type, vote_average, vote_count, genre_ids, media_item_id";
 
 export default async function PersonPage({
   params,
@@ -20,17 +56,47 @@ export default async function PersonPage({
   const personId = Number.parseInt(id, 10);
   if (Number.isNaN(personId)) notFound();
 
-  let person, credits;
-  try {
-    [person, credits] = await Promise.all([
-      getPersonDetails(personId),
-      getPersonCombinedCredits(personId),
-    ]);
-  } catch {
-    notFound();
+  const supabase = await createClient();
+
+  // Read the persisted catalog data (the single source of truth shared with
+  // mobile), enriching via the `person` Edge Function when the row is
+  // missing or stale. The get-or-enrich flow mirrors mobile's `usePerson`.
+  const readPerson = async (): Promise<Person | null> => {
+    const { data } = await supabase
+      .from("people")
+      .select(
+        "tmdb_id, enriched_at, name, biography, birthday, deathday, place_of_birth, profile_path"
+      )
+      .eq("tmdb_id", personId)
+      .maybeSingle();
+    return (data as Person | null) ?? null;
+  };
+
+  let person = await readPerson();
+
+  if (!person || isStale(person.enriched_at)) {
+    // Missing or stale → get-or-enrich. `functions.invoke` forwards the
+    // server client's session (anon or authed JWT); the function holds the
+    // TMDB secret and does the write. On any invoke error we fall through
+    // to the re-read: if a stale-but-present row failed to refresh we can
+    // still render it, and a genuinely-missing person 404s below.
+    await supabase.functions.invoke("person", { body: { tmdb_id: personId } });
+    person = await readPerson();
   }
 
-  const supabase = await createClient();
+  if (!person) notFound();
+
+  const { data: creditRows } = await supabase
+    .from("person_credits")
+    .select(PERSON_CREDIT_COLUMNS)
+    .eq("person_tmdb_id", personId);
+
+  // These rows ARE the filmography input. The `person_credits` columns map
+  // 1:1 to `PersonCreditInput`; web's untyped client returns them loosely,
+  // so we assert the row shape (the CHECK-constrained text columns yield the
+  // declared unions). Mirrors mobile's `usePerson` narrowing.
+  const credits = (creditRows ?? []) as unknown as PersonCreditInput[];
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -38,12 +104,7 @@ export default async function PersonPage({
   // Batch-lookup existing media_items rows for every credit's tmdb_id.
   // Found ones get rendered as full MediaCards (slide-out + tracking);
   // the rest fall back to a simpler poster card.
-  const allTmdbIds = Array.from(
-    new Set([
-      ...credits.cast.map((c) => c.id),
-      ...credits.crew.map((c) => c.id),
-    ])
-  );
+  const allTmdbIds = Array.from(new Set(credits.map((c) => c.media_tmdb_id)));
 
   const mediaItemsByKey = new Map<string, MediaItem>();
   if (allTmdbIds.length > 0) {
@@ -80,14 +141,15 @@ export default async function PersonPage({
   }
 
   // Tracked-percentage (cast credits only — what Letterboxd surfaces).
+  const castCredits = credits.filter((c) => c.credit_type === "cast");
   let tracked: { watched: number; total: number } | null = null;
-  if (user && credits.cast.length > 0) {
-    const totalCastCredits = credits.cast.length;
+  if (user && castCredits.length > 0) {
+    const totalCastCredits = castCredits.length;
     let watched = 0;
     const seen = new Set<string>();
-    for (const c of credits.cast) {
+    for (const c of castCredits) {
       const matchedItem = mediaItemsByKey.get(
-        `${c.media_type === "movie" ? "movie" : "tv_show"}-${c.id}`
+        `${c.media_type === "movie" ? "movie" : "tv_show"}-${c.media_tmdb_id}`
       );
       if (!matchedItem) continue;
       if (seen.has(matchedItem.id)) continue;

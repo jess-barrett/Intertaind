@@ -7,8 +7,6 @@ import type {
   TMDBSearchResponse,
   TMDBImage,
   TMDBImagesResponse,
-  TMDBPerson,
-  TMDBPersonCombinedCredits,
   TMDBCompany,
   TMDBNetwork,
 } from "@intertaind/media";
@@ -176,32 +174,10 @@ export function pickBestTMDBBackdrop(
   return tmdbImageUrl(ranked[0].file_path, "original");
 }
 
-// Person bios and filmographies barely change — let Next cache them on
-// the data layer so popular people don't hammer TMDb. 24h is conservative;
-// if a person updates their bio it'll surface within a day.
-const PERSON_CACHE_SECONDS = 86_400;
-
-export async function getPersonDetails(personId: number): Promise<TMDBPerson> {
-  const url = `${BASE_URL}/person/${personId}`;
-  const res = await fetch(url, {
-    headers: headers(),
-    next: { revalidate: PERSON_CACHE_SECONDS },
-  });
-  if (!res.ok) throw new Error(`TMDB person details failed: ${res.status}`);
-  return res.json();
-}
-
-export async function getPersonCombinedCredits(
-  personId: number
-): Promise<TMDBPersonCombinedCredits> {
-  const url = `${BASE_URL}/person/${personId}/combined_credits`;
-  const res = await fetch(url, {
-    headers: headers(),
-    next: { revalidate: PERSON_CACHE_SECONDS },
-  });
-  if (!res.ok) throw new Error(`TMDB person credits failed: ${res.status}`);
-  return res.json();
-}
+// Person bios and filmographies now live in the persisted `people` /
+// `person_credits` tables (populated by the `person` Edge Function), read
+// directly by the Person page — the former TMDb `getPersonDetails` /
+// `getPersonCombinedCredits` fetchers were removed with that migration.
 
 // TMDb's published genre IDs — combined movie + TV map. Centralized
 // here so any consumer (filmography, entity pages, search) can resolve
