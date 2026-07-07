@@ -19,19 +19,18 @@
  * `profile_path` (or a null URL) falls back to a lucide `User` glyph on
  * the raised card, matching web's fallback.
  *
- * TODO(M4): cast members are NON-TAPPABLE for now. Web links each card to
- * `/person/{tmdb_id}`, but a `person` detail screen doesn't exist in the
- * mobile app yet (M4). Once that route lands, wrap the card in a
- * `Pressable` that `router.push`es to the person screen (keyed on
- * `tmdb_id`, which web already carries in the metadata). Until then the
- * cards are plain `View`s with no press affordance.
+ * Each card links to the person screen (`/person/{tmdb_id}`) — mirroring
+ * web — when the cast entry carries a `tmdb_id`. Entries WITHOUT one (older
+ * metadata) render as plain, non-tappable `View`s: there's no person route
+ * to push to without an id.
  *
  * Visual language mirrors web + the detail screen: dark + neon, sharp
  * corners, hairline `surface-border`, 2:3 profile art. Design tokens
  * only — the fallback icon colors via the `color` prop (react-native-svg)
  * from the `colors` object, never a raw hex.
  */
-import { FlatList, Text, View } from "react-native";
+import { FlatList, Pressable, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { User } from "lucide-react-native";
 import { tmdbImageUrl } from "@intertaind/media";
 import { colors } from "@intertaind/design-system";
@@ -85,13 +84,41 @@ export function CastRow({ cast }: { cast: CastMember[] }) {
 }
 
 /**
- * A single non-tappable cast card. NON-TAPPABLE by design — see the
- * TODO(M4) in the file header: person links wait on a person screen.
+ * A single cast card. Tappable → the person screen when the entry has a
+ * `tmdb_id`; otherwise a plain non-tappable `View` (no id → nowhere to
+ * route). Both branches share `CardBody` so they can't drift.
  */
 function CastCard({ member }: { member: CastMember }) {
+  const router = useRouter();
+
+  // No tmdb_id → non-tappable plain View (nothing to link to).
+  if (member.tmdb_id == null) {
+    return (
+      <View style={{ width: CARD_WIDTH }}>
+        <CardBody member={member} />
+      </View>
+    );
+  }
+
+  const tmdbId = member.tmdb_id;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`View ${member.name}`}
+      className="active:opacity-70"
+      style={{ width: CARD_WIDTH }}
+      onPress={() => router.push(`/person/${tmdbId}`)}
+    >
+      <CardBody member={member} />
+    </Pressable>
+  );
+}
+
+/** The card's inner content — shared by the tappable + non-tappable shells. */
+function CardBody({ member }: { member: CastMember }) {
   const profileUrl = tmdbImageUrl(member.profile_path, "w185");
   return (
-    <View style={{ width: CARD_WIDTH }}>
+    <>
       <View className="aspect-[2/3] w-full overflow-hidden rounded-sm border border-surface-border bg-surface-overlay">
         {profileUrl ? (
           <Image
@@ -120,6 +147,6 @@ function CastCard({ member }: { member: CastMember }) {
           {member.character}
         </Text>
       ) : null}
-    </View>
+    </>
   );
 }
