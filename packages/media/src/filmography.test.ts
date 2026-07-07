@@ -64,6 +64,24 @@ describe("sortCredits", () => {
     const m = mergeCredits([credit({ media_tmdb_id: 1, title: "Zed" }), credit({ media_tmdb_id: 2, title: "Alpha" })]);
     expect(sortCredits(m, "alpha").map((c) => c.id)).toEqual([2, 1]);
   });
+  it("release_asc puts empty dates last (ascending otherwise)", () => {
+    const m = mergeCredits([
+      credit({ media_tmdb_id: 1, release_date: null }),
+      credit({ media_tmdb_id: 2, release_date: "1990-01-01" }),
+      credit({ media_tmdb_id: 3, release_date: "2010-01-01" }),
+    ]);
+    expect(sortCredits(m, "release_asc").map((c) => c.id)).toEqual([2, 3, 1]);
+  });
+  it("billing = order asc, then vote_count desc as tiebreak", () => {
+    const m = mergeCredits([
+      credit({ media_tmdb_id: 1, billing_order: 0, vote_count: 5 }),
+      credit({ media_tmdb_id: 2, billing_order: 0, vote_count: 50 }),
+      credit({ media_tmdb_id: 3, billing_order: 3, vote_count: 999 }),
+    ]);
+    // order 0 beats order 3 (id 3 last despite the huge vote_count); within
+    // order 0 the higher vote_count wins.
+    expect(sortCredits(m, "billing").map((c) => c.id)).toEqual([2, 1, 3]);
+  });
 });
 
 describe("decadeToYearRange", () => {
