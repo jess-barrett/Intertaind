@@ -2,14 +2,14 @@
  * Media detail — catalog info (M1).
  *
  * SHARED route inside the tab navigator: this file lives in the
- * array-group folder `(tabs)/(index,explore)/media/[id].tsx`, so it is
- * extrapolated into BOTH per-tab Stacks (`(index)` and `(explore)`).
- * `router.push("/media/<id>")` therefore pushes it onto the CURRENT
- * tab's Stack — beneath the custom bottom navbar (rendered by
- * `(tabs)/_layout.tsx`), which stays visible on detail. Native/gesture
- * back returns within the tab's stack; detail→detail pushes a fresh
- * instance. The per-tab Stack (`(index,explore)/_layout.tsx`) hides
- * headers by default, and this screen keeps it that way: instead of a
+ * array-group folder `(tabs)/(index,search,activity,profile)/media/[id].tsx`,
+ * so it is extrapolated into ALL FOUR per-tab Stacks (`(index)` / `(search)` /
+ * `(activity)` / `(profile)`). `router.push("/media/<id>")` therefore pushes
+ * it onto the CURRENT tab's Stack — beneath the custom bottom navbar (rendered
+ * by `(tabs)/_layout.tsx`), which stays visible on detail. Native/gesture
+ * back returns within the tab's stack; detail→detail pushes a fresh instance.
+ * The per-tab Stack hides headers by default, and this screen keeps it that
+ * way: instead of a
  * native header it renders its OWN scroll-fading top bar
  * (`DetailHeaderBar`) so the backdrop hero reads full-bleed to the very
  * top of the screen (Letterboxd-style). At rest only a translucent back

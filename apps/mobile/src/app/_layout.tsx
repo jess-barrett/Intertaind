@@ -31,10 +31,10 @@ function RootNavigator() {
     }
 
     if (profileStatus === "present") {
-      // "/" is the Trending tab home — its route is now
-      // `(tabs)/(index)` (the tab screens moved into the shared
-      // array-group folder `(tabs)/(index,explore)/`), so `/(tabs)` is
-      // no longer a leaf href. `inAuthGroup` still keys off
+      // "/" is the Home tab — its route is `(tabs)/(index)` (the tab
+      // screens live in the shared array-group folder
+      // `(tabs)/(index,search,activity,profile)/`), so `/(tabs)` is no
+      // longer a leaf href. `inAuthGroup` still keys off
       // `segments[0] === "(auth)"`, so a signed-in user on a `(tabs)`
       // detail screen (segments[0] === "(tabs)") is NOT redirected.
       if (inAuthGroup) router.replace("/");
@@ -73,7 +73,15 @@ function RootNavigator() {
     );
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      {/* The "+" quick-log flow — a root modal presented over the tabs (and
+          the bottom bar) for a focused create flow reachable from any tab.
+          Other routes ((auth) / (tabs)) are auto-registered by the file
+          router; this only overrides quick-log's presentation. */}
+      <Stack.Screen name="quick-log" options={{ presentation: "modal" }} />
+    </Stack>
+  );
 }
 
 export default function RootLayout() {

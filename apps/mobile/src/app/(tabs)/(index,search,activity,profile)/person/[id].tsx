@@ -3,10 +3,11 @@
  * (apps/web/src/app/person/[id]/page.tsx).
  *
  * SHARED route inside the tab navigator: this file lives in the array-group
- * folder `(tabs)/(index,explore)/person/[id].tsx`, so it's extrapolated
- * into BOTH per-tab Stacks (`(index)` and `(explore)`), exactly like
- * `media/[id].tsx`. `router.push("/person/<tmdbId>")` therefore pushes it
- * onto the CURRENT tab's Stack, beneath the persistent bottom navbar.
+ * folder `(tabs)/(index,search,activity,profile)/person/[id].tsx`, so it's
+ * extrapolated into ALL FOUR per-tab Stacks (`(index)` / `(search)` /
+ * `(activity)` / `(profile)`), exactly like `media/[id].tsx`.
+ * `router.push("/person/<tmdbId>")` therefore pushes it onto the CURRENT
+ * tab's Stack, beneath the persistent bottom navbar.
  *
  * Unlike media/[id] this screen has NO hero backdrop, so its `<Stack.Screen>`
  * header is OPAQUE (`surface-default`) rather than transparent — the native
