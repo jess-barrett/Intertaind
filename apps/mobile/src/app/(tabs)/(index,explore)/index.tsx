@@ -40,11 +40,16 @@ import {
   useRecommendedForYou,
   useViewerTrackingMap,
   type HomeMediaItem,
+  type ViewerTrackingState,
 } from "@/queries/home";
 
 /** Stable empty-list fallback so a pending/empty rail doesn't churn the
  *  `useMemo`/`useCallback` deps with a fresh `[]` each render. */
 const EMPTY_ITEMS: HomeMediaItem[] = [];
+
+/** Stable empty tracking map for the pre-fetch render (same rationale as
+ *  EMPTY_ITEMS — avoid a fresh `new Map()` every render before data lands). */
+const EMPTY_TRACKING_MAP = new Map<string, ViewerTrackingState>();
 
 export default function HomeScreen() {
   const { user } = useAuth();
@@ -100,7 +105,7 @@ export default function HomeScreen() {
   );
 
   const viewerQuery = useViewerTrackingMap(allIds);
-  const trackingMap = useMemo(() => viewerQuery.data ?? new Map(), [viewerQuery.data]);
+  const trackingMap = viewerQuery.data ?? EMPTY_TRACKING_MAP;
 
   // After a card's quick-action write, refresh the batched tracking map (so
   // the card's rating/heart update) AND the Continue row (a completed

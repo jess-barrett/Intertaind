@@ -36,8 +36,9 @@ import { queryKeys } from "./keys";
  * the type badge), title, cover art, release date (for the card's year), and
  * the community avg_rating (already on the 0–5 display scale — migration 025 —
  * so no ÷2; the card's viewer-rating override comes from
- * `useViewerTrackingMap`). Shared across all five hooks so a card component
- * takes one row shape regardless of which rail produced it.
+ * `useViewerTrackingMap`). The return shape of the media-rail hooks
+ * (`usePopularMedia`, `useContinueTracking` (extended), `useRecommendedForYou`)
+ * so a card component takes one row shape regardless of which rail produced it.
  */
 export type HomeMediaItem = Pick<
   Tables<"media_items">,
@@ -79,8 +80,14 @@ export function usePopularMedia(mediaType: PopularMediaType) {
       const { data, error } = await supabase
         .from("media_items")
         .select(HOME_MEDIA_COLS)
+        // `tracking_count` is nullable (the aggregate trigger COALESCEs to 0
+        // only on write, so a never-touched row stays NULL). Postgres sorts
+        // NULLs FIRST on a DESC order, which would float untracked rows to the
+        // TOP of a "Popular" rail — so pin NULLs last. The composite index
+        // idx_media_items_type_tracking(media_type, tracking_count DESC) still
+        // serves this shape.
         .eq("media_type", mediaType)
-        .order("tracking_count", { ascending: false })
+        .order("tracking_count", { ascending: false, nullsFirst: false })
         .limit(RAIL_LIMIT);
       if (error) throw error;
       return data ?? [];
