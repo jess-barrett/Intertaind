@@ -29,6 +29,12 @@ export const queryKeys = {
   media: {
     all: ["media"] as const,
     trending: () => [...queryKeys.media.all, "trending"] as const,
+    // Top-tracked catalog for one media type — the home screen's "Popular
+    // Movies/Shows/Books/Games" rails. No user in the key: public catalog
+    // data (RLS-anon), identical for every viewer, so it's shared and works
+    // pre-auth. Keyed by mediaType so the four rails cache independently.
+    popular: (mediaType: string) =>
+      [...queryKeys.media.all, "popular", mediaType] as const,
     detail: (mediaId: string) =>
       [...queryKeys.media.all, "detail", mediaId] as const,
     // The signed-in viewer's own user_media row for one item. Kept
@@ -55,6 +61,32 @@ export const queryKeys = {
         : ([...queryKeys.user.all, userId, "shelves"] as const),
     activity: (userId: string) =>
       [...queryKeys.user.all, userId, "activity"] as const,
+    // The viewer's in-progress titles — the home "Continue" row. Deliberately
+    // nested UNDER the `shelves(userId)` prefix (["user", userId, "shelves",
+    // "continue"]) so the tracking mutations' existing
+    // `invalidateQueries(user.shelves(userId))` (tracking.ts) — a prefix
+    // match — also refreshes this row when the viewer starts/finishes/updates
+    // an item. That's the whole reason it's not a sibling "continue" segment:
+    // it lets Continue react to tracking writes WITHOUT touching tracking.ts.
+    continue: (userId: string) =>
+      [...queryKeys.user.all, userId, "shelves", "continue"] as const,
+    // Cross-media "recommended for you" — recs seeded from the viewer's own
+    // tracked media (see home.ts). Per-viewer (derived from their tracking),
+    // so keyed by userId; "anon" placeholder never fetches (enabled: !!user).
+    recommendedForYou: (userId: string) =>
+      [...queryKeys.user.all, userId, "recommended-for-you"] as const,
+    // The viewer's tracking rows for an ARBITRARY set of media ids — powers
+    // per-card rating/heart across every home rail (mirrors web's batched
+    // viewer-tracking read). Keyed by userId + a STABLE signature of the id
+    // set (sorted, de-duped, joined) so it refetches when the set changes but
+    // stays stable across renders that pass the same ids in any order.
+    trackingMap: (userId: string, mediaIds: string[]) =>
+      [
+        ...queryKeys.user.all,
+        userId,
+        "tracking-map",
+        [...new Set(mediaIds)].sort().join(","),
+      ] as const,
   },
   person: {
     all: ["person"] as const,
@@ -106,5 +138,13 @@ export const queryKeys = {
     // no-user, public-data keying as forSource.
     forTarget: (mediaId: string) =>
       [...queryKeys.recommendations.all, "for-target", mediaId] as const,
+  },
+  lists: {
+    all: ["lists"] as const,
+    // Public lists ranked by like_count — the home "Popular Lists" rail
+    // (mirrors web's page.tsx read). No user in the key: public data
+    // (RLS-scoped to public visibility), shared across viewers, works
+    // pre-auth. Includes the batched cover previews (see usePopularLists).
+    popular: () => [...queryKeys.lists.all, "popular"] as const,
   },
 } as const;
