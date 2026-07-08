@@ -83,4 +83,18 @@ export const queryKeys = {
     all: ["activity"] as const,
     feed: () => [...queryKeys.activity.all, "feed"] as const,
   },
+  recommendations: {
+    all: ["recommendations"] as const,
+    // Recs WHERE this media is the SOURCE — the "Pairs with this" list on
+    // the media detail screen (the recommended target is what's rendered).
+    // Keyed by mediaId; no user in the key — this is public catalog data
+    // (RLS-filtered to public authors), shared across viewers.
+    forSource: (mediaId: string) =>
+      [...queryKeys.recommendations.all, "for-source", mediaId] as const,
+    // Recs WHERE this media is the RECOMMENDED target — the inverse
+    // "Intertaind for this" list (the source is what's rendered). Same
+    // no-user, public-data keying as forSource.
+    forTarget: (mediaId: string) =>
+      [...queryKeys.recommendations.all, "for-target", mediaId] as const,
+  },
 } as const;

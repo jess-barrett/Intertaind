@@ -74,6 +74,7 @@ import { ActionStrip } from "@/components/media/action-strip";
 import { ExpandableText } from "@/components/media/expandable-text";
 import { InfoSections } from "@/components/media/info-sections";
 import { RatingsHistogram } from "@/components/media/ratings-histogram";
+import { RecommendationsSection } from "@/components/media/recommendations-section";
 import { SeasonCards } from "@/components/media/season-cards";
 import BookLogSheet from "@/components/media/sheets/book-log-sheet";
 import BookReadingSheet from "@/components/media/sheets/book-reading-sheet";
@@ -633,6 +634,13 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
             unconditionally and only relevant content shows. */}
           <SeasonCards mediaType={item.media_type} metadata={metadata} />
           <InfoSections mediaType={item.media_type} metadata={metadata} />
+
+          {/* Cross-media recommendations ("intertains") — the community
+            pairings for this title (both directions, behind a toggle).
+            Self-gates: renders null when this media has no recs in either
+            direction, so it mounts unconditionally in the content column
+            after the info strip (the "no empty headings" grammar). */}
+          <RecommendationsSection mediaId={item.id} />
         </View>
       </ScrollView>
 
