@@ -2,14 +2,15 @@
  * Search tab — cross-source media search, the RN mirror of web's
  * `/search` (apps/web/src/app/search/search-client.tsx). A search field +
  * media-type filter over the `media-search` Edge Function (via
- * `useMediaSearch`), rendering a 2-column grid of `MediaCard`s.
+ * `useMediaSearch`), rendering a 4-column poster grid of `MediaCard`s.
  *
  * Results are cross-source `SearchResult`s (not catalog rows), so each card
  * is adapted with `cardMediaFromSearchResult` — carrying a `{searchResult}`
  * upsert payload so tapping (or a quick-action) get-or-creates the catalog
  * row via `media-upsert`, then navigates — exactly like web's
- * `SearchResultCard` (upsert-on-click). The grid reuses the same 2-column
- * `flex-1` layout as the filmography grid.
+ * `SearchResultCard` (upsert-on-click). Cells are a FIXED quarter-width
+ * (computed from the screen), not `flex-1`, so a partial last row keeps each
+ * card a quarter-width and left-aligns instead of stretching to fill.
  *
  * ── Debounce ──────────────────────────────────────────────────────────
  * `useMediaSearch` is declarative (`enabled` gates the round trip), so the
@@ -32,6 +33,7 @@ import {
   ScrollView,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -56,8 +58,14 @@ import { useMediaSearch, type MediaSearchType } from "@/queries/search";
 const DEBOUNCE_MS = 300;
 /** Min chars before the hook invokes (matches useMediaSearch's gate). */
 const MIN_QUERY_LENGTH = 2;
-/** 2-column poster grid — same layout as the filmography grid. */
-const NUM_COLUMNS = 2;
+/** 4-column poster grid. Cells are a FIXED quarter-width (computed from the
+ *  screen), NOT flex-1, so a partial last row keeps each card at a quarter
+ *  and left-aligns instead of stretching to fill. */
+const NUM_COLUMNS = 4;
+/** Horizontal padding on each grid row + the gutter between columns. The cell
+ *  width is derived from these so 4 cells + 3 gutters exactly fill the row. */
+const GRID_PADDING = 16;
+const GRID_GAP = 10;
 
 /**
  * Type filter tabs. `key` is the request alias the `media-search` function
@@ -89,6 +97,11 @@ function resultKey(r: SearchResult): string {
 export default function SearchScreen() {
   const insets = useSafeAreaInsets();
   const bottomInset = useBottomInset();
+  const { width } = useWindowDimensions();
+  // Fixed quarter-width cell: (row width − side padding − the 3 gutters) / 4.
+  // Every card is exactly this wide regardless of how many results a row has.
+  const cellWidth =
+    (width - GRID_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
 
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -214,16 +227,17 @@ export default function SearchScreen() {
           keyExtractor={resultKey}
           numColumns={NUM_COLUMNS}
           keyboardShouldPersistTaps="handled"
-          // 12pt gutter between the two columns; the grid owns its horizontal
-          // padding (same split as the filmography grid).
-          columnWrapperStyle={{ gap: 12, paddingHorizontal: 16 }}
-          // 16pt vertical gap between rows.
-          ItemSeparatorComponent={() => <View className="h-4" />}
+          // Gutter between columns; the grid owns its horizontal padding. The
+          // row left-aligns (default), so a partial last row keeps its cards a
+          // quarter-width instead of stretching.
+          columnWrapperStyle={{ gap: GRID_GAP, paddingHorizontal: GRID_PADDING }}
+          // Vertical gap between rows.
+          ItemSeparatorComponent={() => <View className="h-3" />}
           contentContainerStyle={{ paddingTop: 4, paddingBottom: bottomInset }}
           renderItem={({ item }) => (
-            // flex-1 wrapper so the two columns split the row evenly.
-            <View className="flex-1">
-              <MediaCard media={cardMediaFromSearchResult(item)} />
+            // Fixed quarter-width cell (never flex-1, so no last-row stretch).
+            <View style={{ width: cellWidth }}>
+              <MediaCard media={cardMediaFromSearchResult(item)} compact />
             </View>
           )}
         />
