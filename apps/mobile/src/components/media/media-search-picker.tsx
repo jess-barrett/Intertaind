@@ -184,23 +184,30 @@ export function MediaSearchPicker({
           </Text>
         </View>
       ) : (
-        <BottomSheetFlatList
-          data={results}
-          keyExtractor={resultKey}
-          keyboardShouldPersistTaps="handled"
-          getItemLayout={(_, index) => ({
-            length: ROW_HEIGHT,
-            offset: ROW_HEIGHT * index,
-            index,
-          })}
-          // Height = exactly the rows to show: all of them when few (no blank
-          // space below), else a 3.5-row peek that scrolls. A FIXED height (not
-          // maxHeight) so the sheet's dynamic sizing measures it correctly.
+        // The fixed height goes on this PLAIN wrapper View — a real layout
+        // boundary the sheet's dynamic-size measure respects. A height on the
+        // BottomSheetFlatList itself is ignored by that measure (it reads the
+        // list's FULL content height), which is why many results over-expanded
+        // the sheet while few didn't. Height = exactly the rows to show: all of
+        // them when few (no blank below), else a 3.5-row peek that scrolls.
+        <View
           style={{ height: Math.min(results.length, PEEK_ROWS) * ROW_HEIGHT }}
-          renderItem={({ item }) => (
-            <ResultRow result={item} onPress={() => onPick(item)} />
-          )}
-        />
+        >
+          <BottomSheetFlatList
+            data={results}
+            keyExtractor={resultKey}
+            keyboardShouldPersistTaps="handled"
+            getItemLayout={(_, index) => ({
+              length: ROW_HEIGHT,
+              offset: ROW_HEIGHT * index,
+              index,
+            })}
+            style={{ flex: 1 }}
+            renderItem={({ item }) => (
+              <ResultRow result={item} onPress={() => onPick(item)} />
+            )}
+          />
+        </View>
       )}
     </View>
   );
