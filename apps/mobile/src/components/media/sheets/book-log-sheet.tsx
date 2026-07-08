@@ -203,8 +203,8 @@ function BookLogForm({
     review !== seed.review ||
     isFavorite !== seed.isFavorite;
 
-  function handleSave() {
-    if (!isDirty) return;
+  async function handleSave() {
+    if (!isDirty || saving) return; // saving guard prevents a double-fire mid-await
     setErrorMessage(null);
 
     // Merge onto the viewer's CURRENT progress so sibling keys (e.g.
@@ -218,28 +218,32 @@ function BookLogForm({
       sub_shelf: finished ? "finished" : "dnf",
     });
 
-    trackMutation.mutate(
-      {
-        mediaId: media.id,
-        status: finished ? "completed" : "dropped",
-        // Display stars → 1–10 DB scale (two-scale rule); null clears.
-        rating: starsToRating(stars),
-        review,
-        is_favorite: isFavorite,
-        // Json is the column type; ProgressRecord is a plain object.
-        progress: progress as Tables<"user_media">["progress"],
-        // completed_at = now when Finished, null for DNF (web parity:
-        // `shelf === "finished" ? new Date().toISOString() : null`).
-        completed_at: finished ? new Date().toISOString() : null,
-      },
-      {
-        onSuccess: () => onDismiss(),
-        onError: (err) =>
-          setErrorMessage(
-            trackingErrorMessage(err, "your log", "book-log-sheet"),
-          ),
-      },
-    );
+    const vars = {
+      mediaId: media.id,
+      status: finished ? ("completed" as const) : ("dropped" as const),
+      // Display stars → 1–10 DB scale (two-scale rule); null clears.
+      rating: starsToRating(stars),
+      review,
+      is_favorite: isFavorite,
+      // Json is the column type; ProgressRecord is a plain object.
+      progress: progress as Tables<"user_media">["progress"],
+      // completed_at = now when Finished, null for DNF (web parity:
+      // `shelf === "finished" ? new Date().toISOString() : null`).
+      completed_at: finished ? new Date().toISOString() : null,
+    };
+
+    // Use mutateAsync + await rather than mutate(vars, { onSuccess }): the
+    // optimistic write bumps viewerRow → the parent recomputes `seed` →
+    // `seedKey` changes → React UNMOUNTS this form, and TanStack Query v5
+    // DROPS a per-call `onSuccess` when the caller unmounts before the
+    // mutation settles. The awaited continuation still runs, and onDismiss
+    // targets the OUTER sheet's stable ref (which does not remount).
+    try {
+      await trackMutation.mutateAsync(vars);
+      onDismiss();
+    } catch (err) {
+      setErrorMessage(trackingErrorMessage(err, "your log", "book-log-sheet"));
+    }
   }
 
   const saving = trackMutation.isPending;

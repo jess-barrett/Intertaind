@@ -140,8 +140,8 @@ function TvWatchingForm({
     setEpisode(null);
   }
 
-  function handleSave() {
-    if (!isDirty || episode == null) return;
+  async function handleSave() {
+    if (!isDirty || episode == null || saving) return; // saving guard prevents a double-fire mid-await
     setErrorMessage(null);
 
     // Merge onto the viewer's CURRENT progress so sibling keys survive —
@@ -172,20 +172,26 @@ function TvWatchingForm({
       watched_episodes: watched,
     };
 
-    trackMutation.mutate(
-      {
-        mediaId: media.id,
-        status: "in_progress",
-        progress: progress as Tables<"user_media">["progress"],
-      },
-      {
-        onSuccess: () => onDismiss(),
-        onError: (err) =>
-          setErrorMessage(
-            trackingErrorMessage(err, "your progress", "tv-watching-sheet"),
-          ),
-      },
-    );
+    const vars = {
+      mediaId: media.id,
+      status: "in_progress" as const,
+      progress: progress as Tables<"user_media">["progress"],
+    };
+
+    // Use mutateAsync + await rather than mutate(vars, { onSuccess }): the
+    // optimistic write bumps viewerRow → the parent recomputes `seed` →
+    // `seedKey` changes → React UNMOUNTS this form, and TanStack Query v5
+    // DROPS a per-call `onSuccess` when the caller unmounts before the
+    // mutation settles. The awaited continuation still runs, and onDismiss
+    // targets the OUTER sheet's stable ref (which does not remount).
+    try {
+      await trackMutation.mutateAsync(vars);
+      onDismiss();
+    } catch (err) {
+      setErrorMessage(
+        trackingErrorMessage(err, "your progress", "tv-watching-sheet"),
+      );
+    }
   }
 
   const saving = trackMutation.isPending;

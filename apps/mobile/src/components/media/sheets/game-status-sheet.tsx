@@ -125,12 +125,13 @@ const GameStatusSheet = forwardRef<
   const current = readSubStatus(viewerRow);
   const saving = trackMutation.isPending;
 
-  function selectStatus(option: GameStatusOption) {
+  async function selectStatus(option: GameStatusOption) {
     // Re-tapping the active status is a no-op — just close.
     if (option.key === current) {
       sheetRef.current?.dismiss();
       return;
     }
+    if (saving) return; // guard against a double-fire mid-await
     setErrorMessage(null);
 
     // Merge onto the viewer's CURRENT progress so sibling keys
@@ -144,20 +145,26 @@ const GameStatusSheet = forwardRef<
       sub_status: option.key,
     });
 
-    trackMutation.mutate(
-      {
-        mediaId: media.id,
-        status: option.tracking,
-        progress: progress as Tables<"user_media">["progress"],
-      },
-      {
-        onSuccess: () => sheetRef.current?.dismiss(),
-        onError: (err) =>
-          setErrorMessage(
-            trackingErrorMessage(err, "your status", "game-status-sheet"),
-          ),
-      },
-    );
+    const vars = {
+      mediaId: media.id,
+      status: option.tracking,
+      progress: progress as Tables<"user_media">["progress"],
+    };
+
+    // Use mutateAsync + await rather than mutate(vars, { onSuccess }): the
+    // optimistic write updates viewerRow and this sheet re-renders off it
+    // (same remount-via-parent-tracking issue as the log sheets). TanStack
+    // Query v5 DROPS a per-call `onSuccess` if the caller unmounts before
+    // the mutation settles; the awaited continuation dismisses regardless,
+    // via the sheet's own stable ref.
+    try {
+      await trackMutation.mutateAsync(vars);
+      sheetRef.current?.dismiss();
+    } catch (err) {
+      setErrorMessage(
+        trackingErrorMessage(err, "your status", "game-status-sheet"),
+      );
+    }
   }
 
   return (

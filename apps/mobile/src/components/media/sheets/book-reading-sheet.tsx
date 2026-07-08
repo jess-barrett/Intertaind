@@ -159,8 +159,8 @@ function BookReadingForm({
   const isDirty =
     currentPage !== seed.currentPage || totalPages !== seed.totalPages;
 
-  function handleSave() {
-    if (!isDirty) return;
+  async function handleSave() {
+    if (!isDirty || saving) return; // saving guard prevents a double-fire mid-await
     setErrorMessage(null);
 
     // current_page: blank → omit (builder's "provided-only" contract); a
@@ -192,28 +192,30 @@ function BookReadingForm({
       total_pages: total,
     });
 
-    trackMutation.mutate(
-      {
-        mediaId: media.id,
-        status: "in_progress",
-        // Json is the column type; ProgressRecord is a plain object.
-        progress: progress as Tables<"user_media">["progress"],
-        // No started_at: useTrackMediaMutation derives it (now) from the
-        // in_progress status (web sets it from a date field — omitted here,
-        // no native date picker in M2).
-      },
-      {
-        onSuccess: () => onDismiss(),
-        onError: (err) =>
-          setErrorMessage(
-            trackingErrorMessage(
-              err,
-              "your reading progress",
-              "book-reading-sheet",
-            ),
-          ),
-      },
-    );
+    const vars = {
+      mediaId: media.id,
+      status: "in_progress" as const,
+      // Json is the column type; ProgressRecord is a plain object.
+      progress: progress as Tables<"user_media">["progress"],
+      // No started_at: useTrackMediaMutation derives it (now) from the
+      // in_progress status (web sets it from a date field — omitted here,
+      // no native date picker in M2).
+    };
+
+    // Use mutateAsync + await rather than mutate(vars, { onSuccess }): the
+    // optimistic write bumps viewerRow → the parent recomputes `seed` →
+    // `seedKey` changes → React UNMOUNTS this form, and TanStack Query v5
+    // DROPS a per-call `onSuccess` when the caller unmounts before the
+    // mutation settles. The awaited continuation still runs, and onDismiss
+    // targets the OUTER sheet's stable ref (which does not remount).
+    try {
+      await trackMutation.mutateAsync(vars);
+      onDismiss();
+    } catch (err) {
+      setErrorMessage(
+        trackingErrorMessage(err, "your reading progress", "book-reading-sheet"),
+      );
+    }
   }
 
   const saving = trackMutation.isPending;

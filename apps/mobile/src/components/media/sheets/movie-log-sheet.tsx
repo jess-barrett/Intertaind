@@ -178,8 +178,8 @@ function MovieLogForm({
     review !== seed.review ||
     isFavorite !== seed.isFavorite;
 
-  function handleSave() {
-    if (!isDirty) return;
+  async function handleSave() {
+    if (!isDirty || saving) return; // saving guard prevents a double-fire mid-await
     setErrorMessage(null);
 
     // Merge onto the viewer's CURRENT progress so sibling keys (e.g.
@@ -194,28 +194,33 @@ function MovieLogForm({
       is_rewatch: isRewatch,
     });
 
-    trackMutation.mutate(
-      {
-        mediaId: media.id,
-        status: "completed",
-        // Display stars → 1–10 DB scale (two-scale rule); null clears.
-        rating: starsToRating(stars),
-        review,
-        is_favorite: isFavorite,
-        // Json is the column type; ProgressRecord is a plain object.
-        progress: progress as Tables<"user_media">["progress"],
-        // completed_at = the watched-on DAY as an ISO timestamp (web
-        // parity: `new Date(watchedOn).toISOString()`).
-        completed_at: new Date(watchedOn).toISOString(),
-      },
-      {
-        onSuccess: () => onDismiss(),
-        onError: (err) =>
-          setErrorMessage(
-            trackingErrorMessage(err, "your log", "movie-log-sheet"),
-          ),
-      },
-    );
+    const vars = {
+      mediaId: media.id,
+      status: "completed" as const,
+      // Display stars → 1–10 DB scale (two-scale rule); null clears.
+      rating: starsToRating(stars),
+      review,
+      is_favorite: isFavorite,
+      // Json is the column type; ProgressRecord is a plain object.
+      progress: progress as Tables<"user_media">["progress"],
+      // completed_at = the watched-on DAY as an ISO timestamp (web
+      // parity: `new Date(watchedOn).toISOString()`).
+      completed_at: new Date(watchedOn).toISOString(),
+    };
+
+    // Use mutateAsync + await rather than mutate(vars, { onSuccess }): the
+    // optimistic write updates viewerRow → the parent recomputes `seed` →
+    // `seedKey` changes → React UNMOUNTS this form. In TanStack Query v5 a
+    // per-call `onSuccess` is DROPPED when the calling component unmounts
+    // before the mutation settles, so it would never fire. The awaited
+    // continuation runs regardless of the form unmount, and `onDismiss`
+    // targets the OUTER sheet's stable ref (which does not remount).
+    try {
+      await trackMutation.mutateAsync(vars);
+      onDismiss();
+    } catch (err) {
+      setErrorMessage(trackingErrorMessage(err, "your log", "movie-log-sheet"));
+    }
   }
 
   const saving = trackMutation.isPending;
@@ -388,10 +393,14 @@ const MovieLogSheet = forwardRef<
   // external tracking change re-seeds cleanly.
   //
   // Caveat for longer-lived sheets (2.6 TV): the remount discards
-  // in-progress edits if `viewerRow` changes WHILE the sheet is open. Safe
-  // for movies — the only such change is this sheet's own
-  // save-then-dismiss — but the TV sheets stay open across pickers, so they
-  // should guard a mid-edit remount rather than key on the live seed.
+  // in-progress edits if `viewerRow` changes WHILE the sheet is open. For
+  // movies the only such change is this sheet's own save — and that save
+  // remounts the form MID-MUTATION (the optimistic write bumps viewerRow →
+  // seedKey → unmount). That's WHY the save handler dismisses via
+  // mutateAsync + await instead of a per-call onSuccess (dropped on the
+  // unmount); onDismiss targets this OUTER component's stable ref, which
+  // never remounts. TV sheets stay open across pickers too, so they should
+  // guard a mid-edit remount rather than key on the live seed.
   const seed = useMemo(() => deriveSeed(viewerRow), [viewerRow]);
 
   return (

@@ -196,8 +196,8 @@ function TvLogEpisodeForm({
     setReview(existing?.review ?? "");
   }
 
-  function handleSave() {
-    if (!isDirty || episode == null) return;
+  async function handleSave() {
+    if (!isDirty || episode == null || saving) return; // saving guard prevents a double-fire mid-await
     setErrorMessage(null);
 
     // Per-episode log — rating on the 1–10 DB scale, review verbatim.
@@ -233,27 +233,29 @@ function TvLogEpisodeForm({
     progress.current_season = nextSeason;
     progress.current_episode = nextEpisode;
 
-    trackMutation.mutate(
-      {
-        mediaId: media.id,
-        status: newStatus,
-        // No top-level rating/review — the episode's rating/review live in
-        // episode_logs (web parity); omitting leaves those columns untouched.
-        progress: progress as Tables<"user_media">["progress"],
-        completed_at: isSeriesFinale ? new Date().toISOString() : null,
-      },
-      {
-        onSuccess: () => onDismiss(),
-        onError: (err) =>
-          setErrorMessage(
-            trackingErrorMessage(
-              err,
-              "your episode log",
-              "tv-log-episode-sheet",
-            ),
-          ),
-      },
-    );
+    const vars = {
+      mediaId: media.id,
+      status: newStatus,
+      // No top-level rating/review — the episode's rating/review live in
+      // episode_logs (web parity); omitting leaves those columns untouched.
+      progress: progress as Tables<"user_media">["progress"],
+      completed_at: isSeriesFinale ? new Date().toISOString() : null,
+    };
+
+    // Use mutateAsync + await rather than mutate(vars, { onSuccess }): the
+    // optimistic write bumps viewerRow → the parent recomputes `seed` →
+    // `seedKey` changes → React UNMOUNTS this form, and TanStack Query v5
+    // DROPS a per-call `onSuccess` when the caller unmounts before the
+    // mutation settles. The awaited continuation still runs, and onDismiss
+    // targets the OUTER sheet's stable ref (which does not remount).
+    try {
+      await trackMutation.mutateAsync(vars);
+      onDismiss();
+    } catch (err) {
+      setErrorMessage(
+        trackingErrorMessage(err, "your episode log", "tv-log-episode-sheet"),
+      );
+    }
   }
 
   const saving = trackMutation.isPending;

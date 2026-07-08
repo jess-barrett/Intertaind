@@ -205,8 +205,8 @@ function GameLogForm({
     review !== seed.review ||
     isFavorite !== seed.isFavorite;
 
-  function handleSave() {
-    if (!isDirty) return;
+  async function handleSave() {
+    if (!isDirty || saving) return; // saving guard prevents a double-fire mid-await
     setErrorMessage(null);
 
     // Parse hours: blank → omit (web parity); a non-finite parse also
@@ -231,27 +231,31 @@ function GameLogForm({
       ...(hours != null ? { hours_played: hours } : {}),
     });
 
-    trackMutation.mutate(
-      {
-        mediaId: media.id,
-        status: selected.tracking,
-        // Display stars → 1–10 DB scale (two-scale rule); null clears.
-        rating: starsToRating(stars),
-        review,
-        is_favorite: isFavorite,
-        // Json is the column type; ProgressRecord is a plain object.
-        progress: progress as Tables<"user_media">["progress"],
-        // No completed_at/started_at: useTrackMediaMutation derives them
-        // from `status` (web game-modal sets them explicitly, same result).
-      },
-      {
-        onSuccess: () => onDismiss(),
-        onError: (err) =>
-          setErrorMessage(
-            trackingErrorMessage(err, "your log", "game-log-sheet"),
-          ),
-      },
-    );
+    const vars = {
+      mediaId: media.id,
+      status: selected.tracking,
+      // Display stars → 1–10 DB scale (two-scale rule); null clears.
+      rating: starsToRating(stars),
+      review,
+      is_favorite: isFavorite,
+      // Json is the column type; ProgressRecord is a plain object.
+      progress: progress as Tables<"user_media">["progress"],
+      // No completed_at/started_at: useTrackMediaMutation derives them
+      // from `status` (web game-modal sets them explicitly, same result).
+    };
+
+    // Use mutateAsync + await rather than mutate(vars, { onSuccess }): the
+    // optimistic write bumps viewerRow → the parent recomputes `seed` →
+    // `seedKey` changes → React UNMOUNTS this form, and TanStack Query v5
+    // DROPS a per-call `onSuccess` when the caller unmounts before the
+    // mutation settles. The awaited continuation still runs, and onDismiss
+    // targets the OUTER sheet's stable ref (which does not remount).
+    try {
+      await trackMutation.mutateAsync(vars);
+      onDismiss();
+    } catch (err) {
+      setErrorMessage(trackingErrorMessage(err, "your log", "game-log-sheet"));
+    }
   }
 
   const saving = trackMutation.isPending;

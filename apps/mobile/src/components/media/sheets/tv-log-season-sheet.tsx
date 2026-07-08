@@ -173,8 +173,8 @@ function TvLogSeasonForm({
     setReview(existing?.review ?? "");
   }
 
-  function handleSave() {
-    if (!isDirty) return;
+  async function handleSave() {
+    if (!isDirty || saving) return; // saving guard prevents a double-fire mid-await
     setErrorMessage(null);
 
     // Per-season log — rating on the 1–10 DB scale (stars → DB), review
@@ -205,25 +205,31 @@ function TvLogSeasonForm({
           )
         : null;
 
-    trackMutation.mutate(
-      {
-        mediaId: media.id,
-        status: all ? "completed" : "in_progress",
-        // Top-level rating = rated-season average; review stays empty
-        // (web parity — the season's own review lives in the log object).
-        rating: avgRating,
-        review: "",
-        progress: progress as Tables<"user_media">["progress"],
-        completed_at: all ? new Date().toISOString() : null,
-      },
-      {
-        onSuccess: () => onDismiss(),
-        onError: (err) =>
-          setErrorMessage(
-            trackingErrorMessage(err, "your season log", "tv-log-season-sheet"),
-          ),
-      },
-    );
+    const vars = {
+      mediaId: media.id,
+      status: all ? ("completed" as const) : ("in_progress" as const),
+      // Top-level rating = rated-season average; review stays empty
+      // (web parity — the season's own review lives in the log object).
+      rating: avgRating,
+      review: "",
+      progress: progress as Tables<"user_media">["progress"],
+      completed_at: all ? new Date().toISOString() : null,
+    };
+
+    // Use mutateAsync + await rather than mutate(vars, { onSuccess }): the
+    // optimistic write bumps viewerRow → the parent recomputes `seed` →
+    // `seedKey` changes → React UNMOUNTS this form, and TanStack Query v5
+    // DROPS a per-call `onSuccess` when the caller unmounts before the
+    // mutation settles. The awaited continuation still runs, and onDismiss
+    // targets the OUTER sheet's stable ref (which does not remount).
+    try {
+      await trackMutation.mutateAsync(vars);
+      onDismiss();
+    } catch (err) {
+      setErrorMessage(
+        trackingErrorMessage(err, "your season log", "tv-log-season-sheet"),
+      );
+    }
   }
 
   const saving = trackMutation.isPending;
