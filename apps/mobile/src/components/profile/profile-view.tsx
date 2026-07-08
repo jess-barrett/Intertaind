@@ -136,15 +136,17 @@ export function ProfileView({
     <ProfileShell showBack={showBack} topInset={insets.top}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: 8, paddingBottom: 32 + bottomInset }}
+        // Primary tabs sit at the very top; when a back pill floats there too
+        // (u/[username]), pad the content down so the tabs clear it.
+        contentContainerStyle={{
+          paddingTop: showBack ? 44 : 8,
+          paddingBottom: 32 + bottomInset,
+        }}
       >
-        <ProfileHeader
-          profile={profile}
-          counts={countsQuery.data}
-          isOwner={isOwner}
-        />
-
-        <View className="px-4 pt-4">
+        {/* Primary tabs ABOVE the profile info — the header then separates them
+            from any sub-nav a segment renders (e.g. Shelves' type/status bars),
+            so the page never reads as a stack of near-identical bars. */}
+        <View className="px-4 pb-4">
           <SegmentedControl
             options={SEGMENTS}
             value={segment}
@@ -152,9 +154,14 @@ export function ProfileView({
           />
         </View>
 
-        {/* Active segment body. Overview (M2) + Shelves (M3) are live;
-            Recs/Lists (M4–M5) are still stubs. Each self-fetches by
-            `profileUserId`. */}
+        <ProfileHeader
+          profile={profile}
+          counts={countsQuery.data}
+          isOwner={isOwner}
+        />
+
+        {/* Active segment body. Overview (M2) + Shelves (M3) + Recs (M4) +
+            Lists (M5) are live; each self-fetches by `profileUserId`. */}
         <View className="px-4 pt-6">
           <SegmentBody
             segment={segment}

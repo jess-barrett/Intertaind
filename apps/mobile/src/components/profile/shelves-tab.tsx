@@ -5,12 +5,15 @@
  * type (from `SHELF_CONFIG`), then a poster grid of the owner's tracked titles
  * in that section.
  *
- * ── One combined filter row ─────────────────────────────────────────────────
- * Media type + status live on a SINGLE horizontal rounded-sm row (not two
- * stacked bars): the ACTIVE type shows its glyph + label; the other types
- * collapse to icon-only buttons; a thin divider; then the status-section chips
- * for the active type (from `SHELF_CONFIG[type]`). Everything is `rounded-sm`
- * (no pills) for consistency with the primary segmented control above it.
+ * ── Two bars beneath the profile info ───────────────────────────────────────
+ * The primary tabs (Profile/Shelves/Recs/Lists) live at the TOP of the screen
+ * (in ProfileView, above the header), so this segment's own sub-nav sits BELOW
+ * the profile info and never stacks against them:
+ *   1. Media type — the four shelves as their own bar (Movies/Shows/Books/Games,
+ *      icon + label chips, the active one accent-tinted).
+ *   2. Status section — the sections `SHELF_CONFIG[type]` offers for the chosen
+ *      type (Watched / Watchlist / …), as chips beneath the type bar.
+ * Both bars are `rounded-sm` (no pills), consistent with the primary tabs.
  *
  * Switching TYPE resets the section to that type's FIRST section (each type has
  * a different section set, so the old section key is meaningless under the new
@@ -117,13 +120,13 @@ export function ShelvesTab({
   }
 
   return (
-    <View className="gap-4">
-      {/* Combined filter row: media type (active = icon+label, others icon-only)
-          · divider · status chips — one scrollable rounded-sm row. */}
+    <View className="gap-3">
+      {/* (1) Media-type bar — the four shelves, icon + label chips (rounded-sm),
+          active one accent-tinted. */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: 8, alignItems: "center" }}
+        contentContainerStyle={{ gap: 8 }}
       >
         {TYPE_ORDER.map((t) => {
           const active = t === type;
@@ -135,7 +138,7 @@ export function ShelvesTab({
               accessibilityState={{ selected: active }}
               accessibilityLabel={`Show ${MEDIA_TYPE_CONFIG[t].label}`}
               onPress={() => selectType(t)}
-              className={`flex-row items-center gap-1.5 rounded-sm px-2.5 py-1.5 active:opacity-70 ${
+              className={`flex-row items-center gap-1.5 rounded-sm px-3 py-1.5 active:opacity-70 ${
                 active ? "bg-surface-overlay" : ""
               }`}
             >
@@ -143,24 +146,24 @@ export function ShelvesTab({
                 size={16}
                 color={active ? MEDIA_TYPE_ICON_COLOR[t] : colors["text-muted"]}
               />
-              {/* Only the active type shows its label — others stay icon-only. */}
-              {active ? (
-                <Text className="text-sm font-medium text-text-primary">
-                  {MEDIA_TYPE_CONFIG[t].label}
-                </Text>
-              ) : null}
+              <Text
+                className={`text-sm font-medium ${
+                  active ? "text-text-primary" : "text-text-muted"
+                }`}
+              >
+                {MEDIA_TYPE_CONFIG[t].label}
+              </Text>
             </Pressable>
           );
         })}
+      </ScrollView>
 
-        {/* Divider between the type toggles and the status chips. `w-px`
-            compiles to ~0 in NativeWind, so set the width via style. */}
-        <View
-          style={{ width: 1, height: 20 }}
-          className="mx-1 bg-surface-border"
-        />
-
-        {/* Status sections for the active type — rounded-sm chips. */}
+      {/* (2) Status sections for the active type — chips (rounded-sm) beneath. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: 8 }}
+      >
         {sections.map((s, i) => {
           const active = i === sectionIndex;
           return (
