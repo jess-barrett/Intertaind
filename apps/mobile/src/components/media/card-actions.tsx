@@ -114,6 +114,10 @@ const TYPE_ACCENT: Record<MediaType, string> = {
 const TAB_HEIGHT = 30;
 const TAB_COLLAPSED_WIDTH = 30;
 const TAB_EXPANDED_WIDTH = 128;
+/** Narrower expanded width for compact cards (the home rails, ~112pt-wide
+ *  posters) so the slide-out row — and its ⋯ — fits inside the poster's
+ *  overflow-hidden bounds instead of being clipped off the right edge. */
+const TAB_EXPANDED_WIDTH_COMPACT = 102;
 const NOTCH = 12;
 
 /** Slide-in/out layout tween for the width reveal (mirrors web's 200ms). */
@@ -232,6 +236,7 @@ export function CardActions({
   media,
   tracking,
   onMutated,
+  compact = false,
 }: {
   media: CardMedia;
   tracking: {
@@ -240,6 +245,9 @@ export function CardActions({
     is_favorite: boolean;
   } | null;
   onMutated?: () => void;
+  /** Use the narrower expanded slide-out so the row fits inside a compact
+      (rail) poster's width — otherwise the ⋯ is clipped. Default false. */
+  compact?: boolean;
 }) {
   const router = useRouter();
   const upsert = useMediaUpsertMutation();
@@ -439,7 +447,10 @@ export function CardActions({
     }
   }
 
-  const tabWidth = open ? TAB_EXPANDED_WIDTH : TAB_COLLAPSED_WIDTH;
+  const expandedWidth = compact
+    ? TAB_EXPANDED_WIDTH_COMPACT
+    : TAB_EXPANDED_WIDTH;
+  const tabWidth = open ? expandedWidth : TAB_COLLAPSED_WIDTH;
 
   return (
     // Bottom-left of the poster. The card's poster wrapper is

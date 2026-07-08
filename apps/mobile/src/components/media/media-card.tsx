@@ -68,6 +68,7 @@ export function MediaCard({
   avgRating,
   onMutated,
   showMeta = true,
+  compact = false,
 }: {
   media: CardMedia;
   /** The viewer's tracking row for this catalog id (null = untracked /
@@ -87,6 +88,9 @@ export function MediaCard({
       filmography grid). The home rails set this false so a rail card is just
       the poster + its quick-actions slider — a cleaner, denser carousel. */
   showMeta?: boolean;
+  /** Compact (rail) card — narrows the quick-actions slide-out so its ⋯ isn't
+      clipped by the smaller poster's width. Default false. */
+  compact?: boolean;
 }) {
   const router = useRouter();
   const upsert = useMediaUpsertMutation();
@@ -172,6 +176,7 @@ export function MediaCard({
           media={media}
           tracking={tracking ?? null}
           onMutated={onMutated}
+          compact={compact}
         />
       </View>
 

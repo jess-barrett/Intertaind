@@ -97,6 +97,7 @@ export function MediaRail({
                 tracking={tracking}
                 onMutated={onMutated}
                 showMeta={false}
+                compact
               />
             </View>
           );
