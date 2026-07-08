@@ -1,19 +1,18 @@
 /**
- * OverviewTab — the Overview segment of the shared `ProfileView`. Mirrors the
- * top of web's `/u/[username]`: the Top-4 favorites (per media type), a Recent
- * activity preview, and a Recent reviews preview. Each block self-hides when
- * empty; a thin divider separates the visible blocks; when EVERYTHING is empty
- * a single muted "Nothing here yet." shows.
+ * OverviewTab — the "Profile" segment of the shared `ProfileView`. Mirrors the
+ * top of web's `/u/[username]`: the Top-4 favorites, a Recent activity preview,
+ * and a Recent reviews preview. Each block self-hides when empty; a thin
+ * divider separates the visible blocks; when EVERYTHING is empty a single muted
+ * "Nothing here yet." shows.
  *
  * All data arrives via the `src/queries/profile.ts` hooks (no inline supabase):
  *   - `useProfileTopFours`   → the four `__top5_<type>` favorites shelves.
  *   - `useProfileRecentActivity` / `useProfileRecentReviews` → activity_log.
  *
- * Favorites are catalog `media_items` rows, so they adapt through
- * `cardMediaFromHomeItem` into `MediaCard` as PURE POSTERS (`showMeta={false}`
- * + `showActions={false}` — no title/meta, no quick-actions tab), laid out as a
- * small poster row per type under a "Favorite {type}" heading. Activity rows
- * render via `ActivityRow` (shared `formatActivity` phrasing).
+ * Favorites render via `FavoritesShowcase` — one "Favorites" row of fanned
+ * per-type decks that expand to fill the row on tap (see that file). Activity /
+ * reviews render as `ActivityRow` lists (shared `formatActivity` phrasing),
+ * each with a "See all ›" affordance (full screens land in M6).
  *
  * Owner sign-out: NOT rendered here — `ProfileView`'s `SegmentBody` keeps the
  * existing `SignOutButton` after this component for the owner (there's no
@@ -23,33 +22,21 @@
  * Mobile primitives only; icons color via the `color` PROP.
  */
 import type { ReactNode } from "react";
-import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { ChevronRight } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
-import { MEDIA_TYPE_CONFIG, type MediaType } from "@intertaind/types";
+import type { MediaType } from "@intertaind/types";
 
-import { MediaCard } from "@/components/media/media-card";
-import { cardMediaFromHomeItem } from "@/components/media/card-media";
 import { ActivityRow } from "@/components/profile/activity-row";
-import type { HomeMediaItem } from "@/queries/home";
+import { FavoritesShowcase } from "@/components/profile/favorites-showcase";
 import {
   useProfileRecentActivity,
   useProfileRecentReviews,
   useProfileTopFours,
 } from "@/queries/profile";
 
-/** Fixed media-type order for the favorites sections (movie → tv → book → game). */
+/** Fixed media-type order for the favorites empty-check (movie → tv → book → game). */
 const FAVORITE_ORDER: MediaType[] = ["movie", "tv_show", "book", "video_game"];
-
-/** Favorites row geometry. The four posters are sized to EXACTLY fill the
- *  content width (mirrors the search grid) so a full row's left/right margins
- *  both equal the container padding — no slack collecting on the right. */
-const FAV_COLUMNS = 4;
-const FAV_GAP = 12; // gutter between the four posters
-/** Horizontal padding of the segment content — ProfileView's SegmentBody wraps
- *  each segment in `px-4` (16pt each side); the cell width subtracts it. Keep
- *  in sync if that padding changes. */
-const CONTENT_H_PADDING = 16;
 
 export function OverviewTab({
   userId,
@@ -91,17 +78,9 @@ export function OverviewTab({
   if (hasFavorites) {
     sections.push({
       key: "favorites",
-      node: (
-        <View className="gap-5">
-          {favoriteTypes.map((type) => (
-            <FavoriteSection
-              key={type}
-              label={`Favorite ${MEDIA_TYPE_CONFIG[type].label}`}
-              items={topFours![type]}
-            />
-          ))}
-        </View>
-      ),
+      // The stacked-deck showcase: one "Favorites" row of fanned decks that
+      // expand to fill the row per type (see FavoritesShowcase).
+      node: <FavoritesShowcase topFours={topFours!} />,
     });
   }
 
@@ -192,44 +171,6 @@ function SectionHeaderRow({
         <Text className="text-xs font-medium text-text-muted">See all</Text>
         <ChevronRight size={16} color={colors["text-muted"]} />
       </Pressable>
-    </View>
-  );
-}
-
-/**
- * One media-type favorites block: a "Favorite {type}" label + a row of up to 4
- * PURE-POSTER `MediaCard`s (fixed-width cells keep the 2:3 ratio). The cards are
- * catalog rows → `cardMediaFromHomeItem`; `showMeta={false}` + `showActions={false}`
- * strip the title/meta AND the quick-actions tab, leaving just tappable cover art.
- */
-function FavoriteSection({
-  label,
-  items,
-}: {
-  label: string;
-  items: HomeMediaItem[];
-}) {
-  const { width } = useWindowDimensions();
-  // Fixed poster width so 4 cells + 3 gutters exactly fill the content width —
-  // a full row's outer margins then equal the container padding on both sides,
-  // and a partial (<4) row left-aligns at the same size.
-  const cellWidth =
-    (width - CONTENT_H_PADDING * 2 - FAV_GAP * (FAV_COLUMNS - 1)) / FAV_COLUMNS;
-
-  return (
-    <View className="gap-2">
-      <SectionHeading>{label}</SectionHeading>
-      <View className="flex-row" style={{ gap: FAV_GAP }}>
-        {items.map((item) => (
-          <View key={item.id} style={{ width: cellWidth }}>
-            <MediaCard
-              media={cardMediaFromHomeItem(item)}
-              showMeta={false}
-              showActions={false}
-            />
-          </View>
-        ))}
-      </View>
     </View>
   );
 }
