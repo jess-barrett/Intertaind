@@ -1,6 +1,7 @@
 import { tmdbImageUrl, type MergedCredit } from "@intertaind/media";
-import type { MediaType } from "@intertaind/types";
+import type { MediaType, SearchResult } from "@intertaind/types";
 import type { HomeMediaItem } from "@/queries/home";
+import type { MediaUpsertInput } from "@/queries/media";
 
 /**
  * Normalized, source-agnostic descriptor a MediaCard/CardActions renders.
@@ -18,11 +19,13 @@ export type CardMedia = {
   /** Display year string (e.g. "2019") or null. */
   year: string | null;
   /**
-   * The enrich payload for an UNCATALOGED credit (movie/tv only) — present so
-   * CardActions/MediaCard can upsert-on-first-action. Absent for catalog-row
-   * sources (they always have a mediaItemId, never need upsert).
+   * The enrich payload for an UNCATALOGED source (a filmography credit — a
+   * `{mediaType,tmdbId}` re-enrich — or a search result — a `{searchResult}`
+   * upsert), passed straight to `useMediaUpsertMutation` so CardActions /
+   * MediaCard can get-or-create the catalog row on first tap/action. Absent
+   * for catalog-row sources (they always have a mediaItemId, never enrich).
    */
-  upsert?: { mediaType: "movie" | "tv"; tmdbId: number };
+  upsert?: MediaUpsertInput;
 };
 
 /** First 4 digits of an ISO date (mirrors media-search-picker's `yearFrom`). */
@@ -53,5 +56,22 @@ export function cardMediaFromHomeItem(item: HomeMediaItem): CardMedia {
     posterUrl: item.cover_image_url,
     year: yearFrom(item.release_date),
     // No `upsert`: catalog rows always have a mediaItemId, never need enriching.
+  };
+}
+
+/**
+ * Adapt a cross-source `SearchResult` (the search screen / recommend picker).
+ * Uncataloged by nature — carries the `{searchResult}` upsert payload so a tap
+ * (or a quick-action) get-or-creates the catalog row via `media-upsert`. The
+ * cover URL is already absolute (the search normalizer builds full URLs).
+ */
+export function cardMediaFromSearchResult(result: SearchResult): CardMedia {
+  return {
+    mediaItemId: null,
+    mediaType: result.media_type,
+    title: result.title,
+    posterUrl: result.cover_image_url,
+    year: yearFrom(result.release_date),
+    upsert: { searchResult: result },
   };
 }
