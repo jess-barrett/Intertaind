@@ -47,6 +47,7 @@ import { colors } from "@intertaind/design-system";
 import { useAuth } from "@/components/auth-provider";
 import { OverviewTab } from "@/components/profile/overview-tab";
 import { ProfileHeader } from "@/components/profile/profile-header";
+import { RecommendationsTab } from "@/components/profile/recommendations-tab";
 import { SegmentedControl } from "@/components/profile/segmented-control";
 import { ShelvesTab } from "@/components/profile/shelves-tab";
 import { useBottomInset } from "@/lib/use-bottom-inset";
@@ -231,11 +232,11 @@ function EmptyState({ title, detail }: { title: string; detail?: string }) {
 
 /**
  * The active segment's body. Overview (M2) is the real `OverviewTab`; Shelves
- * (M3) is the real `ShelvesTab`; Recs / Lists (M4–M5) are still "… coming soon"
- * stubs, each to be filled by a self-fetching component keyed on
- * `profileUserId`. For the OWNER, the Overview segment ALSO hosts the Sign out
- * affordance beneath the tab (there's no settings surface yet for the header
- * gear, so the action mustn't be lost).
+ * (M3) is the real `ShelvesTab`; Recs (M4) is the real `RecommendationsTab`;
+ * Lists (M5) is still a "… coming soon" stub, to be filled by a self-fetching
+ * component keyed on `profileUserId`. For the OWNER, the Overview segment ALSO
+ * hosts the Sign out affordance beneath the tab (there's no settings surface yet
+ * for the header gear, so the action mustn't be lost).
  */
 function SegmentBody({
   segment,
@@ -259,6 +260,10 @@ function SegmentBody({
 
   if (segment === "Shelves") {
     return <ShelvesTab userId={profileUserId} isOwner={isOwner} />;
+  }
+
+  if (segment === "Recs") {
+    return <RecommendationsTab userId={profileUserId} />;
   }
 
   return (

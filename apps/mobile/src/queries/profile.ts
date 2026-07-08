@@ -404,3 +404,85 @@ export function useProfileShelf(
     },
   });
 }
+
+/**
+ * One authored cross-media pairing ("intertain") on a profile's Recs tab — the
+ * row id, the author's `note` + `created_at`, and BOTH paired `media_items`
+ * sides ("if you liked SOURCE, try RECOMMENDED"). Unlike the media-detail
+ * recommendations reads (./recommendations.ts), which render ONE side (the
+ * page's media is the implicit other), the profile Recs tab shows BOTH sides —
+ * the viewer hasn't picked a side, so the full pairing reads at a glance.
+ * Mirrors web's `fetchUserRecommendations` (apps/web/src/app/actions/
+ * recommendations.ts) + `ProfileRecommendationCard`'s `source → target` layout.
+ */
+export type ProfileRecommendation = {
+  id: string;
+  note: string | null;
+  created_at: string | null;
+  /** The "if you liked …" side — null if the embedded media is missing. */
+  source: HomeMediaItem | null;
+  /** The "…try …" side — null if the embedded media is missing. */
+  recommended: HomeMediaItem | null;
+};
+
+/** Shape of one embedded recommendations row (both media sides). */
+type ProfileRecommendationRow = {
+  id: string;
+  note: string | null;
+  created_at: string | null;
+  source: HomeMediaItem | null;
+  recommended: HomeMediaItem | null;
+};
+
+/** Pairings pulled for the Recs tab (web parity: `fetchUserRecommendations`). */
+const RECS_LIMIT = 50;
+
+/**
+ * A profile's AUTHORED cross-media pairings — the Recs tab. Every "if you liked
+ * SOURCE, try RECOMMENDED" the profile owner has posted, newest first, both
+ * paired `media_items` sides embedded so a card renders the full pairing.
+ * Mirrors web's `fetchUserRecommendations`:
+ *
+ *   `recommendations` filtered to `user_id`, ordered `created_at` desc, capped
+ *   at 50, embedding BOTH media sides via FK hints — `source:` off
+ *   `recommendations_source_media_id_fkey` and `recommended:` off
+ *   `recommendations_recommended_media_id_fkey` (the SAME FK-hint aliases +
+ *   `as unknown as` cast pattern as ./recommendations.ts; the media embeds are
+ *   explicit column subsets so the query builder can't infer their shape).
+ *   Web selects `source_media` / `recommended_media` to match its
+ *   `RecommendationWith…` types; here the return shape is our own, so the
+ *   aliases read as the plain `source` / `recommended` the card consumes.
+ *
+ * A row whose EITHER media side is null (a media item RLS-hides or that was
+ * removed) is dropped — a pairing card needs both posters. RLS scopes reads to
+ * public authors (or the owner), so this anon-authed read is safe pre-auth.
+ *
+ * Profile-owner-scoped: `enabled: !!userId`, keyed by
+ * `queryKeys.user.recommendations(userId)`.
+ */
+export function useProfileRecommendations(userId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.user.recommendations(userId ?? "anon"),
+    enabled: !!userId,
+    queryFn: async (): Promise<ProfileRecommendation[]> => {
+      const { data, error } = await supabase
+        .from("recommendations")
+        .select(
+          `id, note, created_at, source:media_items!recommendations_source_media_id_fkey(${HOME_MEDIA_COLS}), recommended:media_items!recommendations_recommended_media_id_fkey(${HOME_MEDIA_COLS})`,
+        )
+        .eq("user_id", userId!)
+        .order("created_at", { ascending: false })
+        .limit(RECS_LIMIT);
+      if (error) throw error;
+
+      // Cast: both media embeds are explicit column subsets (same pattern as
+      // ./recommendations.ts + home.ts). Drop rows missing either side — a
+      // pairing card needs both posters.
+      const rows = (data ?? []) as unknown as ProfileRecommendationRow[];
+      return rows.filter(
+        (row): row is ProfileRecommendation =>
+          row.source != null && row.recommended != null,
+      );
+    },
+  });
+}
