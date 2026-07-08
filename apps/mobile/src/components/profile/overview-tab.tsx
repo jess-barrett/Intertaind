@@ -2,16 +2,18 @@
  * OverviewTab — the Overview segment of the shared `ProfileView`. Mirrors the
  * top of web's `/u/[username]`: the Top-4 favorites (per media type), a Recent
  * activity preview, and a Recent reviews preview. Each block self-hides when
- * empty; when EVERYTHING is empty a single muted "Nothing here yet." shows.
+ * empty; a thin divider separates the visible blocks; when EVERYTHING is empty
+ * a single muted "Nothing here yet." shows.
  *
  * All data arrives via the `src/queries/profile.ts` hooks (no inline supabase):
  *   - `useProfileTopFours`   → the four `__top5_<type>` favorites shelves.
  *   - `useProfileRecentActivity` / `useProfileRecentReviews` → activity_log.
  *
  * Favorites are catalog `media_items` rows, so they adapt through
- * `cardMediaFromHomeItem` into `MediaCard` (poster-only: `showMeta={false}`,
- * `compact`) laid out as a small poster row per type. Activity rows render via
- * `ActivityRow` (shared `formatActivity` phrasing).
+ * `cardMediaFromHomeItem` into `MediaCard` as PURE POSTERS (`showMeta={false}`
+ * + `showActions={false}` — no title/meta, no quick-actions tab), laid out as a
+ * small poster row per type under a "Favorite {type}" heading. Activity rows
+ * render via `ActivityRow` (shared `formatActivity` phrasing).
  *
  * Owner sign-out: NOT rendered here — `ProfileView`'s `SegmentBody` keeps the
  * existing `SignOutButton` after this component for the owner (there's no
@@ -20,6 +22,7 @@
  *
  * Mobile primitives only; icons color via the `color` PROP.
  */
+import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 import { MEDIA_TYPE_CONFIG, type MediaType } from "@intertaind/types";
 
@@ -69,23 +72,31 @@ export function OverviewTab({
   const everythingEmpty =
     !hasFavorites && activity.length === 0 && reviews.length === 0;
 
-  return (
-    <View className="gap-6">
-      {/* ── Favorites ─────────────────────────────────────────────────── */}
-      {hasFavorites ? (
+  // Collect the present sections, then render them with a thin divider between
+  // each visible pair (so a hidden section never leaves a dangling line).
+  const sections: { key: string; node: ReactNode }[] = [];
+
+  if (hasFavorites) {
+    sections.push({
+      key: "favorites",
+      node: (
         <View className="gap-5">
           {favoriteTypes.map((type) => (
             <FavoriteSection
               key={type}
-              label={MEDIA_TYPE_CONFIG[type].label}
+              label={`Favorite ${MEDIA_TYPE_CONFIG[type].label}`}
               items={topFours![type]}
             />
           ))}
         </View>
-      ) : null}
+      ),
+    });
+  }
 
-      {/* ── Recent activity ───────────────────────────────────────────── */}
-      {activity.length > 0 ? (
+  if (activity.length > 0) {
+    sections.push({
+      key: "activity",
+      node: (
         <View className="gap-2">
           <SectionHeading>Recent activity</SectionHeading>
           <View>
@@ -94,10 +105,14 @@ export function OverviewTab({
             ))}
           </View>
         </View>
-      ) : null}
+      ),
+    });
+  }
 
-      {/* ── Recent reviews ────────────────────────────────────────────── */}
-      {reviews.length > 0 ? (
+  if (reviews.length > 0) {
+    sections.push({
+      key: "reviews",
+      node: (
         <View className="gap-2">
           <SectionHeading>Recent reviews</SectionHeading>
           <View>
@@ -106,9 +121,20 @@ export function OverviewTab({
             ))}
           </View>
         </View>
-      ) : null}
+      ),
+    });
+  }
 
-      {/* ── Everything empty ──────────────────────────────────────────── */}
+  return (
+    <View>
+      {sections.map((section, i) => (
+        <View key={section.key}>
+          {/* Thin divider between visible sections (not before the first). */}
+          {i > 0 ? <View className="my-5 h-px bg-surface-border" /> : null}
+          {section.node}
+        </View>
+      ))}
+
       {anySettled && everythingEmpty ? (
         <Text className="text-center text-sm text-text-muted">
           Nothing here yet.
@@ -119,7 +145,7 @@ export function OverviewTab({
 }
 
 /** A section title above a favorites grid / activity list. */
-function SectionHeading({ children }: { children: React.ReactNode }) {
+function SectionHeading({ children }: { children: ReactNode }) {
   return (
     <Text className="text-base font-semibold text-text-primary">
       {children}
@@ -128,10 +154,10 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * One media-type favorites block: a label + a row of up to 4 poster-only
- * `MediaCard`s (fixed-width cells so the posters keep their 2:3 ratio). The
- * cards are catalog rows → `cardMediaFromHomeItem`; `showMeta={false}` +
- * `compact` keeps them poster-only and dense.
+ * One media-type favorites block: a "Favorite {type}" label + a row of up to 4
+ * PURE-POSTER `MediaCard`s (fixed-width cells keep the 2:3 ratio). The cards are
+ * catalog rows → `cardMediaFromHomeItem`; `showMeta={false}` + `showActions={false}`
+ * strip the title/meta AND the quick-actions tab, leaving just tappable cover art.
  */
 function FavoriteSection({
   label,
@@ -149,7 +175,7 @@ function FavoriteSection({
             <MediaCard
               media={cardMediaFromHomeItem(item)}
               showMeta={false}
-              compact
+              showActions={false}
             />
           </View>
         ))}

@@ -69,6 +69,7 @@ export function MediaCard({
   onMutated,
   showMeta = true,
   compact = false,
+  showActions = true,
 }: {
   media: CardMedia;
   /** The viewer's tracking row for this catalog id (null = untracked /
@@ -91,6 +92,10 @@ export function MediaCard({
   /** Compact (rail) card — narrows the quick-actions slide-out so its ⋯ isn't
       clipped by the smaller poster's width. Default false. */
   compact?: boolean;
+  /** Render the quick-actions tab/slider overlay on the poster. Default true.
+      Set false for pure-poster contexts (e.g. the profile Top-4 favorites),
+      where the card is just cover art + a tap target. */
+  showActions?: boolean;
 }) {
   const router = useRouter();
   const upsert = useMediaUpsertMutation();
@@ -171,13 +176,16 @@ export function MediaCard({
 
         {/* Quick-actions tab — bottom-left, notched, tap-to-slide-out. Sits
             inside the poster's overflow-hidden wrapper (its collapsed glyph
-            + slide-out row clip to the poster). See card-actions.tsx. */}
-        <CardActions
-          media={media}
-          tracking={tracking ?? null}
-          onMutated={onMutated}
-          compact={compact}
-        />
+            + slide-out row clip to the poster). Omitted for pure-poster
+            contexts (showActions={false}). See card-actions.tsx. */}
+        {showActions ? (
+          <CardActions
+            media={media}
+            tracking={tracking ?? null}
+            onMutated={onMutated}
+            compact={compact}
+          />
+        ) : null}
       </View>
 
       {/* Title + meta row — suppressed on the home rails (showMeta=false),
