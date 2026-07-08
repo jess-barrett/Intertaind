@@ -24,9 +24,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import type { Tables } from "@intertaind/supabase";
-import type { MediaType } from "@intertaind/types";
+import { type MediaType, TOP_4_SHELF_NAMES } from "@intertaind/types";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "./keys";
+import { HOME_MEDIA_COLS, type HomeMediaItem } from "./home";
 
 /**
  * The profile-header-facing subset of a `profiles` row — identity, the bio,
@@ -147,6 +148,171 @@ export function useProfileMediaCounts(userId: string | undefined) {
         }),
       );
       return Object.fromEntries(results) as ProfileMediaCounts;
+    },
+  });
+}
+
+/**
+ * The profile's Top-4 favorites, per media type — the curated `__top5_<type>`
+ * shelves the Overview renders as small poster grids. Returns the full 4-key
+ * map (empty arrays where a type has no favorites) so the caller can render or
+ * skip each type without a `?.` dance.
+ */
+export type ProfileTopFours = Record<MediaType, HomeMediaItem[]>;
+
+/** Shape of one embedded shelf_items → media_items row (the card fields). */
+type TopFourItemRow = {
+  shelf_id: string;
+  position: number;
+  media_items: HomeMediaItem | null;
+};
+
+/** An all-empty Top-4 map — the no-shelves short-circuit + per-type default. */
+function emptyTopFours(): ProfileTopFours {
+  return { movie: [], tv_show: [], book: [], video_game: [] };
+}
+
+/**
+ * The profile's Top-4 favorites per media type — the four curated
+ * `__top5_<type>` shelves (`TOP_4_SHELF_NAMES`), NOT `user_media.is_favorite`.
+ * Mirrors web's `/u/[username]/page.tsx` two-step read:
+ *
+ *   1. `shelves` — the (up to four) curated shelves this user owns, matched by
+ *      the reserved `__top5_<type>` names. No shelves → return the all-empty
+ *      map, skipping the second round trip.
+ *   2. `shelf_items` — the items across those shelf ids, position-ordered, each
+ *      embedding the `media_items` card fields. Cast `as unknown as` because
+ *      the embed is an explicit column subset (same pattern as home.ts).
+ *
+ * Then invert `TOP_4_SHELF_NAMES` (shelf name → MediaType), group items by
+ * their shelf's type, drop rows whose media embed is null, and cap 4 per type.
+ * The `.limit(20)` on the items read matches web (4 shelves × ~5 headroom).
+ *
+ * Profile-owner-scoped: `enabled: !!userId`, keyed by `topFours(userId)`.
+ */
+export function useProfileTopFours(userId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.user.topFours(userId ?? "anon"),
+    enabled: !!userId,
+    queryFn: async (): Promise<ProfileTopFours> => {
+      // (1) The curated shelves this user owns (by reserved name).
+      const { data: shelves, error: shelvesError } = await supabase
+        .from("shelves")
+        .select("id, name")
+        .eq("user_id", userId!)
+        .in("name", Object.values(TOP_4_SHELF_NAMES));
+      if (shelvesError) throw shelvesError;
+
+      const result = emptyTopFours();
+      if (!shelves || shelves.length === 0) return result;
+
+      // Shelf id → its MediaType (invert TOP_4_SHELF_NAMES: name → type).
+      const nameToType = new Map<string, MediaType>(
+        (Object.entries(TOP_4_SHELF_NAMES) as [MediaType, string][]).map(
+          ([type, name]) => [name, type],
+        ),
+      );
+      const shelfIdToType = new Map<string, MediaType>();
+      for (const shelf of shelves) {
+        const type = nameToType.get(shelf.name);
+        if (type) shelfIdToType.set(shelf.id, type);
+      }
+
+      // (2) The items across those shelves, position-ordered.
+      const shelfIds = shelves.map((s) => s.id);
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("shelf_items")
+        .select(`shelf_id, position, media_items(${HOME_MEDIA_COLS})`)
+        .in("shelf_id", shelfIds)
+        .order("position", { ascending: true })
+        .limit(20);
+      if (itemsError) throw itemsError;
+
+      // Group by the shelf's type, drop null media, cap 4 per type.
+      for (const row of (itemsData ?? []) as unknown as TopFourItemRow[]) {
+        const type = shelfIdToType.get(row.shelf_id);
+        if (!type || !row.media_items) continue;
+        if (result[type].length >= 4) continue;
+        result[type].push(row.media_items);
+      }
+      return result;
+    },
+  });
+}
+
+/**
+ * One `activity_log` row for the Overview's Recent activity / Recent reviews
+ * lists — the id/type/metadata/timestamp plus the embedded media (title +
+ * cover + type) so a row renders its thumbnail and `formatActivity` sentence
+ * without a second lookup. Mirrors web's `ActivityWithMedia` shape and the
+ * `listUserActivity` / `listUserRecentReviews` selects.
+ */
+export type ProfileActivityRow = Pick<
+  Tables<"activity_log">,
+  "id" | "user_id" | "media_id" | "activity_type" | "metadata" | "created_at"
+> & {
+  media: Pick<
+    Tables<"media_items">,
+    "id" | "title" | "cover_image_url" | "media_type"
+  > | null;
+};
+
+/** The column list + embedded media for a ProfileActivityRow (web parity). */
+const ACTIVITY_COLS =
+  "id, user_id, media_id, activity_type, metadata, created_at, media:media_items(id, title, cover_image_url, media_type)";
+
+/**
+ * The profile's most-recent activity — the Overview "Recent activity" preview
+ * (default 3). Mirrors web's `listUserActivity`: all activity types, newest
+ * first, embedding the media card fields. `as unknown as` cast because the
+ * media embed is an explicit column subset. RLS scopes visibility to what the
+ * viewer may see (public profiles / owner). `enabled: !!userId`, keyed by
+ * `recentActivity(userId)`.
+ */
+export function useProfileRecentActivity(
+  userId: string | undefined,
+  limit = 3,
+) {
+  return useQuery({
+    queryKey: queryKeys.user.recentActivity(userId ?? "anon"),
+    enabled: !!userId,
+    queryFn: async (): Promise<ProfileActivityRow[]> => {
+      const { data, error } = await supabase
+        .from("activity_log")
+        .select(ACTIVITY_COLS)
+        .eq("user_id", userId!)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data ?? []) as unknown as ProfileActivityRow[];
+    },
+  });
+}
+
+/**
+ * The profile's most-recent REVIEWS — the Overview "Recent reviews" preview
+ * (default 3). Same read as `useProfileRecentActivity` with an added
+ * `.eq("activity_type", "reviewed")` filter (mirrors web's
+ * `listUserRecentReviews`). Keyed separately (`recentReviews(userId)`) so the
+ * two Overview sections cache independently.
+ */
+export function useProfileRecentReviews(
+  userId: string | undefined,
+  limit = 3,
+) {
+  return useQuery({
+    queryKey: queryKeys.user.recentReviews(userId ?? "anon"),
+    enabled: !!userId,
+    queryFn: async (): Promise<ProfileActivityRow[]> => {
+      const { data, error } = await supabase
+        .from("activity_log")
+        .select(ACTIVITY_COLS)
+        .eq("user_id", userId!)
+        .eq("activity_type", "reviewed")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data ?? []) as unknown as ProfileActivityRow[];
     },
   });
 }

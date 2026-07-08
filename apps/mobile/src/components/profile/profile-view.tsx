@@ -44,6 +44,7 @@ import { ArrowLeft } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 
 import { useAuth } from "@/components/auth-provider";
+import { OverviewTab } from "@/components/profile/overview-tab";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { SegmentedControl } from "@/components/profile/segmented-control";
 import { useBottomInset } from "@/lib/use-bottom-inset";
@@ -147,10 +148,14 @@ export function ProfileView({
           />
         </View>
 
-        {/* Active segment body — STUBS for M1; M2–M5 fill each one, each
-            self-fetching by `profileUserId`. */}
+        {/* Active segment body. Overview (M2) is live; Shelves/Recs/Lists
+            (M3–M5) are still stubs. Each self-fetches by `profileUserId`. */}
         <View className="px-4 pt-6">
-          <SegmentBody segment={segment} isOwner={isOwner} />
+          <SegmentBody
+            segment={segment}
+            profileUserId={profile.id}
+            isOwner={isOwner}
+          />
         </View>
       </ScrollView>
     </ProfileShell>
@@ -222,24 +227,37 @@ function EmptyState({ title, detail }: { title: string; detail?: string }) {
 }
 
 /**
- * The active segment's body — M1 stubs. Each segment gets its real component in
- * M2–M5 (Overview / Shelves / Recs / Lists). For the OWNER, the Overview stub
- * also hosts the Sign out affordance until a settings surface exists (so the
- * action isn't lost when the header gear is still a no-op).
+ * The active segment's body. Overview (M2) is the real `OverviewTab`; Shelves /
+ * Recs / Lists (M3–M5) are still "… coming soon" stubs, each to be filled by a
+ * self-fetching component keyed on `profileUserId`. For the OWNER, the Overview
+ * segment ALSO hosts the Sign out affordance beneath the tab (there's no
+ * settings surface yet for the header gear, so the action mustn't be lost).
  */
 function SegmentBody({
   segment,
+  profileUserId,
   isOwner,
 }: {
   segment: Segment;
+  /** The resolved profile owner's id — every segment self-fetches by it. */
+  profileUserId: string;
   isOwner: boolean;
 }) {
+  if (segment === "Overview") {
+    return (
+      <View className="gap-6">
+        <OverviewTab userId={profileUserId} isOwner={isOwner} />
+        {/* Owner-only, kept reachable until a settings surface lands. */}
+        {isOwner ? <SignOutButton /> : null}
+      </View>
+    );
+  }
+
   return (
     <View className="gap-6">
       <Text className="text-center text-sm text-text-muted">
         {segment} coming soon
       </Text>
-      {segment === "Overview" && isOwner ? <SignOutButton /> : null}
     </View>
   );
 }

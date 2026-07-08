@@ -52,8 +52,9 @@ export type HomeMediaItem = Pick<
  */
 export type PopularMediaType = "movie" | "tv_show" | "book" | "video_game";
 
-/** Column list for a HomeMediaItem, shared by every read that returns one. */
-const HOME_MEDIA_COLS =
+/** Column list for a HomeMediaItem, shared by every read that returns one
+ *  (home rails here + the profile favorites/shelves reads in ./profile.ts). */
+export const HOME_MEDIA_COLS =
   "id, media_type, title, cover_image_url, release_date, avg_rating";
 
 /** Cards per media rail (Continue + the four Popular rails). */
