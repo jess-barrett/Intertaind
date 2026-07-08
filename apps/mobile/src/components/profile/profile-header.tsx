@@ -73,7 +73,9 @@ export function ProfileHeader({
           </View>
         )}
 
-        <View className="flex-1 gap-0.5 pt-1">
+        {/* Name column — sizes to its content (NOT flex-1) so the media-type
+            counts can sit to its right in the header's top-right region. */}
+        <View className="shrink gap-0.5 pt-1">
           <Text
             className="text-xl font-bold text-text-primary"
             numberOfLines={1}
@@ -84,8 +86,8 @@ export function ProfileHeader({
             @{profile.username}
           </Text>
 
-          {/* Follower / following — directly beneath the username. Tappable
-              (M6 sub-screens); no-op for now. */}
+          {/* Follower / following — directly beneath the username (blue region).
+              Tappable (M6 sub-screens); no-op for now. */}
           <View className="mt-1.5 flex-row gap-5">
             <CountPill
               value={profile.followers_count}
@@ -100,6 +102,25 @@ export function ProfileHeader({
               onPress={() => {}}
             />
           </View>
+        </View>
+
+        {/* Per-media-type engagement counts — the header's top-right "red
+            region": icon (accent via `color` prop) + number only, NO label.
+            `flex-1` fills the space between the name and the action; wraps to a
+            2×2 grid on a phone. "—" while the counts read is pending. */}
+        <View className="flex-1 flex-row flex-wrap gap-x-4 gap-y-2 pt-1.5">
+          {COUNT_ORDER.map((type) => {
+            const Icon = MEDIA_TYPE_ICONS[type];
+            const value = counts?.[type];
+            return (
+              <View key={type} className="flex-row items-center gap-1.5">
+                <Icon size={16} color={MEDIA_TYPE_ICON_COLOR[type]} />
+                <Text className="text-sm font-semibold text-text-primary">
+                  {value != null ? value.toLocaleString() : "—"}
+                </Text>
+              </View>
+            );
+          })}
         </View>
 
         {/* Right action — settings gear (owner) or a Follow placeholder. */}
@@ -140,25 +161,6 @@ export function ProfileHeader({
           className="text-sm leading-relaxed text-text-secondary"
         />
       ) : null}
-
-      {/* Per-media-type engagement counts — icon (accent via `color` prop) +
-          number only (NO label). "—" while the counts read is pending.
-          TODO(layout): move this into the header's "red region" once the
-          reference image is available — placement is a best-guess row for now. */}
-      <View className="flex-row flex-wrap gap-x-5 gap-y-3">
-        {COUNT_ORDER.map((type) => {
-          const Icon = MEDIA_TYPE_ICONS[type];
-          const value = counts?.[type];
-          return (
-            <View key={type} className="flex-row items-center gap-1.5">
-              <Icon size={16} color={MEDIA_TYPE_ICON_COLOR[type]} />
-              <Text className="text-sm font-semibold text-text-primary">
-                {value != null ? value.toLocaleString() : "—"}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
     </View>
   );
 }
