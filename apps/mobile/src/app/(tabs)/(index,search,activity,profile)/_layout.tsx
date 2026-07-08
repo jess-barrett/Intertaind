@@ -33,6 +33,24 @@
  */
 import { Stack } from "expo-router";
 
+/**
+ * Explicit per-group anchors (initial route) for the array-group's four
+ * extrapolated stacks. expo-router already auto-anchors each group to the
+ * child whose route matches the group name (`childMatchingGroup` in
+ * getRoutesCore), but declaring it explicitly is the documented, robust
+ * override: the keys are the BARE group names and each value pins that stack's
+ * initial route (see getRoutesCore `unstable_settings[groupName].anchor`). This
+ * guarantees `(search)`/`(activity)`/`(profile)` open THEIR screen and never
+ * silently fall back to `index` (the homepage) if the auto-anchor can't
+ * resolve — e.g. before a stale bundler has picked up the sibling files.
+ */
+export const unstable_settings = {
+  index: { anchor: "index" },
+  search: { anchor: "search" },
+  activity: { anchor: "activity" },
+  profile: { anchor: "profile" },
+};
+
 export default function TabStackLayout() {
   return <Stack screenOptions={{ headerShown: false }} />;
 }
