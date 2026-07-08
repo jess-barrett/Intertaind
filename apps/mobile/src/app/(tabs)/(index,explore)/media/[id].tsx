@@ -428,19 +428,21 @@ function DetailHeaderBar({
         className="border-b border-surface-border bg-surface-default"
       />
 
-      {/* Nav row: back pill (always visible) + fading title. */}
-      <View
-        style={{ height: NAV_BAR_HEIGHT }}
-        className="flex-row items-center gap-2 px-3"
-      >
-        <BackPill />
+      {/* Nav row: centered fading title with the back pill overlaid on the
+          left. The title is full-width + center-aligned (so it's centered in
+          the whole bar, not offset by the pill) and padded so a long title
+          clips symmetrically before reaching the pill. */}
+      <View style={{ height: NAV_BAR_HEIGHT }} className="justify-center">
         <Animated.Text
           numberOfLines={1}
-          style={{ opacity: headerOpacity }}
-          className="flex-1 text-base font-semibold text-text-primary"
+          style={{ opacity: headerOpacity, paddingHorizontal: 52 }}
+          className="text-center text-base font-semibold text-text-primary"
         >
           {title}
         </Animated.Text>
+        <View className="absolute bottom-0 left-3 top-0 justify-center">
+          <BackPill />
+        </View>
       </View>
     </View>
   );

@@ -174,13 +174,13 @@ export default function HomeScreen() {
         className="flex-1 bg-surface-default"
         contentContainerStyle={{ paddingTop: 12, paddingBottom: bottomInset }}
       >
-      {/* Minimal, static welcome header. No profile/name read here — the
-          Profile milestone owns profile reads. */}
-      {/* TODO(profile): personalized greeting once a profile hook lands */}
-      <View className="px-4 pb-4">
-        <Text className="text-2xl font-bold text-text-primary">Home</Text>
-        <Text className="mt-0.5 text-sm text-text-muted">
-          Your cross-media picks
+      {/* Centered two-tone wordmark — the RN mirror of web's nav brand
+          (apps/web/src/components/nav.tsx): lowercase "inter" in the primary
+          text color + "taind" in the hot-pink brand accent. */}
+      <View className="items-center pb-4 pt-1">
+        <Text className="text-3xl font-bold tracking-wide">
+          <Text className="text-text-primary">inter</Text>
+          <Text className="text-brand">taind</Text>
         </Text>
       </View>
 
