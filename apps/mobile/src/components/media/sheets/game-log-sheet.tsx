@@ -94,8 +94,11 @@ type Seed = {
 
 function deriveSeed(viewerRow: Tables<"user_media"> | null): Seed {
   const progress = (viewerRow?.progress ?? null) as ProgressRecord | null;
+  // Default an untracked/no-sub_status game to "played" (web parity — the
+  // app-wide default for "I engaged with this game"; "playing" would save an
+  // untouched log as in_progress instead of completed).
   const subStatus =
-    (progress?.sub_status as GameSubStatus | undefined) ?? "playing";
+    (progress?.sub_status as GameSubStatus | undefined) ?? "played";
   const hoursRaw = progress?.hours_played as number | undefined;
   const hoursPlayed = hoursRaw != null ? String(hoursRaw) : "";
   const stars =
