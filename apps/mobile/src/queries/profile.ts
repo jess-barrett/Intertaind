@@ -28,6 +28,7 @@ import { type MediaType, TOP_4_SHELF_NAMES } from "@intertaind/types";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "./keys";
 import { HOME_MEDIA_COLS, type HomeMediaItem } from "./home";
+import type { ShelfSection } from "@/components/profile/shelf-config";
 
 /**
  * The profile-header-facing subset of a `profiles` row — identity, the bio,
@@ -313,6 +314,93 @@ export function useProfileRecentReviews(
         .limit(limit);
       if (error) throw error;
       return (data ?? []) as unknown as ProfileActivityRow[];
+    },
+  });
+}
+
+/**
+ * One row of a profile's Shelves-tab section: the media card fields PLUS the
+ * SHELF OWNER's own tracking (`rating` / `is_favorite`) carried off their
+ * `user_media` row. The owner's rating/heart is what a shelf card shows by
+ * default — this is "their" shelf — so we embed it here rather than looking it
+ * up per card. (A non-owner VIEWER's own overlay, when browsing someone else's
+ * shelf, comes separately via `useViewerTrackingMap` in the component.)
+ */
+export type ProfileShelfItem = HomeMediaItem & {
+  /** The shelf OWNER's rating (DB scale 1–10) for this title, or null. */
+  rating: Tables<"user_media">["rating"];
+  /** Whether the shelf OWNER favorited this title. */
+  is_favorite: Tables<"user_media">["is_favorite"];
+};
+
+/** Shape of one embedded row from the user_media → media_items shelf join. */
+type ShelfJoinRow = Pick<Tables<"user_media">, "rating" | "is_favorite"> & {
+  media_items: HomeMediaItem | null;
+};
+
+/** Rows per shelf section (pagination deferred — one generous page for v1). */
+const SHELF_LIMIT = 60;
+
+/**
+ * One status section of a profile's shelf — a media type + a `ShelfSection`
+ * (from SHELF_CONFIG) → the owner's tracked titles in that section, embedding
+ * each item's card fields AND the owner's own rating/is_favorite. Mirrors web's
+ * per-type shelf reads:
+ *
+ *   `user_media` joined `media_items!inner` (drops a tracking row whose media
+ *   item is missing — never a half-populated card), filtered to the profile
+ *   owner + this `media_type`, then the section's ONE filter:
+ *     - `section.status`    → `.eq("status", …)`         (movie/tv/book + game wishlist)
+ *     - `section.subStatus` → `.eq("progress->>sub_status", …)` (game play-states)
+ *   newest-touched first (`updated_at` desc), capped at SHELF_LIMIT (pagination
+ *   is deferred — see docs/plans/2026-07-08-mobile-profile.md).
+ *
+ * `as unknown as` cast because the media embed is an explicit column subset (so
+ * it doesn't match the fully-inferred embed shape — same pattern as home.ts).
+ *
+ * Gated on `enabled: !!userId` (the profile must be resolved first); keyed by
+ * `queryKeys.user.shelf(userId, mediaType, section.key)` so each type+section
+ * caches independently and a switch refetches cleanly. RLS scopes the read to
+ * what the viewer may see (public profiles / owner).
+ */
+export function useProfileShelf(
+  userId: string | undefined,
+  mediaType: MediaType,
+  section: ShelfSection,
+) {
+  return useQuery({
+    queryKey: queryKeys.user.shelf(userId ?? "anon", mediaType, section.key),
+    enabled: !!userId,
+    queryFn: async (): Promise<ProfileShelfItem[]> => {
+      let query = supabase
+        .from("user_media")
+        .select(`rating, is_favorite, media_items!inner(${HOME_MEDIA_COLS})`)
+        .eq("user_id", userId!)
+        .eq("media_items.media_type", mediaType);
+
+      // Exactly one filter directive per section (discriminated in the config):
+      // a top-level status, or the progress JSONB sub_status path.
+      if (section.status !== undefined) {
+        query = query.eq("status", section.status);
+      } else {
+        query = query.eq("progress->>sub_status", section.subStatus);
+      }
+
+      const { data, error } = await query
+        .order("updated_at", { ascending: false })
+        .limit(SHELF_LIMIT);
+      if (error) throw error;
+
+      const rows = (data ?? []) as unknown as ShelfJoinRow[];
+      return rows
+        .filter((row): row is ShelfJoinRow & { media_items: HomeMediaItem } =>
+          row.media_items != null,
+        )
+        .map((row) => ({
+          ...row.media_items,
+          rating: row.rating,
+          is_favorite: row.is_favorite,
+        }));
     },
   });
 }

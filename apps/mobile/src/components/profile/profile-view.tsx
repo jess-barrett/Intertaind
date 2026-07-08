@@ -16,11 +16,11 @@
  *   - error → "Couldn't load this profile."
  *   - else → header + segmented control + the active segment's body.
  *
- * ── M1 scope ────────────────────────────────────────────────────────────
- * The four segment bodies are STUBS ("… coming soon") — M2 (Overview), M3
- * (Shelves), M4 (Recs), M5 (Lists) fill them, each self-fetching by
- * `profileUserId`. Follow mutations are M6 (the header's Follow button is a
- * visual placeholder). No settings screen yet (the header gear no-ops).
+ * ── Segment scope ─────────────────────────────────────────────────────────
+ * Overview (M2) and Shelves (M3) are live; Recs (M4) and Lists (M5) are still
+ * "… coming soon" stubs, each self-fetching by `profileUserId`. Follow
+ * mutations are M6 (the header's Follow button is a visual placeholder). No
+ * settings screen yet (the header gear no-ops).
  *
  * ── Private-profile deferral (per the plan) ─────────────────────────────
  * If `profile.is_private && !isOwner` we render a private empty state; we do
@@ -48,6 +48,7 @@ import { useAuth } from "@/components/auth-provider";
 import { OverviewTab } from "@/components/profile/overview-tab";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { SegmentedControl } from "@/components/profile/segmented-control";
+import { ShelvesTab } from "@/components/profile/shelves-tab";
 import { useBottomInset } from "@/lib/use-bottom-inset";
 import { useProfile, useProfileMediaCounts } from "@/queries/profile";
 import { useSignOutMutation } from "@/queries/auth";
@@ -149,8 +150,9 @@ export function ProfileView({
           />
         </View>
 
-        {/* Active segment body. Overview (M2) is live; Shelves/Recs/Lists
-            (M3–M5) are still stubs. Each self-fetches by `profileUserId`. */}
+        {/* Active segment body. Overview (M2) + Shelves (M3) are live;
+            Recs/Lists (M4–M5) are still stubs. Each self-fetches by
+            `profileUserId`. */}
         <View className="px-4 pt-6">
           <SegmentBody
             segment={segment}
@@ -228,11 +230,12 @@ function EmptyState({ title, detail }: { title: string; detail?: string }) {
 }
 
 /**
- * The active segment's body. Overview (M2) is the real `OverviewTab`; Shelves /
- * Recs / Lists (M3–M5) are still "… coming soon" stubs, each to be filled by a
- * self-fetching component keyed on `profileUserId`. For the OWNER, the Overview
- * segment ALSO hosts the Sign out affordance beneath the tab (there's no
- * settings surface yet for the header gear, so the action mustn't be lost).
+ * The active segment's body. Overview (M2) is the real `OverviewTab`; Shelves
+ * (M3) is the real `ShelvesTab`; Recs / Lists (M4–M5) are still "… coming soon"
+ * stubs, each to be filled by a self-fetching component keyed on
+ * `profileUserId`. For the OWNER, the Overview segment ALSO hosts the Sign out
+ * affordance beneath the tab (there's no settings surface yet for the header
+ * gear, so the action mustn't be lost).
  */
 function SegmentBody({
   segment,
@@ -252,6 +255,10 @@ function SegmentBody({
         {isOwner ? <SignOutButton /> : null}
       </View>
     );
+  }
+
+  if (segment === "Shelves") {
+    return <ShelvesTab userId={profileUserId} isOwner={isOwner} />;
   }
 
   return (
