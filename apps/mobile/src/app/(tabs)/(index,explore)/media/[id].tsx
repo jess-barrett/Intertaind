@@ -71,6 +71,7 @@ import type { Tables } from "@intertaind/supabase";
 import { Image } from "@/components/image";
 import { AboutTheAuthor } from "@/components/media/about-the-author";
 import { ActionStrip } from "@/components/media/action-strip";
+import { ExpandableText } from "@/components/media/expandable-text";
 import { InfoSections } from "@/components/media/info-sections";
 import { RatingsHistogram } from "@/components/media/ratings-histogram";
 import { SeasonCards } from "@/components/media/season-cards";
@@ -548,11 +549,15 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
             </Text>
           ) : null}
 
-          {/* Description */}
+          {/* Description — clamped to 4 lines; tapping the text toggles the
+            full synopsis (a "Show more"/"Show less" cue shows only when it
+            actually overflows). */}
           {item.description ? (
-            <Text className="text-sm leading-relaxed text-text-secondary">
-              {item.description}
-            </Text>
+            <ExpandableText
+              text={item.description}
+              collapsedLines={4}
+              className="text-sm leading-relaxed text-text-secondary"
+            />
           ) : null}
 
           {/* Community ratings distribution — the histogram replaces the
