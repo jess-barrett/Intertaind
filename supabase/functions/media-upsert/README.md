@@ -1,47 +1,85 @@
 # `media-upsert` Edge Function
 
-Get-or-create a catalog `media_items` row for a TMDB **movie / TV** title,
-enriching it upfront. This is the mobile analogue of web's `upsertMediaItem`
-server action (`apps/web/src/app/actions/media.ts`), scoped to the movie/tv
-path.
+Get-or-create a catalog `media_items` row (movie / TV / **book** / **video
+game**), returning its `id`. This is the mobile analogue of web's
+`upsertMediaItem` server action (`apps/web/src/app/actions/media.ts`).
 
 ## Why it exists
 
-Mobile filmography cards can surface a TMDB title that isn't in our catalog yet.
-Web handles that click with the `upsertMediaItem` server action; mobile can't
-run a Next.js Node server action (server secrets can't ship in the bundle —
-`TMDB_API_KEY` lives only in Edge Functions). So mobile calls this function when
-an uncataloged card is tapped, then routes to `/media/<id>` with the returned
-id.
+Two mobile flows need to turn an uncataloged title into a `media_items.id`:
+
+- **Filmography cards** can surface a TMDB movie/tv title that isn't in our
+  catalog yet — tap it, get-or-create the row, route to `/media/<id>`.
+- **The recommend picker** searches via `media-search`, the user picks a
+  `SearchResult` of **any** type, and we need its `media_items.id` for the
+  recommendations FK. Books/games have no `tmdb_id`, and anon clients can't
+  `INSERT` into `media_items` (RLS) — so this service-role function creates it.
+
+Mobile can't run a Next.js Node server action (server secrets can't ship in the
+bundle — `TMDB_API_KEY` lives only in Edge Functions), so it calls this
+function instead of web's action.
 
 The mobile detail page reads the catalog row directly and does **not** lazily
 enrich (web's detail page calls `ensureMediaItemEnriched`; mobile has no such
-path), so this function enriches **upfront** — a new row arrives with cast,
+path), so movie/tv rows are enriched **upfront** — a new row arrives with cast,
 crew, genres, director/creator, tagline, runtime/seasons, networks/studios,
 release dates, and alternative titles already populated.
 
 ## What it does
 
-1. Reads `media_type` + `tmdb_id` from a JSON body
-   (`{ "media_type": "movie", "tmdb_id": 27205 }`) or the query string
-   (`?media_type=movie&tmdb_id=27205`). Mobile invokes via
-   `supabase.functions.invoke("media-upsert", { body: {…} })`, which POSTs JSON.
-   - `media_type` must be `movie` or `tv`. `book` / `video_game` return **400**
-     `{ "error": "media-upsert currently supports movie/tv only" }` — a
-     documented follow-up (those need IGDB / Google Books / OpenLibrary
-     enrichment paths not reimplemented here; filmography is always movie/tv).
-   - `tmdb_id` must be a positive integer (400 otherwise).
-2. **Dedup:** looks up `media_items` where `external_ids->>tmdb_id` matches and
-   `media_type` is `movie` / `tv_show` (TMDB's `tv` → our catalog's `tv_show`).
-   If found, returns `{ "id" }` immediately **without re-enriching** — fast
-   tap-to-open matters more than freshness here.
-3. **New title:** fetches TMDB details (+ credits, release_dates,
-   alternative_titles, keywords) and the best backdrop from `/images`, builds
-   the enriched `metadata` blob, and inserts a `media_items` row. On a
-   unique-violation (`23505`) — a concurrent request raced the dedup — it
-   re-reads and returns the winner's id (idempotent).
-4. Returns `{ "id": "<uuid>" }`. TMDB 404 → **404**. Other failures → **500**
-   `{ "error" }` (the TMDB key is never leaked).
+The body accepts **either** of two shapes:
+
+### Shape 1 — `{ media_type, tmdb_id }` (the filmography card)
+
+- Read from a JSON body (`{ "media_type": "movie", "tmdb_id": 27205 }`) or the
+  query string (`?media_type=movie&tmdb_id=27205`).
+- `media_type` must be `movie` or `tv`. `book` / `video_game` **400** here (they
+  have no `tmdb_id` — send them via shape 2). `tmdb_id` must be a positive
+  integer.
+- **Dedup** by `external_ids->>tmdb_id` scoped to the catalog `media_type`
+  (`movie` / `tv_show`; TMDB's `tv` → our `tv_show`). If found, returns
+  `{ "id" }` immediately **without re-enriching** — fast tap-to-open matters
+  more than freshness here.
+- **New title:** fetches TMDB details (+ credits, release_dates,
+  alternative_titles, keywords) and the best backdrop from `/images`, builds the
+  enriched `metadata` blob, and inserts. On `23505` (a concurrent request raced
+  the dedup) it re-reads and returns the winner's id (idempotent).
+
+### Shape 2 — `{ searchResult }` (the recommend picker)
+
+`searchResult` is a full `media-search` `SearchResult` (the shape in
+`supabase/functions/_shared/search.ts` / `packages/types`). Handles **all four**
+media types.
+
+- **Validation:** the `searchResult` must have a valid `media_type`, a non-empty
+  `title`, and at least one recognized external id (`tmdb_id` / `isbn_13` /
+  `google_books_id` / `openlibrary_work_id` / `igdb_id`) — otherwise **400**.
+- **Dedup by ANY external id:** for each recognized id the result carries, it
+  looks up `media_items` where `external_ids->><key>` matches, scoped to the
+  matching `media_type` (mirrors web's `upsertMediaItem`, so a row catalogued
+  under one identifier — e.g. `google_books_id` — still matches a result
+  surfaced under another — e.g. `isbn_13`). First match → returns `{ "id" }`.
+- **New, movie/tv** (result carries `external_ids.tmdb_id`): routed through the
+  **same** TMDB enrichment path as shape 1, so the detail page is fully
+  populated.
+- **New, book/video_game:** a **minimal insert** from the `SearchResult` as-is —
+  `{ media_type, title, description, cover_image_url, backdrop_url,
+  release_date, metadata: searchResult.metadata ?? {}, external_ids }`. On
+  `23505` it re-dedups and returns the winner (idempotent).
+
+  > **Scope cut (deliberate):** the book/game path does **NOT** re-enrich from
+  > OpenLibrary / Google Books / IGDB the way web's `upsertMediaItem` does
+  > (canonical-edition swap, cross-reference id backfill, series detection, IGDB
+  > company re-normalization). The search result's title / cover / description /
+  > metadata is enough for a recommendation pairing + a basic detail page; full
+  > book/game enrichment is a follow-up (it needs the OL/GB/IGDB clients ported
+  > into Deno, which `media-search` has but this function deliberately doesn't
+  > import).
+
+### Both shapes
+
+Return `{ "id": "<uuid>" }`. TMDB 404 → **404**. A body matching neither shape →
+**400**. Other failures → **500** `{ "error" }` (the TMDB key is never leaked).
 
 Writes use the **service-role key**, which bypasses RLS on the globally-shared
 `media_items` catalog. `TMDB_API_KEY` is read from the function env and is
@@ -67,6 +105,9 @@ again unless it's been rotated. It must **never** go in any client `.env`
 (`apps/mobile/.env` or a browser bundle).
 
 ## Deploy (human step — do NOT automate)
+
+The `{ searchResult }` path is **new** — after pulling these changes the
+function must be **redeployed** for the recommend picker to work:
 
 ```
 # Only if TMDB_API_KEY is not already set (it is, from the `person` function):
@@ -105,8 +146,35 @@ smoke test: `{ "media_type": "tv", "tmdb_id": 1399 }` (Game of Thrones) →
 `{ "id" }`, and the row's `metadata` carries `season_details`, `creator`,
 `networks`, etc.
 
-## Not yet supported
+### `searchResult` path (the recommend picker)
 
-`book` and `video_game` return a 400 — see step 1. Mobile's only uncataloged
-cards today are filmography titles (always TMDB movies/tv), so games/books
-aren't needed yet.
+A **book** (minimal insert, no re-enrichment):
+
+```
+curl -X POST "https://<project-ref>.functions.supabase.co/media-upsert" \
+  -H "Content-Type: application/json" \
+  -d '{ "searchResult": {
+        "media_type": "book",
+        "title": "Mistborn: The Final Empire",
+        "description": "…",
+        "cover_image_url": "https://…",
+        "backdrop_url": null,
+        "release_date": "2006-07-17",
+        "metadata": { "authors": ["Brandon Sanderson"], "page_count": 541 },
+        "external_ids": { "google_books_id": "abc123", "isbn_13": "9780765311788" }
+      } }'
+```
+
+Expect `{ "id" }`; the row is inserted with exactly the passed title / cover /
+description / metadata / external_ids (no OL/GB re-enrichment). A **movie/tv**
+`searchResult` (carries `external_ids.tmdb_id`) is routed through the full TMDB
+enrichment above — the resulting row has cast/crew/genres etc. populated. Dedup
+matches on **any** external id, so a later result surfaced under a different id
+(e.g. `isbn_13` vs `google_books_id`) resolves to the same row.
+
+## Follow-ups
+
+- **Book/game enrichment.** The `searchResult` book/game path is a minimal
+  insert (see the scope cut above). Full enrichment — canonical-edition swap,
+  cross-reference id backfill, series detection, IGDB re-normalization — is
+  deferred; it needs the OL/GB/IGDB clients ported into Deno.

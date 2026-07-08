@@ -1,5 +1,5 @@
-// `media-upsert` Edge Function — get-or-create a catalog `media_items` row
-// for a TMDB movie / TV title, enriching it upfront.
+// `media-upsert` Edge Function — get-or-create a catalog `media_items` row,
+// enriching it upfront.
 //
 // WHY THIS EXISTS
 // Mobile filmography (and other) cards can surface a TMDB title that isn't in
@@ -8,21 +8,38 @@
 // TMDB details, enrich, insert a `media_items` row, return its id — so the UI
 // can route to `/media/<id>`. Mobile can't run that Node server action (server
 // secrets can't ship in the bundle; TMDB_API_KEY lives only in Edge Functions),
-// so this function is the mobile analogue of that action's MOVIE/TV path.
+// so this function is the mobile analogue of that action.
 //
 // The mobile detail page reads the catalog row directly and does NOT lazily
 // enrich (web's detail page calls `ensureMediaItemEnriched`; mobile has no such
-// path). So this function MUST enrich upfront — a freshly-inserted row has to
-// arrive with cast / key_crew / genres / director|creator / tagline / runtime|
-// seasons / networks|production_companies / release_dates / alternative_titles
-// already populated, or the detail page's Cast tab, info tabs, and season cards
-// render empty.
+// path). So for MOVIE/TV this function MUST enrich upfront — a freshly-inserted
+// row has to arrive with cast / key_crew / genres / director|creator / tagline /
+// runtime|seasons / networks|production_companies / release_dates /
+// alternative_titles already populated, or the detail page's Cast tab, info
+// tabs, and season cards render empty.
 //
-// SCOPE: MOVIE/TV ONLY (deliberate)
-// The only uncataloged cards mobile has today are filmography titles, which are
-// always TMDB movies/tv. `book` / `video_game` return a 400 — a documented
-// follow-up. Those live in the web action via IGDB / Google Books / OpenLibrary
-// enrichment paths that this function does not (yet) reimplement.
+// TWO REQUEST SHAPES (accept BOTH)
+//   1. `{ media_type, tmdb_id }` — the EXISTING path. Mobile's filmography card
+//      taps a TMDB movie/tv credit to enrich it. `media_type` is the request
+//      alias `"movie" | "tv"`. Full TMDB re-enrichment; unchanged behavior.
+//   2. `{ searchResult: SearchResult }` — the NEW path (the recommend picker).
+//      The user picks a `media-search` SearchResult of ANY of the four types and
+//      we turn it into a `media_items.id` (recommendations FK). Books/games have
+//      NO tmdb_id, so the old shape can't carry them. See the routing below:
+//        - movie/tv (SearchResult carries `external_ids.tmdb_id`) → routed
+//          through the SAME TMDB enrichment path as shape #1 so the detail page
+//          is fully populated.
+//        - book/video_game → MINIMAL insert from the SearchResult as-is (title /
+//          cover / description / metadata / external_ids). See the scope cut.
+//
+// SCOPE CUT: BOOK/GAME ENRICHMENT (deliberate)
+// The book/game `searchResult` path does NOT re-enrich from OpenLibrary /
+// Google Books / IGDB (web's `upsertMediaItem` does: canonical-edition swap,
+// cross-reference id backfill, series detection, IGDB company re-normalization).
+// The search result's title / cover / metadata is enough for a recommendation
+// pairing + a basic detail page; full book/game enrichment is a follow-up (it
+// needs the OL/GB/IGDB clients ported into Deno, which media-search has but this
+// function deliberately does not import — keeping this function's surface small).
 //
 // KNOWN DUPLICATION — FOLLOW-UP
 // This file RE-IMPLEMENTS web's `enrichTMDBMetadata` + `fetchBestTMDBBackdrop`
@@ -46,6 +63,38 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
+
+// ---------------------------------------------------------------------------
+// SearchResult — the shape the recommend picker passes on the NEW path.
+// Duplicated from packages/types/src/index.ts (and kept in exact lockstep with
+// supabase/functions/_shared/search.ts's `SearchResult`, which the picker
+// consumes) because Deno Edge Functions don't share the pnpm workspace's TS
+// paths. `external_ids` keys per source: movie/tv `{ tmdb_id }`, book
+// `{ google_books_id | openlibrary_work_id, isbn_13? }`, game `{ igdb_id }`.
+// ---------------------------------------------------------------------------
+
+type MediaType = "book" | "movie" | "tv_show" | "video_game";
+
+// The external_ids keys media_items can be deduped by — mirrors web's
+// `upsertMediaItem`, which iterates EVERY external id present on the result.
+const EXTERNAL_ID_KEYS = [
+  "tmdb_id",
+  "isbn_13",
+  "google_books_id",
+  "openlibrary_work_id",
+  "igdb_id",
+] as const;
+
+interface SearchResult {
+  media_type: MediaType;
+  title: string;
+  description: string | null;
+  cover_image_url: string | null;
+  backdrop_url: string | null;
+  release_date: string | null;
+  metadata: Record<string, unknown> | null;
+  external_ids: Record<string, string | number>;
+}
 
 // ---------------------------------------------------------------------------
 // Minimal TMDB response shapes (mirror packages/media/src/types.ts —
@@ -522,37 +571,139 @@ function parsePositiveInt(value: unknown): number | null {
   return n;
 }
 
-// Parse `{ media_type, tmdb_id }` from the query string OR a JSON body. Mobile
-// invokes via `supabase.functions.invoke("media-upsert", { body: {…} })`, which
-// POSTs JSON; the query string works too.
-async function readParams(
-  req: Request,
-): Promise<{ media_type: unknown; tmdb_id: unknown }> {
+// The two body shapes, after parsing. Exactly one is present.
+type ParsedBody =
+  | { kind: "tmdb"; media_type: "movie" | "tv"; tmdbId: number }
+  | { kind: "search"; searchResult: SearchResult }
+  | { kind: "invalid"; error: string };
+
+// Coerce arbitrary input into a SearchResult, validating the fields we depend
+// on (a valid `media_type` + a non-empty title + at least one recognized
+// external id). Returns null when it isn't a usable SearchResult so the caller
+// can 400. We normalize external_ids to only the keys we dedup on and coerce
+// their values to string|number, dropping anything malformed.
+function coerceSearchResult(raw: unknown): SearchResult | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+
+  const mt = o.media_type;
+  if (
+    mt !== "book" &&
+    mt !== "movie" &&
+    mt !== "tv_show" &&
+    mt !== "video_game"
+  ) {
+    return null;
+  }
+
+  const title = typeof o.title === "string" ? o.title.trim() : "";
+  if (!title) return null;
+
+  const rawExt =
+    o.external_ids && typeof o.external_ids === "object"
+      ? (o.external_ids as Record<string, unknown>)
+      : {};
+  const external_ids: Record<string, string | number> = {};
+  for (const key of EXTERNAL_ID_KEYS) {
+    const v = rawExt[key];
+    if (typeof v === "string" && v.length > 0) external_ids[key] = v;
+    else if (typeof v === "number" && Number.isFinite(v)) external_ids[key] = v;
+  }
+  // A SearchResult with no recognized external id can't be deduped OR keyed —
+  // reject it (mirrors the picker only ever passing real search results).
+  if (Object.keys(external_ids).length === 0) return null;
+
+  return {
+    media_type: mt,
+    title,
+    description: typeof o.description === "string" ? o.description : null,
+    cover_image_url:
+      typeof o.cover_image_url === "string" ? o.cover_image_url : null,
+    backdrop_url: typeof o.backdrop_url === "string" ? o.backdrop_url : null,
+    release_date: typeof o.release_date === "string" ? o.release_date : null,
+    metadata:
+      o.metadata && typeof o.metadata === "object"
+        ? (o.metadata as Record<string, unknown>)
+        : null,
+    external_ids,
+  };
+}
+
+// Parse EITHER shape from the query string OR a JSON body. Mobile invokes via
+// `supabase.functions.invoke("media-upsert", { body: {…} })`, which POSTs JSON.
+// The `{ media_type, tmdb_id }` shape also accepts the query string (curl smoke
+// tests); the `{ searchResult }` shape is JSON-body only (nested object).
+async function readBody(req: Request): Promise<ParsedBody> {
   const url = new URL(req.url);
   const qsMediaType = url.searchParams.get("media_type");
   const qsTmdbId = url.searchParams.get("tmdb_id");
-  if (qsMediaType != null || qsTmdbId != null) {
-    return { media_type: qsMediaType, tmdb_id: qsTmdbId };
-  }
-  if (req.method !== "GET" && req.method !== "HEAD") {
+
+  let bodyMediaType: unknown = qsMediaType;
+  let bodyTmdbId: unknown = qsTmdbId;
+  let bodySearchResult: unknown;
+
+  if (
+    qsMediaType == null &&
+    qsTmdbId == null &&
+    req.method !== "GET" &&
+    req.method !== "HEAD"
+  ) {
     try {
       const body = await req.json();
       if (body && typeof body === "object") {
-        return {
-          media_type: (body as Record<string, unknown>).media_type,
-          tmdb_id: (body as Record<string, unknown>).tmdb_id,
-        };
+        const b = body as Record<string, unknown>;
+        bodyMediaType = b.media_type;
+        bodyTmdbId = b.tmdb_id;
+        bodySearchResult = b.searchResult;
       }
     } catch {
-      // No / invalid JSON body — fall through.
+      // No / invalid JSON body — fall through to validation.
     }
   }
-  return { media_type: undefined, tmdb_id: undefined };
+
+  // NEW path takes precedence when a `searchResult` is present.
+  if (bodySearchResult !== undefined) {
+    const sr = coerceSearchResult(bodySearchResult);
+    if (!sr) {
+      return {
+        kind: "invalid",
+        error:
+          "searchResult must have a valid media_type, a title, and at least one external id",
+      };
+    }
+    return { kind: "search", searchResult: sr };
+  }
+
+  // EXISTING path: `{ media_type, tmdb_id }`.
+  if (bodyMediaType === "book" || bodyMediaType === "video_game") {
+    // On the tmdb shape, books/games have no tmdb_id — the caller should use
+    // the `searchResult` shape instead.
+    return {
+      kind: "invalid",
+      error:
+        "book/video_game must be sent via the searchResult body shape (they have no tmdb_id)",
+    };
+  }
+  if (bodyMediaType !== "movie" && bodyMediaType !== "tv") {
+    return {
+      kind: "invalid",
+      error: "provide either { media_type: 'movie'|'tv', tmdb_id } or { searchResult }",
+    };
+  }
+  const tmdbId = parsePositiveInt(bodyTmdbId);
+  if (tmdbId == null) {
+    return {
+      kind: "invalid",
+      error: "tmdb_id is required and must be a positive integer",
+    };
+  }
+  return { kind: "tmdb", media_type: bodyMediaType, tmdbId };
 }
 
 // Look up an existing catalog row by TMDB id + catalog media_type. Returns its
-// id or null. Used for the initial dedup AND the post-23505 re-read.
-async function findExisting(
+// id or null. Used by the movie/tv path's initial dedup AND its post-23505
+// re-read.
+async function findExistingByTmdbId(
   // deno-lint-ignore no-explicit-any
   supabase: any,
   tmdbId: number,
@@ -569,6 +720,158 @@ async function findExisting(
   return data?.id ?? null;
 }
 
+// Dedup by ANY external id the SearchResult carries — mirrors web's
+// `upsertMediaItem`, which iterates every id (a row catalogued under one
+// identifier, e.g. `google_books_id`, must still match a result surfaced under
+// another, e.g. `isbn_13`). Scoped to the matching catalog media_type so a book
+// and a movie that happen to collide on an id can't cross-match. Returns the
+// first matching row id, or null. Used for both the initial dedup and the
+// post-23505 re-read on the book/game insert.
+async function findExistingByAnyExternalId(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  externalIds: Record<string, string | number>,
+  catalogType: MediaType,
+): Promise<string | null> {
+  for (const key of EXTERNAL_ID_KEYS) {
+    const value = externalIds[key];
+    if (value === undefined) continue;
+    const { data, error } = await supabase
+      .from("media_items")
+      .select("id")
+      .eq(`external_ids->>${key}`, String(value))
+      .eq("media_type", catalogType)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    if (data?.id) return data.id;
+  }
+  return null;
+}
+
+// Build a fully-enriched movie/tv row from a TMDB id and insert it (idempotent
+// on 23505). Shared by BOTH request shapes: shape #1 calls it directly; the
+// `searchResult` path routes a movie/tv result here by extracting its
+// `external_ids.tmdb_id`. Returns the row id, or a discriminated failure.
+async function upsertTmdb(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  media_type: "movie" | "tv",
+  tmdbId: number,
+): Promise<
+  | { ok: true; id: string }
+  | { ok: false; status: number; error: string }
+> {
+  // Our catalog uses 'tv_show' for television; TMDB uses 'tv'.
+  const catalogType: "movie" | "tv_show" =
+    media_type === "tv" ? "tv_show" : "movie";
+
+  // Dedup. If the row already exists, return its id fast — do NOT re-enrich.
+  // Web re-enriches stale rows on its detail-page path, but for mobile's
+  // tap-to-open a fast existing-row return matters more; a separate freshness
+  // pass can handle drift later.
+  const existingId = await findExistingByTmdbId(supabase, tmdbId, catalogType);
+  if (existingId) return { ok: true, id: existingId };
+
+  // New title — fetch TMDB + enrich.
+  const tmdbKey = Deno.env.get("TMDB_API_KEY");
+  if (!tmdbKey) {
+    // Explicit but never echoes the (missing) key value.
+    return {
+      ok: false,
+      status: 500,
+      error: "TMDB_API_KEY is not configured on this function",
+    };
+  }
+  const headers = {
+    Authorization: `Bearer ${tmdbKey}`,
+    "Content-Type": "application/json",
+  };
+
+  const built =
+    media_type === "movie"
+      ? await buildMovieRow(tmdbId, headers)
+      : await buildTVRow(tmdbId, headers);
+  if (built === "not_found") {
+    return { ok: false, status: 404, error: "not found" };
+  }
+
+  // Insert. On a unique-violation (23505) a concurrent request raced our dedup
+  // — re-read and return the winner's id (idempotent).
+  const { data: inserted, error: insertErr } = await supabase
+    .from("media_items")
+    .insert({
+      media_type: built.media_type,
+      title: built.title,
+      description: built.description,
+      cover_image_url: built.cover_image_url,
+      backdrop_url: built.backdrop_url,
+      release_date: built.release_date,
+      metadata: built.metadata,
+      external_ids: built.external_ids,
+    })
+    .select("id")
+    .single();
+
+  if (insertErr) {
+    if (insertErr.code === "23505") {
+      const racedId = await findExistingByTmdbId(supabase, tmdbId, catalogType);
+      if (racedId) return { ok: true, id: racedId };
+    }
+    throw insertErr;
+  }
+  return { ok: true, id: inserted.id };
+}
+
+// Minimal insert for a book/video_game SearchResult — NO OL/GB/IGDB
+// re-enrichment (see the SCOPE CUT note in the file header). The search
+// result's own title / cover / description / metadata / external_ids are
+// enough for a recommendation pairing + a basic detail page. Dedup-by-any-id
+// runs first; on a 23505 race, re-dedup and return the winner.
+async function upsertSearchResultMinimal(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  sr: SearchResult,
+): Promise<
+  | { ok: true; id: string }
+  | { ok: false; status: number; error: string }
+> {
+  const existingId = await findExistingByAnyExternalId(
+    supabase,
+    sr.external_ids,
+    sr.media_type,
+  );
+  if (existingId) return { ok: true, id: existingId };
+
+  const { data: inserted, error: insertErr } = await supabase
+    .from("media_items")
+    .insert({
+      media_type: sr.media_type,
+      title: sr.title,
+      description: sr.description,
+      cover_image_url: sr.cover_image_url,
+      backdrop_url: sr.backdrop_url,
+      release_date: toDateOrNull(sr.release_date),
+      metadata: sr.metadata ?? {},
+      external_ids: sr.external_ids,
+    })
+    .select("id")
+    .single();
+
+  if (insertErr) {
+    if (insertErr.code === "23505") {
+      const racedId = await findExistingByAnyExternalId(
+        supabase,
+        sr.external_ids,
+        sr.media_type,
+      );
+      if (racedId) return { ok: true, id: racedId };
+    }
+    throw insertErr;
+  }
+  return { ok: true, id: inserted.id };
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   // 1. CORS preflight.
   if (req.method === "OPTIONS") {
@@ -576,35 +879,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    // 2. Parse + validate params.
-    const { media_type, tmdb_id } = await readParams(req);
-
-    if (media_type === "book" || media_type === "video_game") {
-      // Documented follow-up: books/games need IGDB / Google Books / OpenLibrary
-      // enrichment paths this function doesn't reimplement yet. Filmography
-      // (mobile's only uncataloged cards today) is always movie/tv.
-      return jsonResponse(
-        { error: "media-upsert currently supports movie/tv only" },
-        400,
-      );
+    // 2. Parse + validate the body (either shape).
+    const parsed = await readBody(req);
+    if (parsed.kind === "invalid") {
+      return jsonResponse({ error: parsed.error }, 400);
     }
-    if (media_type !== "movie" && media_type !== "tv") {
-      return jsonResponse(
-        { error: "media_type must be 'movie' or 'tv'" },
-        400,
-      );
-    }
-    const tmdbId = parsePositiveInt(tmdb_id);
-    if (tmdbId == null) {
-      return jsonResponse(
-        { error: "tmdb_id is required and must be a positive integer" },
-        400,
-      );
-    }
-
-    // Our catalog uses 'tv_show' for television; TMDB uses 'tv'.
-    const catalogType: "movie" | "tv_show" =
-      media_type === "tv" ? "tv_show" : "movie";
 
     // 3. Service-role client — bypasses RLS so we can write the catalog.
     const supabase = createClient(
@@ -612,61 +891,44 @@ Deno.serve(async (req: Request): Promise<Response> => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // 4. Dedup. If the row already exists, return its id fast — do NOT
-    //    re-enrich. Web re-enriches stale rows on its detail-page path, but for
-    //    mobile's tap-to-open a fast existing-row return matters more; a
-    //    separate freshness pass can handle drift later.
-    const existingId = await findExisting(supabase, tmdbId, catalogType);
-    if (existingId) return jsonResponse({ id: existingId });
+    // 4. Route to the right upsert.
+    let result:
+      | { ok: true; id: string }
+      | { ok: false; status: number; error: string };
 
-    // 5. New title — fetch TMDB + enrich.
-    const tmdbKey = Deno.env.get("TMDB_API_KEY");
-    if (!tmdbKey) {
-      // Explicit but never echoes the (missing) key value.
-      return jsonResponse(
-        { error: "TMDB_API_KEY is not configured on this function" },
-        500,
-      );
-    }
-    const headers = {
-      Authorization: `Bearer ${tmdbKey}`,
-      "Content-Type": "application/json",
-    };
-
-    const built =
-      media_type === "movie"
-        ? await buildMovieRow(tmdbId, headers)
-        : await buildTVRow(tmdbId, headers);
-    if (built === "not_found") {
-      return jsonResponse({ error: "not found" }, 404);
-    }
-
-    // 6. Insert. On a unique-violation (23505) a concurrent request raced our
-    //    dedup — re-read and return the winner's id (idempotent).
-    const { data: inserted, error: insertErr } = await supabase
-      .from("media_items")
-      .insert({
-        media_type: built.media_type,
-        title: built.title,
-        description: built.description,
-        cover_image_url: built.cover_image_url,
-        backdrop_url: built.backdrop_url,
-        release_date: built.release_date,
-        metadata: built.metadata,
-        external_ids: built.external_ids,
-      })
-      .select("id")
-      .single();
-
-    if (insertErr) {
-      if (insertErr.code === "23505") {
-        const racedId = await findExisting(supabase, tmdbId, catalogType);
-        if (racedId) return jsonResponse({ id: racedId });
+    if (parsed.kind === "tmdb") {
+      // EXISTING path — the filmography card's tap-to-enrich (movie/tv).
+      result = await upsertTmdb(supabase, parsed.media_type, parsed.tmdbId);
+    } else {
+      // NEW path — the recommend picker's SearchResult (all four types).
+      const sr = parsed.searchResult;
+      if (sr.media_type === "movie" || sr.media_type === "tv_show") {
+        // Route movie/tv through the SAME TMDB enrichment path (keyed by the
+        // result's tmdb_id) so the detail page is fully populated. coerce
+        // guaranteed at least one external id; for movie/tv from media-search
+        // that's always tmdb_id — but guard in case a caller passes a movie/tv
+        // result without one.
+        const tmdbId = parsePositiveInt(sr.external_ids.tmdb_id);
+        if (tmdbId == null) {
+          result = {
+            ok: false,
+            status: 400,
+            error: "movie/tv searchResult must carry external_ids.tmdb_id",
+          };
+        } else {
+          const alias = sr.media_type === "tv_show" ? "tv" : "movie";
+          result = await upsertTmdb(supabase, alias, tmdbId);
+        }
+      } else {
+        // book / video_game — minimal insert (scope cut: no re-enrichment).
+        result = await upsertSearchResultMinimal(supabase, sr);
       }
-      throw insertErr;
     }
 
-    return jsonResponse({ id: inserted.id });
+    if (!result.ok) {
+      return jsonResponse({ error: result.error }, result.status);
+    }
+    return jsonResponse({ id: result.id });
   } catch (err) {
     // Never leak the TMDB key. A short message is safe and useful.
     const message = err instanceof Error ? err.message : "unexpected error";

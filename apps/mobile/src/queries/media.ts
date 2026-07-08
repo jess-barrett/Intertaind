@@ -21,6 +21,7 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Tables } from "@intertaind/supabase";
+import type { SearchResult } from "@intertaind/types";
 import { useAuth } from "@/components/auth-provider";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "./keys";
@@ -203,32 +204,49 @@ export function useSeriesSiblings(seriesId: string | null | undefined) {
 }
 
 /**
- * Mobile analogue of web's upsert-on-click (web's `MediaCardLink`): enriches
- * an uncataloged title via the `media-upsert` Edge Function and returns its
- * `media_items` id, so a card whose credit has no `media_item_id` yet can
- * still navigate to `/media/[id]` on first tap.
+ * Discriminated input to `useMediaUpsertMutation`, matching the Edge
+ * Function's two body shapes:
+ *
+ *   - `{ mediaType, tmdbId }` — the filmography card's tap-to-enrich. TMDB
+ *     movie/tv only; the function re-enriches from TMDB.
+ *   - `{ searchResult }` — the recommend picker's pick. Any of the four media
+ *     types (book/game have no tmdb_id, so they can only come this way). The
+ *     function dedups by any external id and, for movie/tv, routes through the
+ *     same full TMDB enrichment.
+ *
+ * A union (not two optional fields) so callers can't send a half-filled body
+ * and TS narrows the invoke payload for us.
+ */
+export type MediaUpsertInput =
+  | { mediaType: "movie" | "tv"; tmdbId: number }
+  | { searchResult: SearchResult };
+
+/**
+ * Mobile analogue of web's upsert-on-click (web's `MediaCardLink` +
+ * `upsertMediaItem`): turns an uncataloged title into a `media_items` id via
+ * the `media-upsert` Edge Function, so the filmography card can navigate to
+ * `/media/[id]` on first tap AND the recommend picker can pin a picked
+ * `SearchResult` (of any type) to a recommendations FK.
  *
  * `media-upsert` holds the server-side external-API secrets (the anon JWT is
  * forwarded automatically by `functions.invoke`, mirroring `usePerson`'s
- * `person` invoke); it get-or-creates the catalog row from a TMDb id and
- * returns `{ id }`. Throws on a transport/function error or a missing id so
- * the caller can keep the "enriching…" state off and not navigate nowhere.
+ * `person` invoke); it get-or-creates the catalog row and returns `{ id }`.
+ * Throws on a transport/function error or a missing id so the caller can keep
+ * the "enriching…" state off and not navigate nowhere.
  *
  * No cache invalidation: the row it creates isn't in any list this app has
  * cached, and the destination media-detail screen fetches its own fresh copy.
  */
 export function useMediaUpsertMutation() {
   return useMutation({
-    mutationFn: async ({
-      mediaType,
-      tmdbId,
-    }: {
-      mediaType: "movie" | "tv";
-      tmdbId: number;
-    }): Promise<string> => {
+    mutationFn: async (input: MediaUpsertInput): Promise<string> => {
+      const body =
+        "searchResult" in input
+          ? { searchResult: input.searchResult }
+          : { media_type: input.mediaType, tmdb_id: input.tmdbId };
       const { data, error } = await supabase.functions.invoke<{ id: string }>(
         "media-upsert",
-        { body: { media_type: mediaType, tmdb_id: tmdbId } }
+        { body }
       );
       if (error) throw error;
       if (!data?.id) throw new Error("media-upsert returned no id.");
