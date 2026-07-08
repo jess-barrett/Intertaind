@@ -105,7 +105,7 @@ export function ProfileHeader({
             accessibilityLabel="Follow"
             accessibilityState={{ disabled: true }}
             disabled
-            className="flex-row items-center gap-1.5 rounded-full bg-brand px-4 py-2 opacity-60"
+            className="flex-row items-center gap-1.5 rounded-sm bg-brand px-4 py-2 opacity-60"
           >
             <UserPlus size={16} color={colors["text-primary"]} />
             <Text className="text-sm font-semibold text-text-primary">

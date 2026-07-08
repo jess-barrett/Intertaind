@@ -70,6 +70,7 @@ export function MediaCard({
   showMeta = true,
   compact = false,
   showActions = true,
+  showYear = true,
 }: {
   media: CardMedia;
   /** The viewer's tracking row for this catalog id (null = untracked /
@@ -96,6 +97,10 @@ export function MediaCard({
       Set false for pure-poster contexts (e.g. the profile Top-4 favorites),
       where the card is just cover art + a tap target. */
   showActions?: boolean;
+  /** Show the release year in the meta row. Default true. Set false where the
+      year is noise (e.g. profile shelves). When there's nothing else to show
+      (no rating, not loved), the whole meta row is omitted. */
+  showYear?: boolean;
 }) {
   const router = useRouter();
   const upsert = useMediaUpsertMutation();
@@ -199,20 +204,26 @@ export function MediaCard({
             {media.title}
           </Text>
 
-          {/* Meta row — viewer rating (else community avg), loved heart, year. */}
-          <View className="mt-0.5 flex-row items-center gap-1.5">
-            {displayStars != null ? (
-              <StarRating value={displayStars} readOnly starsOnly size={12} />
-            ) : null}
-            {favorite ? (
-              <Heart
-                size={11}
-                color={colors["accent-movie"]}
-                fill={colors["accent-movie"]}
-              />
-            ) : null}
-            <Text className="text-xs text-text-muted">{media.year ?? "—"}</Text>
-          </View>
+          {/* Meta row — rating stars (only when rated), loved heart, and the
+              year (when showYear). Omitted entirely when there's nothing to
+              show, so an unrated/year-less card doesn't leave an empty gap. */}
+          {displayStars != null || favorite || (showYear && media.year) ? (
+            <View className="mt-0.5 flex-row items-center gap-1.5">
+              {displayStars != null ? (
+                <StarRating value={displayStars} readOnly starsOnly size={12} />
+              ) : null}
+              {favorite ? (
+                <Heart
+                  size={11}
+                  color={colors["accent-movie"]}
+                  fill={colors["accent-movie"]}
+                />
+              ) : null}
+              {showYear && media.year ? (
+                <Text className="text-xs text-text-muted">{media.year}</Text>
+              ) : null}
+            </View>
+          ) : null}
         </>
       ) : null}
     </Pressable>

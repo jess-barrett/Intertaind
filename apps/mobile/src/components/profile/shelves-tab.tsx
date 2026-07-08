@@ -5,12 +5,12 @@
  * type (from `SHELF_CONFIG`), then a poster grid of the owner's tracked titles
  * in that section.
  *
- * ── Two nested selectors ────────────────────────────────────────────────────
- *   1. Media type — a horizontal chip row (the search screen's chip idiom),
- *      each chip a type glyph + label, the active chip tinted with the type
- *      accent. Movies · Shows · Books · Games (the four domain types).
- *   2. Status section — the sections `SHELF_CONFIG[type]` offers (Watched /
- *      Watchlist / …), rendered with the shared `SegmentedControl`.
+ * ── One combined filter row ─────────────────────────────────────────────────
+ * Media type + status live on a SINGLE horizontal rounded-sm row (not two
+ * stacked bars): the ACTIVE type shows its glyph + label; the other types
+ * collapse to icon-only buttons; a thin divider; then the status-section chips
+ * for the active type (from `SHELF_CONFIG[type]`). Everything is `rounded-sm`
+ * (no pills) for consistency with the primary segmented control above it.
  *
  * Switching TYPE resets the section to that type's FIRST section (each type has
  * a different section set, so the old section key is meaningless under the new
@@ -20,8 +20,10 @@
  * ProfileView owns the outer vertical `ScrollView`, so this tab must NOT nest a
  * vertical scroller (a `FlatList` here would fight the parent's scroll +
  * mis-measure). Instead the grid is a flex-wrap `View` of fixed-width cells — a
- * 3-column poster grid (fixed third-width, so a partial last row left-aligns
+ * 4-column poster grid (fixed quarter-width, so a partial last row left-aligns
  * rather than stretching, mirroring the search grid's fixed-cell approach).
+ * Cards are poster + title only: NO year, and rating stars ONLY when the owner
+ * actually rated the title (no community-average fallback → no empty stars).
  *
  * ── Owner rating vs viewer overlay ──────────────────────────────────────────
  * Each card shows the SHELF OWNER's own rating/heart by default (it's their
@@ -53,7 +55,6 @@ import { type MediaType, MEDIA_TYPE_CONFIG } from "@intertaind/types";
 
 import { MediaCard } from "@/components/media/media-card";
 import { cardMediaFromHomeItem } from "@/components/media/card-media";
-import { SegmentedControl } from "@/components/profile/segmented-control";
 import { SHELF_CONFIG } from "@/components/profile/shelf-config";
 import {
   MEDIA_TYPE_ICON_COLOR,
@@ -65,8 +66,8 @@ import { useViewerTrackingMap } from "@/queries/home";
 /** The four domain types, in the type-selector's display order. */
 const TYPE_ORDER: MediaType[] = ["movie", "tv_show", "book", "video_game"];
 
-/** 3-column poster grid. Fixed third-width cells (see file header). */
-const NUM_COLUMNS = 3;
+/** 4-column poster grid. Fixed quarter-width cells (see file header). */
+const NUM_COLUMNS = 4;
 /** Gutter between grid columns / rows (points). */
 const GRID_GAP = 12;
 /** The horizontal padding the parent ScrollView body applies (profile-view). */
@@ -117,11 +118,12 @@ export function ShelvesTab({
 
   return (
     <View className="gap-4">
-      {/* (1) Media-type selector — horizontal chip row (search chip idiom). */}
+      {/* Combined filter row: media type (active = icon+label, others icon-only)
+          · divider · status chips — one scrollable rounded-sm row. */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: 8 }}
+        contentContainerStyle={{ gap: 8, alignItems: "center" }}
       >
         {TYPE_ORDER.map((t) => {
           const active = t === type;
@@ -133,36 +135,58 @@ export function ShelvesTab({
               accessibilityState={{ selected: active }}
               accessibilityLabel={`Show ${MEDIA_TYPE_CONFIG[t].label}`}
               onPress={() => selectType(t)}
-              className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 active:opacity-70 ${
-                active
-                  ? "border-surface-border bg-surface-overlay"
-                  : "border-transparent"
+              className={`flex-row items-center gap-1.5 rounded-sm px-2.5 py-1.5 active:opacity-70 ${
+                active ? "bg-surface-overlay" : ""
               }`}
             >
               <Icon
-                size={14}
+                size={16}
                 color={active ? MEDIA_TYPE_ICON_COLOR[t] : colors["text-muted"]}
               />
+              {/* Only the active type shows its label — others stay icon-only. */}
+              {active ? (
+                <Text className="text-sm font-medium text-text-primary">
+                  {MEDIA_TYPE_CONFIG[t].label}
+                </Text>
+              ) : null}
+            </Pressable>
+          );
+        })}
+
+        {/* Divider between the type toggles and the status chips. `w-px`
+            compiles to ~0 in NativeWind, so set the width via style. */}
+        <View
+          style={{ width: 1, height: 20 }}
+          className="mx-1 bg-surface-border"
+        />
+
+        {/* Status sections for the active type — rounded-sm chips. */}
+        {sections.map((s, i) => {
+          const active = i === sectionIndex;
+          return (
+            <Pressable
+              key={s.key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={s.label}
+              onPress={() => setSectionIndex(i)}
+              className={`rounded-sm px-3 py-1.5 active:opacity-70 ${
+                active ? "bg-brand" : "border border-surface-border"
+              }`}
+            >
               <Text
                 className={`text-sm font-medium ${
                   active ? "text-text-primary" : "text-text-muted"
                 }`}
               >
-                {MEDIA_TYPE_CONFIG[t].label}
+                {s.label}
               </Text>
             </Pressable>
           );
         })}
       </ScrollView>
 
-      {/* (2) Status-section selector for the active type. */}
-      <SectionSelector
-        sections={sections}
-        activeIndex={sectionIndex}
-        onChange={setSectionIndex}
-      />
-
-      {/* (3) The section's poster grid / states. */}
+      {/* The section's poster grid / states. */}
       {shelfQuery.isPending ? (
         <View className="items-center py-12">
           <ActivityIndicator color={colors["text-muted"]} />
@@ -204,7 +228,7 @@ export function ShelvesTab({
                 <MediaCard
                   media={cardMediaFromHomeItem(item)}
                   tracking={tracking}
-                  avgRating={item.avg_rating}
+                  showYear={false}
                   compact
                   onMutated={() => {
                     // A viewer quick-action on someone else's shelf card writes
@@ -219,68 +243,5 @@ export function ShelvesTab({
         </View>
       )}
     </View>
-  );
-}
-
-/**
- * The status-section selector. Two or fewer sections use the plain
- * `SegmentedControl` (fits the row); three+ (TV/Books/Games) wrap in a
- * horizontal chip scroller so labels like "Currently Watching" aren't crushed.
- * Either way the ACTIVE section is an index into `SHELF_CONFIG[type]`.
- */
-function SectionSelector({
-  sections,
-  activeIndex,
-  onChange,
-}: {
-  sections: (typeof SHELF_CONFIG)[MediaType];
-  activeIndex: number;
-  onChange: (index: number) => void;
-}) {
-  // 2 sections (movies) fit the 4-up segmented control comfortably.
-  if (sections.length <= 2) {
-    const active = sections[Math.min(activeIndex, sections.length - 1)];
-    return (
-      <SegmentedControl
-        options={sections.map((s) => s.label)}
-        value={active.label}
-        onChange={(label) =>
-          onChange(sections.findIndex((s) => s.label === label))
-        }
-      />
-    );
-  }
-
-  // 3+ sections — a scrollable chip row so long labels stay legible.
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 8 }}
-    >
-      {sections.map((s, i) => {
-        const active = i === activeIndex;
-        return (
-          <Pressable
-            key={s.key}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
-            accessibilityLabel={s.label}
-            onPress={() => onChange(i)}
-            className={`rounded-full border px-3 py-1.5 active:opacity-70 ${
-              active ? "border-transparent bg-brand" : "border-surface-border"
-            }`}
-          >
-            <Text
-              className={`text-sm font-medium ${
-                active ? "text-text-primary" : "text-text-muted"
-              }`}
-            >
-              {s.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
   );
 }
