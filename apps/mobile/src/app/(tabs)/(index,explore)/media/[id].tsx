@@ -81,6 +81,7 @@ import BookReadingSheet from "@/components/media/sheets/book-reading-sheet";
 import GameLogSheet from "@/components/media/sheets/game-log-sheet";
 import GameStatusSheet from "@/components/media/sheets/game-status-sheet";
 import MovieLogSheet from "@/components/media/sheets/movie-log-sheet";
+import RecommendSheet from "@/components/media/sheets/recommend-sheet";
 import TvLogEpisodeSheet from "@/components/media/sheets/tv-log-episode-sheet";
 import TvLogSeasonSheet from "@/components/media/sheets/tv-log-season-sheet";
 import TvWatchingSheet from "@/components/media/sheets/tv-watching-sheet";
@@ -442,6 +443,10 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
   const tvLogSeasonRef = useRef<AppSheetRef>(null);
   const tvLogEpisodeRef = useRef<AppSheetRef>(null);
   const isTv = item.media_type === "tv_show";
+  // The Intertain recommend sheet (M4) — mounted for ALL media types (the
+  // cross-media recommend feature applies to everything); the strip's
+  // "Intertain friends" CTA presents it via onIntertain.
+  const recommendRef = useRef<AppSheetRef>(null);
 
   return (
     <>
@@ -608,8 +613,8 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
               // Game status picker sheet (Task 2.7) — present the ref-driven
               // sheet mounted below. (Only games route here.)
               onOpenStatusPicker: () => gameStatusRef.current?.present(),
-              // TODO(M4): Intertain-friends recommend sheet.
-              onIntertain: () => {},
+              // Intertain-friends recommend sheet (M4) — all media types.
+              onIntertain: () => recommendRef.current?.present(),
               // TODO(M4): show-activity screen.
               onShowActivity: () => {},
               // TODO(M4): change cover (book) / backdrop (movie/TV/game) sheet.
@@ -730,6 +735,12 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
           viewerRow={tracking.data ?? null}
         />
       ) : null}
+
+      {/* Intertain recommend sheet (M4). Ref-driven overlay, mounted as a
+          sibling of the scroll content. Mounted for ALL media types — the
+          cross-media recommend feature applies to everything, so the action
+          strip's "Intertain friends" CTA (onIntertain) always has a sheet. */}
+      <RecommendSheet ref={recommendRef} media={item} />
     </>
   );
 }

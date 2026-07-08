@@ -83,6 +83,16 @@ export const queryKeys = {
     all: ["activity"] as const,
     feed: () => [...queryKeys.activity.all, "feed"] as const,
   },
+  search: {
+    all: ["search"] as const,
+    // Cross-source media search (the `media-search` Edge Function), keyed
+    // by the trimmed query + type scope. No user in the key — the search is
+    // catalog data over external APIs, identical for every viewer. The
+    // CALLER debounces the query string before it reaches this key, so the
+    // cache stores stable (settled) queries, not every keystroke.
+    media: (query: string, type: string) =>
+      [...queryKeys.search.all, "media", query, type] as const,
+  },
   recommendations: {
     all: ["recommendations"] as const,
     // Recs WHERE this media is the SOURCE — the "Pairs with this" list on
