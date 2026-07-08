@@ -23,7 +23,7 @@
  * Mobile primitives only; icons color via the `color` PROP.
  */
 import type { ReactNode } from "react";
-import { Text, View } from "react-native";
+import { Text, useWindowDimensions, View } from "react-native";
 import { MEDIA_TYPE_CONFIG, type MediaType } from "@intertaind/types";
 
 import { MediaCard } from "@/components/media/media-card";
@@ -38,6 +38,16 @@ import {
 
 /** Fixed media-type order for the favorites sections (movie → tv → book → game). */
 const FAVORITE_ORDER: MediaType[] = ["movie", "tv_show", "book", "video_game"];
+
+/** Favorites row geometry. The four posters are sized to EXACTLY fill the
+ *  content width (mirrors the search grid) so a full row's left/right margins
+ *  both equal the container padding — no slack collecting on the right. */
+const FAV_COLUMNS = 4;
+const FAV_GAP = 12; // gutter between the four posters
+/** Horizontal padding of the segment content — ProfileView's SegmentBody wraps
+ *  each segment in `px-4` (16pt each side); the cell width subtracts it. Keep
+ *  in sync if that padding changes. */
+const CONTENT_H_PADDING = 16;
 
 export function OverviewTab({
   userId,
@@ -166,12 +176,19 @@ function FavoriteSection({
   label: string;
   items: HomeMediaItem[];
 }) {
+  const { width } = useWindowDimensions();
+  // Fixed poster width so 4 cells + 3 gutters exactly fill the content width —
+  // a full row's outer margins then equal the container padding on both sides,
+  // and a partial (<4) row left-aligns at the same size.
+  const cellWidth =
+    (width - CONTENT_H_PADDING * 2 - FAV_GAP * (FAV_COLUMNS - 1)) / FAV_COLUMNS;
+
   return (
     <View className="gap-2">
       <SectionHeading>{label}</SectionHeading>
-      <View className="flex-row gap-3">
+      <View className="flex-row" style={{ gap: FAV_GAP }}>
         {items.map((item) => (
-          <View key={item.id} className="w-[22%]">
+          <View key={item.id} style={{ width: cellWidth }}>
             <MediaCard
               media={cardMediaFromHomeItem(item)}
               showMeta={false}
