@@ -60,7 +60,7 @@ import type { SearchResult } from "@intertaind/types";
 import { Image } from "@/components/image";
 import { MediaSearchPicker } from "@/components/media/media-search-picker";
 import AppSheet, { type AppSheetRef } from "@/components/sheet/app-sheet";
-import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
+import { MEDIA_TYPE_ICONS, MEDIA_TYPE_ICON_COLOR } from "@/lib/media-type-icons";
 import { trackingErrorMessage } from "@/lib/tracking-errors";
 import type { MediaDetailItem } from "@/queries/media";
 import { useMediaUpsertMutation } from "@/queries/media";
@@ -131,7 +131,7 @@ function TargetPreview({
           {target.title}
         </Text>
         <View className="flex-row items-center gap-1.5">
-          <Glyph size={12} color={colors["text-muted"]} />
+          <Glyph size={12} color={MEDIA_TYPE_ICON_COLOR[target.media_type]} />
           {year ? (
             <Text className="text-xs text-text-muted">{year}</Text>
           ) : null}
@@ -300,11 +300,13 @@ function RecommendForm({
  * it on the media detail screen (all types) and wire `present()` to the
  * action strip's `onIntertain`.
  *
- * Pinned to `snapPoints={["90%"]}` rather than dynamic sizing: the body
- * holds a search field + a height-bounded scrolling results list, so a fixed
- * tall sheet gives the list a predictable region (dynamic sizing around an
- * async-growing list jitters). The form is REMOUNTED on each dismiss via a
- * `resetKey` so re-opening starts fresh (empty search, no note).
+ * Uses AppSheet's DYNAMIC sizing (no fixed snap) so the sheet fits its
+ * content in both states — short in the target-picked state (preview + note
+ * + button) rather than leaving a tall sheet half-empty. The search results
+ * list stays scroll-bounded by its own `maxHeight` in `MediaSearchPicker`
+ * (so it caps the measured height + scrolls internally). The form is
+ * REMOUNTED on each dismiss via a `resetKey` so re-opening starts fresh
+ * (empty search, no note).
  */
 const RecommendSheet = forwardRef<
   AppSheetRef,
@@ -328,7 +330,6 @@ const RecommendSheet = forwardRef<
   return (
     <AppSheet
       ref={sheetRef}
-      snapPoints={["90%"]}
       accessibilityLabel={`Recommend a pairing for ${media.title}`}
       // Reset on ANY dismiss (programmatic or swipe-to-close) so re-opening
       // is fresh — cleanup only, never a save side-effect.

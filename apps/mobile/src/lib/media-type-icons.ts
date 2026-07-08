@@ -27,6 +27,7 @@ import {
   Tv,
   type LucideIcon,
 } from "lucide-react-native";
+import { colors } from "@intertaind/design-system";
 import type { MediaType } from "@intertaind/types";
 
 export const MEDIA_TYPE_ICONS: Record<MediaType, LucideIcon> = {
@@ -34,4 +35,18 @@ export const MEDIA_TYPE_ICONS: Record<MediaType, LucideIcon> = {
   tv_show: Tv,
   book: BookOpen,
   video_game: Gamepad2,
+};
+
+/**
+ * Per-media-type accent HEX for a type glyph (the react-native-svg `color`
+ * prop — a className won't reach the SVG). The consistent, app-wide color
+ * for each media type: movie red-pink, TV purple, book green, game gold.
+ * Use this everywhere a media-type icon is shown so the color reads the
+ * same across the app.
+ */
+export const MEDIA_TYPE_ICON_COLOR: Record<MediaType, string> = {
+  movie: colors["accent-movie"],
+  tv_show: colors["accent-tv"],
+  book: colors["accent-book"],
+  video_game: colors["accent-game"],
 };

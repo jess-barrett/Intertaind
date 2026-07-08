@@ -35,7 +35,7 @@ import { colors } from "@intertaind/design-system";
 import type { SearchResult } from "@intertaind/types";
 
 import { Image } from "@/components/image";
-import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
+import { MEDIA_TYPE_ICONS, MEDIA_TYPE_ICON_COLOR } from "@/lib/media-type-icons";
 import { trackingErrorMessage } from "@/lib/tracking-errors";
 import { useMediaSearch } from "@/queries/search";
 
@@ -94,7 +94,7 @@ function ResultRow({
           {result.title}
         </Text>
         <View className="mt-0.5 flex-row items-center gap-1.5">
-          <Glyph size={12} color={colors["text-muted"]} />
+          <Glyph size={12} color={MEDIA_TYPE_ICON_COLOR[result.media_type]} />
           {year ? (
             <Text className="text-xs text-text-muted">{year}</Text>
           ) : null}
