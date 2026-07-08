@@ -552,11 +552,12 @@ const LIST_PREVIEW_COUNT = 5;
  *      globally, cap the response (2× headroom), take the first N per list
  *      client-side" trick as home.ts.
  *
- * `isOwner` gates ONLY the visibility filter, not the key: a non-owner viewer
- * gets `.neq("visibility", "private")` so private lists never surface (RLS
- * enforces this regardless — the explicit filter documents intent). A private
- * list is therefore visible ONLY to the owner, but since RLS already scopes the
- * read per-viewer, keying on `userId` alone is correct (no viewer id needed).
+ * `isOwner` gates ONLY the visibility filter, not the key. The OWNER sees ALL
+ * their lists (public / unlisted / friends_unlisted / private); a NON-OWNER
+ * sees ONLY `public` ones (web parity — `unlisted` lists are reachable by
+ * direct link but are NOT listed on the profile, and RLS would otherwise let
+ * `unlisted` through). Since RLS already scopes the read per-viewer, keying on
+ * `userId` alone is correct (no viewer id needed).
  *
  * Deferred (per docs/plans/2026-07-08-mobile-profile.md): the Saved (liked)
  * lists sub-tab (`list_saves`); `friends_unlisted` handling beyond what RLS
@@ -573,15 +574,16 @@ export function useProfileLists(
     queryKey: queryKeys.user.lists(userId ?? "anon"),
     enabled: !!userId,
     queryFn: async (): Promise<ProfileListCard[]> => {
-      // (1) The user's created lists + author. Non-owner: drop private lists
-      // (RLS also enforces; the explicit filter documents the intent).
+      // (1) The user's created lists + author. Non-owner: PUBLIC only (web
+      // parity — `unlisted` lists aren't listed on the profile even though RLS
+      // would allow reading them). Owner: all of their own lists.
       let listsQuery = supabase
         .from("lists")
         .select(
           "id, title, description, item_count, like_count, saves_count, visibility, profiles!lists_user_id_fkey(id, username, display_name, avatar_url)",
         )
         .eq("user_id", userId!);
-      if (!isOwner) listsQuery = listsQuery.neq("visibility", "private");
+      if (!isOwner) listsQuery = listsQuery.eq("visibility", "public");
       const { data: listsData, error: listsError } = await listsQuery
         .order("updated_at", { ascending: false })
         .limit(LISTS_LIMIT);
