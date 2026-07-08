@@ -9,12 +9,12 @@
  *
  * ── Why raw HomeMediaItem[] (not pre-adapted CardMedia[]) ────────────────
  * The rail takes the raw `HomeMediaItem[]` and calls `cardMediaFromHomeItem`
- * PER CELL. That keeps the original row (which carries `avg_rating`) next to
- * the adapted `media`, so each cell has BOTH the card descriptor AND the
- * community avg without a parallel `avgById` map to thread through. The
- * viewer's own per-card override still comes from `trackingMap` (keyed by the
- * catalog id) — the card prefers the viewer's rating/heart and falls back to
- * `avgRating` when they haven't rated it.
+ * PER CELL — the raw row keys the list + feeds the adapter. Rail cards render
+ * `showMeta={false}`, so there's no title/stars/heart/year beneath the poster
+ * (a denser carousel — a rail card is just the poster + its quick-actions
+ * slider); the community `avg_rating` isn't shown here, so it isn't passed.
+ * The viewer's own state still flows via `trackingMap` (keyed by catalog id)
+ * for the quick-actions tab's active states.
  *
  * ── Fixed cell width ────────────────────────────────────────────────────
  * Each cell is a fixed-width `View` (`CARD_WIDTH`) wrapping the width-flexible
@@ -90,11 +90,13 @@ export function MediaRail({
           const tracking = trackingMap.get(media.mediaItemId ?? "") ?? null;
           return (
             <View style={{ width: CARD_WIDTH }}>
+              {/* Rail cards are poster + quick-actions slider only — no title/
+                  meta beneath (showMeta={false}) for a denser carousel. */}
               <MediaCard
                 media={media}
                 tracking={tracking}
-                avgRating={item.avg_rating}
                 onMutated={onMutated}
+                showMeta={false}
               />
             </View>
           );

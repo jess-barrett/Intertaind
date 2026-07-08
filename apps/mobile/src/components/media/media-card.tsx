@@ -67,6 +67,7 @@ export function MediaCard({
   tracking,
   avgRating,
   onMutated,
+  showMeta = true,
 }: {
   media: CardMedia;
   /** The viewer's tracking row for this catalog id (null = untracked /
@@ -82,6 +83,10 @@ export function MediaCard({
   /** Called after a quick-action write so the parent can refresh the
       batched tracking map (the card's active states then update). */
   onMutated?: () => void;
+  /** Show the title + meta row beneath the poster. Default true (the
+      filmography grid). The home rails set this false so a rail card is just
+      the poster + its quick-actions slider — a cleaner, denser carousel. */
+  showMeta?: boolean;
 }) {
   const router = useRouter();
   const upsert = useMediaUpsertMutation();
@@ -170,27 +175,33 @@ export function MediaCard({
         />
       </View>
 
-      <Text
-        className="mt-1.5 text-sm font-medium text-text-primary"
-        numberOfLines={1}
-      >
-        {media.title}
-      </Text>
+      {/* Title + meta row — suppressed on the home rails (showMeta=false),
+          where a card is just the poster + its quick-actions slider. */}
+      {showMeta ? (
+        <>
+          <Text
+            className="mt-1.5 text-sm font-medium text-text-primary"
+            numberOfLines={1}
+          >
+            {media.title}
+          </Text>
 
-      {/* Meta row — viewer rating (else community avg), loved heart, year. */}
-      <View className="mt-0.5 flex-row items-center gap-1.5">
-        {displayStars != null ? (
-          <StarRating value={displayStars} readOnly starsOnly size={12} />
-        ) : null}
-        {favorite ? (
-          <Heart
-            size={11}
-            color={colors["accent-movie"]}
-            fill={colors["accent-movie"]}
-          />
-        ) : null}
-        <Text className="text-xs text-text-muted">{media.year ?? "—"}</Text>
-      </View>
+          {/* Meta row — viewer rating (else community avg), loved heart, year. */}
+          <View className="mt-0.5 flex-row items-center gap-1.5">
+            {displayStars != null ? (
+              <StarRating value={displayStars} readOnly starsOnly size={12} />
+            ) : null}
+            {favorite ? (
+              <Heart
+                size={11}
+                color={colors["accent-movie"]}
+                fill={colors["accent-movie"]}
+              />
+            ) : null}
+            <Text className="text-xs text-text-muted">{media.year ?? "—"}</Text>
+          </View>
+        </>
+      ) : null}
     </Pressable>
   );
 }
