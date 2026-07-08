@@ -87,6 +87,55 @@ export const queryKeys = {
         "tracking-map",
         [...new Set(mediaIds)].sort().join(","),
       ] as const,
+    // A profile resolved BY USERNAME — the shared `u/[username]` route's
+    // identity read. Distinct from `profile(userId)`: the username route has
+    // no id up front, so it keys on the username segment (a stable, unique
+    // natural key) and the resolved row carries the id everything downstream
+    // uses. No user in the key: the profile row is public catalog-adjacent
+    // data (RLS-scoped to public profiles or the owner), shared across viewers.
+    byUsername: (username: string) =>
+      [...queryKeys.user.all, "by-username", username] as const,
+    // The four per-media-type engagement counts on a profile's header
+    // (movie/tv_show/book/video_game). Keyed by the PROFILE owner's id (not the
+    // viewer's) — the counts belong to the profile being viewed, identical for
+    // every viewer under RLS.
+    mediaCounts: (userId: string) =>
+      [...queryKeys.user.all, userId, "media-counts"] as const,
+    // The Top-4 favorites (per media type) shown on the profile Overview —
+    // the curated `__top5_<type>` shelves. Profile-owner-scoped.
+    topFours: (userId: string) =>
+      [...queryKeys.user.all, userId, "top-fours"] as const,
+    // The profile's recent activity feed (Overview preview + the full-activity
+    // sub-screen share this prefix). Profile-owner-scoped.
+    recentActivity: (userId: string) =>
+      [...queryKeys.user.all, userId, "recent-activity"] as const,
+    // The profile's recent reviews (activity_type = 'reviewed'). Separate key
+    // from recentActivity so the two Overview sections cache independently.
+    recentReviews: (userId: string) =>
+      [...queryKeys.user.all, userId, "recent-reviews"] as const,
+    // One status-section shelf of a profile (per media type + status/section
+    // key) — the Shelves tab. Keyed by owner + type + section so each section
+    // caches independently and a type/section switch refetches cleanly.
+    shelf: (userId: string, mediaType: string, status: string) =>
+      [...queryKeys.user.all, userId, "shelf", mediaType, status] as const,
+    // The profile's authored recommendations (source → recommended pairings) —
+    // the Recs tab. Profile-owner-scoped.
+    recommendations: (userId: string) =>
+      [...queryKeys.user.all, userId, "recommendations"] as const,
+    // The profile's created lists — the Lists tab. Profile-owner-scoped.
+    lists: (userId: string) =>
+      [...queryKeys.user.all, userId, "lists"] as const,
+    // The viewer's relationship to a target profile (self/none/following/
+    // requested) — the header Follow button's state (M6). Keyed by BOTH ids:
+    // it's inherently a per-viewer, per-target fact.
+    followState: (viewerId: string, targetId: string) =>
+      [...queryKeys.user.all, "follow-state", viewerId, targetId] as const,
+    // A profile's followers / following lists — the M6 sub-screens. Keyed by
+    // the profile owner's id.
+    followers: (userId: string) =>
+      [...queryKeys.user.all, userId, "followers"] as const,
+    following: (userId: string) =>
+      [...queryKeys.user.all, userId, "following"] as const,
   },
   person: {
     all: ["person"] as const,
