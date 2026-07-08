@@ -231,8 +231,9 @@ export default function SearchScreen() {
           // row left-aligns (default), so a partial last row keeps its cards a
           // quarter-width instead of stretching.
           columnWrapperStyle={{ gap: GRID_GAP, paddingHorizontal: GRID_PADDING }}
-          // Vertical gap between rows.
-          ItemSeparatorComponent={() => <View className="h-3" />}
+          // Vertical gap between rows — enough that one row's year clears the
+          // next row's poster.
+          ItemSeparatorComponent={() => <View className="h-6" />}
           contentContainerStyle={{ paddingTop: 4, paddingBottom: bottomInset }}
           renderItem={({ item }) => (
             // Fixed quarter-width cell (never flex-1, so no last-row stretch).
