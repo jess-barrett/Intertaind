@@ -45,6 +45,7 @@ import { ArrowLeft } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 
 import { useAuth } from "@/components/auth-provider";
+import { ListsTab } from "@/components/profile/lists-tab";
 import { OverviewTab } from "@/components/profile/overview-tab";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { RecommendationsTab } from "@/components/profile/recommendations-tab";
@@ -233,10 +234,10 @@ function EmptyState({ title, detail }: { title: string; detail?: string }) {
 /**
  * The active segment's body. Overview (M2) is the real `OverviewTab`; Shelves
  * (M3) is the real `ShelvesTab`; Recs (M4) is the real `RecommendationsTab`;
- * Lists (M5) is still a "… coming soon" stub, to be filled by a self-fetching
- * component keyed on `profileUserId`. For the OWNER, the Overview segment ALSO
- * hosts the Sign out affordance beneath the tab (there's no settings surface yet
- * for the header gear, so the action mustn't be lost).
+ * Lists (M5) is the real `ListsTab` (created lists only). Every segment is now
+ * live — each self-fetches by `profileUserId`. For the OWNER, the Overview
+ * segment ALSO hosts the Sign out affordance beneath the tab (there's no
+ * settings surface yet for the header gear, so the action mustn't be lost).
  */
 function SegmentBody({
   segment,
@@ -266,6 +267,12 @@ function SegmentBody({
     return <RecommendationsTab userId={profileUserId} />;
   }
 
+  if (segment === "Lists") {
+    return <ListsTab userId={profileUserId} isOwner={isOwner} />;
+  }
+
+  // Defensive default — every segment above is live; this only guards an
+  // unreachable segment value (a future SEGMENTS addition before its branch).
   return (
     <View className="gap-6">
       <Text className="text-center text-sm text-text-muted">

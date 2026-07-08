@@ -486,3 +486,140 @@ export function useProfileRecommendations(userId: string | undefined) {
     },
   });
 }
+
+/**
+ * Author subset a profile list card renders (same shape as home.ts's
+ * `PopularListAuthor`; redeclared locally so profile.ts doesn't take a type
+ * dependency on the home rail — the two reads happen to render the same author
+ * fields, not because one is derived from the other).
+ */
+export type ProfileListAuthor = Pick<
+  Tables<"profiles">,
+  "id" | "username" | "display_name" | "avatar_url"
+>;
+
+/** Card-facing subset of a `lists` row — what a profile list card renders. */
+export type ProfileListSummary = Pick<
+  Tables<"lists">,
+  | "id"
+  | "title"
+  | "description"
+  | "item_count"
+  | "like_count"
+  | "saves_count"
+  | "visibility"
+>;
+
+/** One entry on the profile Lists tab: the list, its author, cover previews. */
+export type ProfileListCard = {
+  list: ProfileListSummary;
+  author: ProfileListAuthor;
+  /** Up to LIST_PREVIEW_COUNT cover urls, position-ordered (nulls dropped). */
+  covers: string[];
+};
+
+/** Shape of the first read: list card fields + the embedded author. */
+type ProfileListRow = ProfileListSummary & {
+  profiles: ProfileListAuthor;
+};
+
+/** Shape of the second read: a list_items → media_items cover join row. */
+type ProfileListCoverRow = {
+  list_id: string;
+  media_items: Pick<Tables<"media_items">, "id" | "cover_image_url"> | null;
+};
+
+/** Created lists pulled for the Lists tab (web parity: `fetchLists` limit 50). */
+const LISTS_LIMIT = 50;
+/** Cover thumbnails previewed per list card (mirrors home.ts's rail). */
+const LIST_PREVIEW_COUNT = 5;
+
+/**
+ * A profile's CREATED lists — the Lists tab (v1: created only). Mirrors web's
+ * `apps/web/src/app/u/[username]/lists/page.tsx` `fetchLists("mine")` + the
+ * batched cover-preview read, and follows the same two-step shape as home.ts's
+ * `usePopularLists` (the profile read is that rail filtered by `user_id` instead
+ * of visibility + like_count):
+ *
+ *   1. `lists` where `user_id = userId`, newest-touched first (`updated_at`
+ *      desc), limit 50, embedding the author `profiles!lists_user_id_fkey(...)`.
+ *      (`lists.user_id` FKs `profiles`, so the embed is inferable — the
+ *      `as unknown as` cast is only needed because the select is an explicit
+ *      column subset.) No lists → skip the second round trip.
+ *   2. A single batched read of up to LIST_PREVIEW_COUNT cover previews per list
+ *      from `list_items` joined to `media_items(id, cover_image_url)`,
+ *      `.in("list_id", ids).order("position")` — the same "order by position
+ *      globally, cap the response (2× headroom), take the first N per list
+ *      client-side" trick as home.ts.
+ *
+ * `isOwner` gates ONLY the visibility filter, not the key: a non-owner viewer
+ * gets `.neq("visibility", "private")` so private lists never surface (RLS
+ * enforces this regardless — the explicit filter documents intent). A private
+ * list is therefore visible ONLY to the owner, but since RLS already scopes the
+ * read per-viewer, keying on `userId` alone is correct (no viewer id needed).
+ *
+ * Deferred (per docs/plans/2026-07-08-mobile-profile.md): the Saved (liked)
+ * lists sub-tab (`list_saves`); `friends_unlisted` handling beyond what RLS
+ * enforces. Non-navigable in v1 (no mobile list-detail route yet).
+ *
+ * Profile-owner-scoped: `enabled: !!userId`, keyed by
+ * `queryKeys.user.lists(userId)`.
+ */
+export function useProfileLists(
+  userId: string | undefined,
+  isOwner: boolean,
+) {
+  return useQuery({
+    queryKey: queryKeys.user.lists(userId ?? "anon"),
+    enabled: !!userId,
+    queryFn: async (): Promise<ProfileListCard[]> => {
+      // (1) The user's created lists + author. Non-owner: drop private lists
+      // (RLS also enforces; the explicit filter documents the intent).
+      let listsQuery = supabase
+        .from("lists")
+        .select(
+          "id, title, description, item_count, like_count, saves_count, visibility, profiles!lists_user_id_fkey(id, username, display_name, avatar_url)",
+        )
+        .eq("user_id", userId!);
+      if (!isOwner) listsQuery = listsQuery.neq("visibility", "private");
+      const { data: listsData, error: listsError } = await listsQuery
+        .order("updated_at", { ascending: false })
+        .limit(LISTS_LIMIT);
+      if (listsError) throw listsError;
+
+      const lists = (listsData ?? []) as unknown as ProfileListRow[];
+      if (lists.length === 0) return [];
+
+      // (2) Batched cover previews: order by position globally so each list
+      // contributes its earliest items; cap the response (2× headroom so a
+      // list whose earliest items lack covers still fills its N).
+      const listIds = lists.map((l) => l.id);
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("list_items")
+        .select("list_id, media_items(id, cover_image_url)")
+        .in("list_id", listIds)
+        .order("position", { ascending: true })
+        .limit(listIds.length * LIST_PREVIEW_COUNT * 2);
+      if (itemsError) throw itemsError;
+
+      const coversByList = new Map<string, string[]>();
+      for (const row of (itemsData ?? []) as unknown as ProfileListCoverRow[]) {
+        const cover = row.media_items?.cover_image_url;
+        if (!cover) continue;
+        const arr = coversByList.get(row.list_id) ?? [];
+        if (arr.length >= LIST_PREVIEW_COUNT) continue;
+        arr.push(cover);
+        coversByList.set(row.list_id, arr);
+      }
+
+      return lists.map((row) => {
+        const { profiles, ...list } = row;
+        return {
+          list,
+          author: profiles,
+          covers: coversByList.get(list.id) ?? [],
+        };
+      });
+    },
+  });
+}
