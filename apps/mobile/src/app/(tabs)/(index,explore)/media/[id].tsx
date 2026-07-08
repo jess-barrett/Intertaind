@@ -74,6 +74,8 @@ import { ActionStrip } from "@/components/media/action-strip";
 import { InfoSections } from "@/components/media/info-sections";
 import { RatingsHistogram } from "@/components/media/ratings-histogram";
 import { SeasonCards } from "@/components/media/season-cards";
+import BookLogSheet from "@/components/media/sheets/book-log-sheet";
+import BookReadingSheet from "@/components/media/sheets/book-reading-sheet";
 import GameLogSheet from "@/components/media/sheets/game-log-sheet";
 import GameStatusSheet from "@/components/media/sheets/game-status-sheet";
 import MovieLogSheet from "@/components/media/sheets/movie-log-sheet";
@@ -420,6 +422,13 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
   // The game log/review sheet — only for video games; the strip's game
   // "Log game…" opener presents it via onOpenLog (routed by type below).
   const gameLogRef = useRef<AppSheetRef>(null);
+  // The book sheets (Task 2.5) — only for books. The "Currently Reading"
+  // sheet (current/total pages) is presented via onOpenReading; the
+  // "Read"/"Review" sheet (finished/DNF + rating/review/loved) via
+  // onOpenReadFinished AND (routed by type) onOpenLog.
+  const bookReadingRef = useRef<AppSheetRef>(null);
+  const bookLogRef = useRef<AppSheetRef>(null);
+  const isBook = item.media_type === "book";
 
   return (
     <>
@@ -563,19 +572,20 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
             trackingPending={tracking.isPending}
             handlers={{
               // Log/review sheet — presents the RIGHT sheet by type: movie
-              // → movie-log, game → game-log. (Book stays stubbed until a
-              // later task builds its book sheets.)
+              // → movie-log, game → game-log, book → book-log (Read/Review).
               onOpenLog: () => {
                 if (isMovie) movieLogRef.current?.present();
                 else if (isGame) gameLogRef.current?.present();
+                else if (isBook) bookLogRef.current?.present();
               },
               // TODO(2.6): TV log-season / log-episode / current-episode sheets.
               onOpenLogSeason: () => {},
               onOpenLogEpisode: () => {},
               onOpenWatching: () => {},
-              // TODO(2.5): book read (finished/DNF) + current-reading sheets.
-              onOpenReading: () => {},
-              onOpenReadFinished: () => {},
+              // Book "Reading" → current-reading sheet; "Read" → the
+              // book-log sheet (finished/DNF + rating/review/loved).
+              onOpenReading: () => bookReadingRef.current?.present(),
+              onOpenReadFinished: () => bookLogRef.current?.present(),
               // Game status picker sheet (Task 2.7) — present the ref-driven
               // sheet mounted below. (Only games route here.)
               onOpenStatusPicker: () => gameStatusRef.current?.present(),
@@ -639,6 +649,29 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
       {isGame ? (
         <GameLogSheet
           ref={gameLogRef}
+          media={item}
+          viewerRow={tracking.data ?? null}
+        />
+      ) : null}
+
+      {/* Book "Currently Reading" sheet (Task 2.5). Ref-driven overlay,
+          mounted as a sibling of the scroll content. Only for books — the
+          strip's "Reading" opener presents it via onOpenReading. */}
+      {isBook ? (
+        <BookReadingSheet
+          ref={bookReadingRef}
+          media={item}
+          viewerRow={tracking.data ?? null}
+        />
+      ) : null}
+
+      {/* Book "Read"/"Review" sheet (Task 2.5). Ref-driven overlay, mounted
+          as a sibling of the scroll content. Only for books — the strip's
+          "Read" opener (onOpenReadFinished) and its "Review…" log button
+          (onOpenLog, routed by type) both present it. */}
+      {isBook ? (
+        <BookLogSheet
+          ref={bookLogRef}
           media={item}
           viewerRow={tracking.data ?? null}
         />
