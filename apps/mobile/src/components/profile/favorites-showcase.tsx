@@ -70,7 +70,13 @@ export function FavoritesShowcase({
   topFours: Record<MediaType, HomeMediaItem[]>;
 }) {
   const { width } = useWindowDimensions();
+  // `expandedType` drives the GEOMETRY (which deck is spread / others off) and
+  // must stay set through the collapse animation so the posters restack. The
+  // TITLE + back chevron read a separate `titleType` that flips INSTANTLY on
+  // click (so "Favorite X" reverts to "Favorites" immediately, not when the
+  // animation ends).
   const [expandedType, setExpandedType] = useState<MediaType | null>(null);
+  const [titleType, setTitleType] = useState<MediaType | null>(null);
   const progress = useSharedValue(0);
 
   const types = FAVORITE_ORDER.filter((t) => topFours[t]?.length > 0);
@@ -117,9 +123,13 @@ export function FavoritesShowcase({
 
   const expand = (type: MediaType) => {
     setExpandedType(type);
+    setTitleType(type);
     progress.value = withTiming(1, { duration: DURATION, easing: Easing.out(Easing.cubic) });
   };
   const collapse = () => {
+    // Title reverts to "Favorites" NOW; geometry (expandedType) clears only
+    // once the restack animation finishes.
+    setTitleType(null);
     progress.value = withTiming(
       0,
       { duration: DURATION, easing: Easing.out(Easing.cubic) },
@@ -137,15 +147,15 @@ export function FavoritesShowcase({
   // showcase's own + none below) so hook order stays stable across renders.
   if (types.length === 0) return null;
 
-  const title = expandedType
-    ? `Favorite ${MEDIA_TYPE_CONFIG[expandedType].label}`
+  const title = titleType
+    ? `Favorite ${MEDIA_TYPE_CONFIG[titleType].label}`
     : "Favorites";
 
   return (
     <View className="gap-2">
-      {/* Title row — a back chevron appears when expanded. */}
+      {/* Title row — a back chevron appears when expanded (reverts instantly). */}
       <View className="flex-row items-center gap-1.5">
-        {expandedType ? (
+        {titleType ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Back to all favorites"
