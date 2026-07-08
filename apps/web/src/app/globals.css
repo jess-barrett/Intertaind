@@ -18,15 +18,16 @@
  * here, then `pnpm --filter @intertaind/design-system test` to confirm.
  */
 :root {
-  --background: #1A1A1A;
+  --background: #16191C;
   --foreground: #F0F0F0;
 
-  /* Surface colors — dark neutral gray (lifted off pure black); ramp
-     shifted up together so cards/overlays still read as elevated */
-  --surface-default: #1A1A1A;
-  --surface-raised: #242424;
-  --surface-overlay: #2E2E2E;
-  --surface-border: #3C3C3C;
+  /* Surface colors — cool dark slate (built around #16191C, a subtle
+     blue-gray tint); ramp shares the tint + steps up so cards/overlays
+     still read as elevated */
+  --surface-default: #16191C;
+  --surface-raised: #1E2228;
+  --surface-overlay: #2A2F36;
+  --surface-border: #3A404A;
 
   /* Brand — neon magenta (classic 80s) */
   --brand: #FF006E;

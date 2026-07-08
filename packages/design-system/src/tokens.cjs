@@ -27,14 +27,14 @@ const colors = Object.freeze({
   "brand-light": "#FF4D97",
   "brand-dark": "#D1005A",
 
-  // Surface — dark neutral GRAY (lifted off pure black). The default →
-  // border ramp is "background up to outline" so utilities layer cleanly;
-  // the whole ramp is shifted up together so cards/overlays still read as
-  // elevated above the grayer base.
-  "surface-default": "#1A1A1A",
-  "surface-raised": "#242424",
-  "surface-overlay": "#2E2E2E",
-  "surface-border": "#3C3C3C",
+  // Surface — cool dark SLATE (built around the #16191C base: a subtle
+  // blue-gray tint, B>G>R). The default → border ramp is "background up to
+  // outline" so utilities layer cleanly; the whole ramp shares the tint and
+  // steps up together so cards/overlays still read as elevated above the base.
+  "surface-default": "#16191C",
+  "surface-raised": "#1E2228",
+  "surface-overlay": "#2A2F36",
+  "surface-border": "#3A404A",
 
   // Media-type accents — full neon saturation. Used by the
   // `MEDIA_TYPE_CONFIG` table in `@intertaind/types` so any
@@ -53,9 +53,9 @@ const colors = Object.freeze({
 
   // Page background / foreground — wired separately from
   // surface-default so future themes can split them (e.g., a beige
-  // foreground over a near-black surface). Kept in step with the grayer
-  // surface-default base.
-  background: "#1A1A1A",
+  // foreground over a near-black surface). Kept in step with the cool
+  // slate surface-default base.
+  background: "#16191C",
   foreground: "#F0F0F0",
 });
 
