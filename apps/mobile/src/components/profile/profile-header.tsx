@@ -21,7 +21,7 @@
 import { Pressable, Text, View } from "react-native";
 import { Settings, UserPlus } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
-import { MEDIA_TYPE_CONFIG, type MediaType } from "@intertaind/types";
+import { type MediaType } from "@intertaind/types";
 
 import { Image } from "@/components/image";
 import { ExpandableText } from "@/components/media/expandable-text";
@@ -83,6 +83,23 @@ export function ProfileHeader({
           <Text className="text-sm text-text-muted" numberOfLines={1}>
             @{profile.username}
           </Text>
+
+          {/* Follower / following — directly beneath the username. Tappable
+              (M6 sub-screens); no-op for now. */}
+          <View className="mt-1.5 flex-row gap-5">
+            <CountPill
+              value={profile.followers_count}
+              label="Followers"
+              // TODO(M6): navigate to the followers sub-screen.
+              onPress={() => {}}
+            />
+            <CountPill
+              value={profile.following_count}
+              label="Following"
+              // TODO(M6): navigate to the following sub-screen.
+              onPress={() => {}}
+            />
+          </View>
         </View>
 
         {/* Right action — settings gear (owner) or a Follow placeholder. */}
@@ -124,24 +141,10 @@ export function ProfileHeader({
         />
       ) : null}
 
-      {/* Follower / following counts — tappable (M6 sub-screens); no-op now. */}
-      <View className="flex-row gap-6">
-        <CountPill
-          value={profile.followers_count}
-          label="Followers"
-          // TODO(M6): navigate to the followers sub-screen.
-          onPress={() => {}}
-        />
-        <CountPill
-          value={profile.following_count}
-          label="Following"
-          // TODO(M6): navigate to the following sub-screen.
-          onPress={() => {}}
-        />
-      </View>
-
       {/* Per-media-type engagement counts — icon (accent via `color` prop) +
-          number, one block per type. "—" while the counts read is pending. */}
+          number only (NO label). "—" while the counts read is pending.
+          TODO(layout): move this into the header's "red region" once the
+          reference image is available — placement is a best-guess row for now. */}
       <View className="flex-row flex-wrap gap-x-5 gap-y-3">
         {COUNT_ORDER.map((type) => {
           const Icon = MEDIA_TYPE_ICONS[type];
@@ -151,9 +154,6 @@ export function ProfileHeader({
               <Icon size={16} color={MEDIA_TYPE_ICON_COLOR[type]} />
               <Text className="text-sm font-semibold text-text-primary">
                 {value != null ? value.toLocaleString() : "—"}
-              </Text>
-              <Text className="text-xs text-text-muted">
-                {MEDIA_TYPE_CONFIG[type].label}
               </Text>
             </View>
           );

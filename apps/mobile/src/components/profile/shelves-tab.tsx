@@ -121,13 +121,10 @@ export function ShelvesTab({
 
   return (
     <View className="gap-3">
-      {/* (1) Media-type bar — the four shelves, icon + label chips (rounded-sm),
-          active one accent-tinted. */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: 8 }}
-      >
+      {/* (1) Media-type bar — the four shelves in their OWN container, styled
+          like the top navbar (rounded-sm bordered raised strip, 4 equal
+          segments); the active one is accent-tinted. */}
+      <View className="flex-row gap-1 rounded-sm border border-surface-border bg-surface-raised p-0.5">
         {TYPE_ORDER.map((t) => {
           const active = t === type;
           const Icon = MEDIA_TYPE_ICONS[t];
@@ -138,16 +135,17 @@ export function ShelvesTab({
               accessibilityState={{ selected: active }}
               accessibilityLabel={`Show ${MEDIA_TYPE_CONFIG[t].label}`}
               onPress={() => selectType(t)}
-              className={`flex-row items-center gap-1.5 rounded-sm px-3 py-1.5 active:opacity-70 ${
+              className={`flex-1 flex-row items-center justify-center gap-1 rounded-sm px-1 py-1 active:opacity-70 ${
                 active ? "bg-surface-overlay" : ""
               }`}
             >
               <Icon
-                size={16}
+                size={14}
                 color={active ? MEDIA_TYPE_ICON_COLOR[t] : colors["text-muted"]}
               />
               <Text
-                className={`text-sm font-medium ${
+                numberOfLines={1}
+                className={`text-[13px] font-medium ${
                   active ? "text-text-primary" : "text-text-muted"
                 }`}
               >
@@ -156,7 +154,7 @@ export function ShelvesTab({
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
 
       {/* (2) Status sections for the active type — chips (rounded-sm) beneath. */}
       <ScrollView

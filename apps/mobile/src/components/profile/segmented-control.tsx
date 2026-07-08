@@ -25,7 +25,7 @@ export function SegmentedControl<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <View className="flex-row gap-1 rounded-sm border border-surface-border bg-surface-raised p-1">
+    <View className="flex-row gap-1 rounded-sm border border-surface-border bg-surface-raised p-0.5">
       {options.map((option) => {
         const active = option === value;
         return (
@@ -35,12 +35,12 @@ export function SegmentedControl<T extends string>({
             accessibilityState={{ selected: active }}
             accessibilityLabel={option}
             onPress={() => onChange(option)}
-            className={`flex-1 items-center rounded-sm px-3 py-1.5 active:opacity-80 ${
+            className={`flex-1 items-center rounded-sm px-3 py-1 active:opacity-80 ${
               active ? "bg-brand" : ""
             }`}
           >
             <Text
-              className={`text-sm font-semibold ${
+              className={`text-[13px] font-semibold ${
                 active ? "text-text-primary" : "text-text-muted"
               }`}
               numberOfLines={1}
