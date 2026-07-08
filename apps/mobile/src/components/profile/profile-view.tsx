@@ -1,0 +1,276 @@
+/**
+ * ProfileView — the ONE shared component behind both profile entry points: the
+ * viewer's own `(profile)` tab (passes `userId` from `useAuth`) and anyone
+ * else's `u/[username]` route (passes `username`, plus `showBack`). It resolves
+ * the `profiles` row, derives `profileUserId` + `isOwner`, and renders the
+ * header + an in-screen segmented control (Overview · Shelves · Recs · Lists)
+ * whose body swaps with the active segment. Mirrors web's `/u/[username]`.
+ *
+ * ── States ──────────────────────────────────────────────────────────────
+ *   - pending → a centered spinner.
+ *   - null (missing OR RLS-hidden) → "This profile is private" when the row
+ *     came back private-and-not-owned is impossible to know (RLS returned no
+ *     row), so we show "Profile not found" for a genuine null. When we DO have
+ *     a row that is `is_private && !isOwner`, we show the private empty state.
+ *   - error → "Couldn't load this profile."
+ *   - else → header + segmented control + the active segment's body.
+ *
+ * ── M1 scope ────────────────────────────────────────────────────────────
+ * The four segment bodies are STUBS ("… coming soon") — M2 (Overview), M3
+ * (Shelves), M4 (Recs), M5 (Lists) fill them, each self-fetching by
+ * `profileUserId`. Follow mutations are M6 (the header's Follow button is a
+ * visual placeholder). No settings screen yet (the header gear no-ops).
+ *
+ * ── Private-profile deferral (per the plan) ─────────────────────────────
+ * If `profile.is_private && !isOwner` we render a private empty state; we do
+ * NOT attempt follower-peek or block filtering (not DB-enforced; web-only).
+ *
+ * ── Layout ──────────────────────────────────────────────────────────────
+ * A single `ScrollView`. As a headerless tab anchor (the `(profile)` tab) it
+ * reserves the TOP safe-area itself; pushed into a tab stack (`u/[username]`)
+ * the tab's Stack still hides headers, so `showBack` renders a translucent back
+ * pill (the SAME affordance as media detail's `BackPill`). The bottom inset
+ * clears the persistent navbar (see apps/mobile/AGENTS.md).
+ *
+ * Sign out (owner): kept reachable at the bottom of the Overview segment for
+ * the owner, since there's no settings screen for the header gear yet — the
+ * action must not be lost. Moves into settings when that surface lands.
+ */
+import { useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ArrowLeft } from "lucide-react-native";
+import { colors } from "@intertaind/design-system";
+
+import { useAuth } from "@/components/auth-provider";
+import { ProfileHeader } from "@/components/profile/profile-header";
+import { SegmentedControl } from "@/components/profile/segmented-control";
+import { useBottomInset } from "@/lib/use-bottom-inset";
+import { useProfile, useProfileMediaCounts } from "@/queries/profile";
+import { useSignOutMutation } from "@/queries/auth";
+
+/** The four in-screen segments (order = display order). */
+const SEGMENTS = ["Overview", "Shelves", "Recs", "Lists"] as const;
+type Segment = (typeof SEGMENTS)[number];
+
+export function ProfileView({
+  userId,
+  username,
+  showBack = false,
+}: {
+  /** Resolve the profile BY id — the `(profile)` tab (viewer's own id). */
+  userId?: string;
+  /** Resolve the profile BY username — the shared `u/[username]` route. */
+  username?: string;
+  /** Render the back pill — set by the pushed `u/[username]` route (the tab
+   *  anchor is a root tab with no back, so it leaves this false). */
+  showBack?: boolean;
+}) {
+  const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset();
+
+  const profileQuery = useProfile({ userId, username });
+  const profile = profileQuery.data;
+  const profileUserId = profile?.id;
+  const isOwner = !!user && !!profile && user.id === profile.id;
+
+  // Counts read is keyed by the RESOLVED profile owner id; enabled gate inside
+  // the hook keeps it dormant until the profile resolves.
+  const countsQuery = useProfileMediaCounts(profileUserId);
+
+  const [segment, setSegment] = useState<Segment>("Overview");
+
+  // ── Pending ──────────────────────────────────────────────────────────
+  if (profileQuery.isPending) {
+    return (
+      <ProfileShell showBack={showBack} topInset={insets.top}>
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator color={colors["text-muted"]} />
+        </View>
+      </ProfileShell>
+    );
+  }
+
+  // ── Error ────────────────────────────────────────────────────────────
+  if (profileQuery.error) {
+    return (
+      <ProfileShell showBack={showBack} topInset={insets.top}>
+        <EmptyState
+          title="Couldn't load this profile."
+          detail="Check your connection and try again."
+        />
+      </ProfileShell>
+    );
+  }
+
+  // ── Not found (null: genuinely missing, or RLS-hidden) ─────────────────
+  if (!profile) {
+    return (
+      <ProfileShell showBack={showBack} topInset={insets.top}>
+        <EmptyState title="Profile not found" />
+      </ProfileShell>
+    );
+  }
+
+  // ── Private (row visible only because RLS let it through when owned) ────
+  if (profile.is_private && !isOwner) {
+    return (
+      <ProfileShell showBack={showBack} topInset={insets.top}>
+        <EmptyState
+          title="This profile is private"
+          detail="Follow to see their activity, shelves, and lists."
+        />
+      </ProfileShell>
+    );
+  }
+
+  // ── Resolved ───────────────────────────────────────────────────────────
+  return (
+    <ProfileShell showBack={showBack} topInset={insets.top}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: 8, paddingBottom: 32 + bottomInset }}
+      >
+        <ProfileHeader
+          profile={profile}
+          counts={countsQuery.data}
+          isOwner={isOwner}
+        />
+
+        <View className="px-4 pt-4">
+          <SegmentedControl
+            options={SEGMENTS}
+            value={segment}
+            onChange={setSegment}
+          />
+        </View>
+
+        {/* Active segment body — STUBS for M1; M2–M5 fill each one, each
+            self-fetching by `profileUserId`. */}
+        <View className="px-4 pt-6">
+          <SegmentBody segment={segment} isOwner={isOwner} />
+        </View>
+      </ScrollView>
+    </ProfileShell>
+  );
+}
+
+/**
+ * The outer frame every state shares: the page background, the top safe-area
+ * reservation (headerless), and — when `showBack` — the floating back pill.
+ */
+function ProfileShell({
+  children,
+  showBack,
+  topInset,
+}: {
+  children: React.ReactNode;
+  showBack: boolean;
+  topInset: number;
+}) {
+  return (
+    <View
+      className="flex-1 bg-surface-default"
+      style={{ paddingTop: topInset }}
+    >
+      {children}
+      {showBack ? <FloatingBackButton topInset={topInset} /> : null}
+    </View>
+  );
+}
+
+/**
+ * A translucent circular back button at the top-left — the SAME affordance
+ * media detail uses (media/[id].tsx `BackPill`/`FloatingBackButton`), reused
+ * here for the pushed `u/[username]` route (the tab Stack hides headers).
+ */
+function FloatingBackButton({ topInset }: { topInset: number }) {
+  const router = useRouter();
+  return (
+    <View
+      pointerEvents="box-none"
+      style={{ position: "absolute", top: topInset + 6, left: 12 }}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        hitSlop={8}
+        className="h-9 w-9 items-center justify-center rounded-full active:opacity-70"
+        style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+        onPress={() => router.back()}
+      >
+        <ArrowLeft size={22} color={colors["text-primary"]} />
+      </Pressable>
+    </View>
+  );
+}
+
+/** A centered title + optional detail — the not-found / private / error body. */
+function EmptyState({ title, detail }: { title: string; detail?: string }) {
+  return (
+    <View className="flex-1 items-center justify-center gap-2 px-8">
+      <Text className="text-center text-base font-semibold text-text-primary">
+        {title}
+      </Text>
+      {detail ? (
+        <Text className="text-center text-sm text-text-muted">{detail}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * The active segment's body — M1 stubs. Each segment gets its real component in
+ * M2–M5 (Overview / Shelves / Recs / Lists). For the OWNER, the Overview stub
+ * also hosts the Sign out affordance until a settings surface exists (so the
+ * action isn't lost when the header gear is still a no-op).
+ */
+function SegmentBody({
+  segment,
+  isOwner,
+}: {
+  segment: Segment;
+  isOwner: boolean;
+}) {
+  return (
+    <View className="gap-6">
+      <Text className="text-center text-sm text-text-muted">
+        {segment} coming soon
+      </Text>
+      {segment === "Overview" && isOwner ? <SignOutButton /> : null}
+    </View>
+  );
+}
+
+/**
+ * Sign out — the owner-only affordance, kept reachable here until the settings
+ * surface lands. On success `onAuthStateChange` clears the session and the root
+ * gating redirects to login; the screen never navigates itself.
+ */
+function SignOutButton() {
+  const signOut = useSignOutMutation();
+  return (
+    <View className="gap-2">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Sign out"
+        className="items-center rounded-lg border border-surface-border px-4 py-3 active:opacity-70"
+        onPress={() => signOut.mutate()}
+        disabled={signOut.isPending}
+      >
+        {signOut.isPending ? (
+          <ActivityIndicator color={colors["text-primary"]} />
+        ) : (
+          <Text className="font-semibold text-text-secondary">Sign out</Text>
+        )}
+      </Pressable>
+      {signOut.error ? (
+        <Text className="text-center text-sm text-text-muted">
+          {signOut.error.message}
+        </Text>
+      ) : null}
+    </View>
+  );
+}

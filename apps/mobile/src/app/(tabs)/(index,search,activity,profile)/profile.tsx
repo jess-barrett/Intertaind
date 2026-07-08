@@ -1,52 +1,33 @@
 /**
- * Profile tab — placeholder. The real screen (Phase 2) is the viewer's own
- * profile: header (avatar / name / counts) + segmented Overview / Shelves /
- * Recommendations / Lists, mirroring web's `/u/[username]` (own view). Other
- * users' profiles will resolve through a shared `u/[username]` route (like
- * `media/[id]` / `person/[id]`).
+ * Profile tab — the viewer's OWN profile. The `(profile)` tab anchor renders
+ * the shared `ProfileView` for the signed-in user, resolved BY `user.id` (from
+ * `useAuth` — there's no username on the auth user). Anyone ELSE's profile
+ * opens through the shared `u/[username]` route (like `media/[id]`); this tab
+ * is always the viewer's own, so no back affordance (`showBack` defaults false).
  *
- * For now it also hosts the Sign out control (relocated from the removed
- * Explore tab) so the action isn't lost until the full account surface lands.
+ * The Sign out control lives inside `ProfileView` (the owner-only Overview
+ * affordance) until a settings surface exists — see profile-view.tsx.
  *
- * Headerless tab anchor (the per-tab Stack hides headers), so it reserves the
- * top safe-area itself — see apps/mobile/AGENTS.md.
+ * Headerless tab anchor: `ProfileView` reserves the top safe-area itself (see
+ * apps/mobile/AGENTS.md). While `useAuth` settles (no `user` yet) we render a
+ * spinner rather than a broken empty state.
  */
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ActivityIndicator, View } from "react-native";
 import { colors } from "@intertaind/design-system";
 
-import { useSignOutMutation } from "@/queries/auth";
+import { useAuth } from "@/components/auth-provider";
+import { ProfileView } from "@/components/profile/profile-view";
 
 export default function ProfileScreen() {
-  const insets = useSafeAreaInsets();
-  const signOut = useSignOutMutation();
+  const { user } = useAuth();
 
-  return (
-    <View
-      className="flex-1 gap-4 bg-surface-default px-6"
-      style={{ paddingTop: insets.top + 16 }}
-    >
-      <Text className="text-2xl font-semibold text-text-primary">Profile</Text>
-      <Text className="text-sm text-text-secondary">Coming soon.</Text>
+  if (!user) {
+    return (
+      <View className="flex-1 items-center justify-center bg-surface-default">
+        <ActivityIndicator color={colors["text-muted"]} />
+      </View>
+    );
+  }
 
-      {/* Sign out — temporary home until the account/settings surface lands.
-          On success onAuthStateChange clears the session and the root gating
-          redirects to login; the screen never navigates itself. */}
-      <Pressable
-        className="mt-2 items-center rounded-lg bg-brand px-4 py-3 active:opacity-70"
-        onPress={() => signOut.mutate()}
-        disabled={signOut.isPending}
-      >
-        {signOut.isPending ? (
-          <ActivityIndicator color={colors["text-primary"]} />
-        ) : (
-          <Text className="font-semibold text-text-primary">Sign out</Text>
-        )}
-      </Pressable>
-
-      {signOut.error ? (
-        <Text className="text-sm text-text-muted">{signOut.error.message}</Text>
-      ) : null}
-    </View>
-  );
+  return <ProfileView userId={user.id} />;
 }
