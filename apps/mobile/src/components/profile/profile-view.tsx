@@ -3,8 +3,9 @@
  * viewer's own `(profile)` tab (passes `userId` from `useAuth`) and anyone
  * else's `u/[username]` route (passes `username`, plus `showBack`). It resolves
  * the `profiles` row, derives `profileUserId` + `isOwner`, and renders the
- * header + an in-screen segmented control (Overview · Shelves · Recs · Lists)
- * whose body swaps with the active segment. Mirrors web's `/u/[username]`.
+ * header + an in-screen segmented control (Profile · Shelves · Recs · Lists)
+ * whose body swaps with the active segment (the "Profile" segment is the
+ * OverviewTab). Mirrors web's `/u/[username]`.
  *
  * ── States ──────────────────────────────────────────────────────────────
  *   - pending → a centered spinner.
@@ -52,7 +53,7 @@ import { useProfile, useProfileMediaCounts } from "@/queries/profile";
 import { useSignOutMutation } from "@/queries/auth";
 
 /** The four in-screen segments (order = display order). */
-const SEGMENTS = ["Overview", "Shelves", "Recs", "Lists"] as const;
+const SEGMENTS = ["Profile", "Shelves", "Recs", "Lists"] as const;
 type Segment = (typeof SEGMENTS)[number];
 
 export function ProfileView({
@@ -81,7 +82,7 @@ export function ProfileView({
   // the hook keeps it dormant until the profile resolves.
   const countsQuery = useProfileMediaCounts(profileUserId);
 
-  const [segment, setSegment] = useState<Segment>("Overview");
+  const [segment, setSegment] = useState<Segment>("Profile");
 
   // ── Pending ──────────────────────────────────────────────────────────
   if (profileQuery.isPending) {
@@ -243,7 +244,7 @@ function SegmentBody({
   profileUserId: string;
   isOwner: boolean;
 }) {
-  if (segment === "Overview") {
+  if (segment === "Profile") {
     return (
       <View className="gap-6">
         <OverviewTab userId={profileUserId} isOwner={isOwner} />

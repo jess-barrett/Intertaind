@@ -23,7 +23,9 @@
  * Mobile primitives only; icons color via the `color` PROP.
  */
 import type { ReactNode } from "react";
-import { Text, useWindowDimensions, View } from "react-native";
+import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { ChevronRight } from "lucide-react-native";
+import { colors } from "@intertaind/design-system";
 import { MEDIA_TYPE_CONFIG, type MediaType } from "@intertaind/types";
 
 import { MediaCard } from "@/components/media/media-card";
@@ -108,7 +110,8 @@ export function OverviewTab({
       key: "activity",
       node: (
         <View className="gap-2">
-          <SectionHeading>Recent activity</SectionHeading>
+          {/* TODO(M6): route to the full activity screen. */}
+          <SectionHeaderRow title="Recent activity" onSeeAll={() => {}} />
           <View>
             {activity.map((row) => (
               <ActivityRow key={row.id} row={row} />
@@ -124,7 +127,8 @@ export function OverviewTab({
       key: "reviews",
       node: (
         <View className="gap-2">
-          <SectionHeading>Recent reviews</SectionHeading>
+          {/* TODO(M6): route to the full reviews screen. */}
+          <SectionHeaderRow title="Recent reviews" onSeeAll={() => {}} />
           <View>
             {reviews.map((row) => (
               <ActivityRow key={row.id} row={row} />
@@ -160,6 +164,35 @@ function SectionHeading({ children }: { children: ReactNode }) {
     <Text className="text-base font-semibold text-text-primary">
       {children}
     </Text>
+  );
+}
+
+/**
+ * A section header with a trailing "See all ›" affordance — used by the Recent
+ * activity / reviews previews to open their full screen (wired in M6). The
+ * arrow is right-aligned; the title keeps the standard heading style.
+ */
+function SectionHeaderRow({
+  title,
+  onSeeAll,
+}: {
+  title: string;
+  onSeeAll: () => void;
+}) {
+  return (
+    <View className="flex-row items-center justify-between">
+      <SectionHeading>{title}</SectionHeading>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`See all ${title.toLowerCase()}`}
+        hitSlop={8}
+        className="flex-row items-center gap-0.5 active:opacity-60"
+        onPress={onSeeAll}
+      >
+        <Text className="text-xs font-medium text-text-muted">See all</Text>
+        <ChevronRight size={16} color={colors["text-muted"]} />
+      </Pressable>
+    </View>
   );
 }
 
