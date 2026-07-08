@@ -178,7 +178,7 @@ export default function HomeScreen() {
           (apps/web/src/components/nav.tsx): lowercase "inter" in the primary
           text color + "taind" in the hot-pink brand accent. */}
       <View className="items-center pb-4 pt-1">
-        <Text className="text-5xl font-bold tracking-wide">
+        <Text className="text-4xl font-bold tracking-wide">
           <Text className="text-text-primary">inter</Text>
           <Text className="text-brand">taind</Text>
         </Text>
