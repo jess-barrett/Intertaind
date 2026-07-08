@@ -79,6 +79,9 @@ import BookReadingSheet from "@/components/media/sheets/book-reading-sheet";
 import GameLogSheet from "@/components/media/sheets/game-log-sheet";
 import GameStatusSheet from "@/components/media/sheets/game-status-sheet";
 import MovieLogSheet from "@/components/media/sheets/movie-log-sheet";
+import TvLogEpisodeSheet from "@/components/media/sheets/tv-log-episode-sheet";
+import TvLogSeasonSheet from "@/components/media/sheets/tv-log-season-sheet";
+import TvWatchingSheet from "@/components/media/sheets/tv-watching-sheet";
 import type { AppSheetRef } from "@/components/sheet/app-sheet";
 import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
 import { useBottomInset } from "@/lib/use-bottom-inset";
@@ -429,6 +432,14 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
   const bookReadingRef = useRef<AppSheetRef>(null);
   const bookLogRef = useRef<AppSheetRef>(null);
   const isBook = item.media_type === "book";
+  // The TV sheets (Task 2.6) — only for TV shows. "Watching" (current
+  // season/episode pointer) via onOpenWatching; "Log Season" (per-season
+  // rating/review/completed) via onOpenLogSeason; "Log Episode"
+  // (per-episode rating/review + pointer advance) via onOpenLogEpisode.
+  const tvWatchingRef = useRef<AppSheetRef>(null);
+  const tvLogSeasonRef = useRef<AppSheetRef>(null);
+  const tvLogEpisodeRef = useRef<AppSheetRef>(null);
+  const isTv = item.media_type === "tv_show";
 
   return (
     <>
@@ -578,10 +589,12 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
                 else if (isGame) gameLogRef.current?.present();
                 else if (isBook) bookLogRef.current?.present();
               },
-              // TODO(2.6): TV log-season / log-episode / current-episode sheets.
-              onOpenLogSeason: () => {},
-              onOpenLogEpisode: () => {},
-              onOpenWatching: () => {},
+              // TV sheets (Task 2.6): the "Watching" pill sets the
+              // current-episode pointer; the two Log buttons open the
+              // per-season / per-episode log sheets. (Only TV routes here.)
+              onOpenLogSeason: () => tvLogSeasonRef.current?.present(),
+              onOpenLogEpisode: () => tvLogEpisodeRef.current?.present(),
+              onOpenWatching: () => tvWatchingRef.current?.present(),
               // Book "Reading" → current-reading sheet; "Read" → the
               // book-log sheet (finished/DNF + rating/review/loved).
               onOpenReading: () => bookReadingRef.current?.present(),
@@ -672,6 +685,34 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
       {isBook ? (
         <BookLogSheet
           ref={bookLogRef}
+          media={item}
+          viewerRow={tracking.data ?? null}
+        />
+      ) : null}
+
+      {/* TV tracking sheets (Task 2.6). Ref-driven overlays, mounted as
+          siblings of the scroll content. Only for TV shows — the strip's
+          "Watching" pill (onOpenWatching), "Log Season" (onOpenLogSeason),
+          and "Log Episode" (onOpenLogEpisode) present them. */}
+      {isTv ? (
+        <TvWatchingSheet
+          ref={tvWatchingRef}
+          media={item}
+          viewerRow={tracking.data ?? null}
+        />
+      ) : null}
+
+      {isTv ? (
+        <TvLogSeasonSheet
+          ref={tvLogSeasonRef}
+          media={item}
+          viewerRow={tracking.data ?? null}
+        />
+      ) : null}
+
+      {isTv ? (
+        <TvLogEpisodeSheet
+          ref={tvLogEpisodeRef}
           media={item}
           viewerRow={tracking.data ?? null}
         />
