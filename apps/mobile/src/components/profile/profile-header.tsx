@@ -54,7 +54,7 @@ export function ProfileHeader({
     <View className="gap-4 px-4 pb-2">
       {/* Top row: avatar + name/handle on the left, the owner/visitor action
           pinned to the right. */}
-      <View className="flex-row items-start gap-4">
+      <View className="flex-row items-start gap-3">
         {/* Avatar — circular; the letter fallback sits on a surface-overlay
             circle when there's no avatar_url. */}
         {profile.avatar_url ? (
@@ -73,22 +73,46 @@ export function ProfileHeader({
           </View>
         )}
 
-        {/* Name column — sizes to its content (NOT flex-1) so the media-type
-            counts can sit to its right in the header's top-right region. */}
-        <View className="shrink gap-0.5 pt-1">
-          <Text
-            className="text-xl font-bold text-text-primary"
-            numberOfLines={1}
-          >
-            {displayName}
-          </Text>
-          <Text className="text-sm text-text-muted" numberOfLines={1}>
-            @{profile.username}
-          </Text>
+        {/* Name column (flex-1). Name + @username + follower/following stack
+            tightly so the whole block sits WITHIN the avatar's height; the
+            media-type counts sit to the RIGHT of the name/handle. */}
+        <View className="flex-1 gap-1.5 pt-0.5">
+          {/* Name + @username on the left; the counts (top-right red region)
+              on the right, their icon/number rows aligning to name/@username. */}
+          <View className="flex-row items-start gap-3">
+            <View className="min-w-0 flex-1 gap-0.5">
+              <Text
+                className="text-xl font-bold text-text-primary"
+                numberOfLines={1}
+              >
+                {displayName}
+              </Text>
+              <Text className="text-sm text-text-muted" numberOfLines={1}>
+                @{profile.username}
+              </Text>
+            </View>
 
-          {/* Follower / following — directly beneath the username (blue region).
+            {/* Media-type counts — a row of four icon-ABOVE-number stacks (no
+                labels). "—" while the counts read is pending. */}
+            <View className="flex-row gap-3">
+              {COUNT_ORDER.map((type) => {
+                const Icon = MEDIA_TYPE_ICONS[type];
+                const value = counts?.[type];
+                return (
+                  <View key={type} className="items-center gap-0.5">
+                    <Icon size={16} color={MEDIA_TYPE_ICON_COLOR[type]} />
+                    <Text className="text-sm font-semibold text-text-primary">
+                      {value != null ? value.toLocaleString() : "—"}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Follower / following — beneath the username (blue region).
               Tappable (M6 sub-screens); no-op for now. */}
-          <View className="mt-1.5 flex-row gap-5">
+          <View className="flex-row gap-5">
             <CountPill
               value={profile.followers_count}
               label="Followers"
@@ -102,25 +126,6 @@ export function ProfileHeader({
               onPress={() => {}}
             />
           </View>
-        </View>
-
-        {/* Per-media-type engagement counts — the header's top-right "red
-            region": icon (accent via `color` prop) + number only, NO label.
-            `flex-1` fills the space between the name and the action; wraps to a
-            2×2 grid on a phone. "—" while the counts read is pending. */}
-        <View className="flex-1 flex-row flex-wrap gap-x-4 gap-y-2 pt-1.5">
-          {COUNT_ORDER.map((type) => {
-            const Icon = MEDIA_TYPE_ICONS[type];
-            const value = counts?.[type];
-            return (
-              <View key={type} className="flex-row items-center gap-1.5">
-                <Icon size={16} color={MEDIA_TYPE_ICON_COLOR[type]} />
-                <Text className="text-sm font-semibold text-text-primary">
-                  {value != null ? value.toLocaleString() : "—"}
-                </Text>
-              </View>
-            );
-          })}
         </View>
 
         {/* Right action — settings gear (owner) or a Follow placeholder. */}
