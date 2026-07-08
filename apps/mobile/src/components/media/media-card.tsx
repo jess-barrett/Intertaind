@@ -1,9 +1,13 @@
 /**
- * MediaCard — a poster grid card for a single filmography credit on the
- * mobile Person / Filmography page. The RN analogue of web's filmography
- * grid card (`apps/web/src/components/media-card.tsx`): a 2:3 poster (with a
- * muted media-type glyph fallback when TMDb has no art), the title, and a
- * meta row beneath it.
+ * MediaCard — a poster grid/rail card for a single title. It renders a
+ * normalized `CardMedia` descriptor (from `cardMediaFromCredit` /
+ * `cardMediaFromHomeItem`) rather than a source-specific row, so the SAME
+ * card serves BOTH the Person / Filmography grid (uncataloged movie/tv
+ * credits) AND the home rails (cataloged catalog rows, all four media types).
+ * The RN analogue of web's filmography grid card
+ * (`apps/web/src/components/media-card.tsx`): a 2:3 poster (with a muted
+ * media-type glyph fallback when there's no art), the title, and a meta row
+ * beneath it.
  *
  * ── Meta row (web parity) ──────────────────────────────────────────────
  * The row mirrors web's card: the star rating shows the VIEWER's own rating
@@ -22,9 +26,10 @@
  * refresh the batched tracking map. See `card-actions.tsx`.
  *
  * ── Always clickable (tap-to-enrich) ───────────────────────────────────
- * EVERY card is a Pressable. A cataloged credit (`media_item_id` set)
- * navigates straight to `/media/[id]`. An uncataloged credit has no catalog
- * row yet, so the first tap invokes the `media-upsert` Edge Function
+ * EVERY card is a Pressable. A cataloged descriptor (`mediaItemId` set —
+ * always the case for home catalog rows) navigates straight to `/media/[id]`.
+ * An uncataloged filmography credit has no catalog row yet but carries an
+ * `upsert` payload, so the first tap invokes the `media-upsert` Edge Function
  * (`useMediaUpsertMutation`) to get-or-create the row, then navigates to the
  * returned id — the RN analogue of web's upsert-on-click card link. While
  * that first tap is in flight the poster shows a dim + centered spinner (the
@@ -39,30 +44,31 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Film, Heart, Tv } from "lucide-react-native";
-import { tmdbImageUrl, type MergedCredit } from "@intertaind/media";
+import { Heart } from "lucide-react-native";
 import { ratingToStars } from "@intertaind/types";
 import { colors } from "@intertaind/design-system";
 
 import { Image } from "@/components/image";
 import StarRating from "@/components/star-rating";
 import { CardActions } from "@/components/media/card-actions";
+import type { CardMedia } from "@/components/media/card-media";
+import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
 import { useMediaUpsertMutation } from "@/queries/media";
 
 /**
- * Poster grid card for one filmography credit. Width-flexible: fills its
- * grid cell (the list owns the column width). Always tappable — cataloged
- * navigates, uncataloged enriches via `media-upsert` then navigates. See the
- * file header for the meta row, the quick-actions tab, and the
- * tap-to-enrich busy state.
+ * Poster grid/rail card for one normalized `CardMedia` descriptor.
+ * Width-flexible: fills its grid/rail cell (the list owns the cell width).
+ * Always tappable — a cataloged descriptor navigates, an uncataloged one
+ * enriches via `media-upsert` then navigates. See the file header for the
+ * meta row, the quick-actions tab, and the tap-to-enrich busy state.
  */
 export function MediaCard({
-  credit,
+  media,
   tracking,
   avgRating,
   onMutated,
 }: {
-  credit: MergedCredit;
+  media: CardMedia;
   /** The viewer's tracking row for this catalog id (null = untracked /
       uncataloged). Drives the meta-row rating/heart AND the quick-actions
       tab's active states. */
@@ -81,10 +87,11 @@ export function MediaCard({
   const upsert = useMediaUpsertMutation();
   const [busy, setBusy] = useState(false);
 
-  const posterUrl = tmdbImageUrl(credit.poster_path, "w342");
+  const posterUrl = media.posterUrl;
   // Fallback poster glyph mirrors cast-slider: a muted type glyph on the
-  // raised card when TMDb has no art for this title.
-  const FallbackIcon = credit.media_type === "tv" ? Tv : Film;
+  // raised card when there's no art for this title. Keyed by the domain
+  // media type so all four types get their own glyph.
+  const FallbackIcon = MEDIA_TYPE_ICONS[media.mediaType];
 
   // Stars are DISPLAY scale (0.5–5.0). The viewer's rating comes off the DB
   // scale (1–10) so it converts via ratingToStars; the community avg is
@@ -98,20 +105,20 @@ export function MediaCard({
   const favorite = tracking?.is_favorite ?? false;
 
   const onPress = async () => {
-    if (credit.media_item_id) {
-      router.push(`/media/${credit.media_item_id}`);
+    if (media.mediaItemId) {
+      router.push(`/media/${media.mediaItemId}`);
       return;
     }
-    // Uncataloged → enrich-on-tap. Guard against a double-tap while the
-    // Edge Function is in flight; leave the busy state OFF on failure so a
-    // re-tap can retry (the upsert is get-or-create, so a retry is safe).
+    // Uncataloged → enrich-on-tap. Only filmography credits reach here (they
+    // carry an `upsert` payload); catalog-row cards always have a mediaItemId
+    // and returned above. Guard against a double-tap while the Edge Function
+    // is in flight; leave the busy state OFF on failure so a re-tap can retry
+    // (the upsert is get-or-create, so a retry is safe).
+    if (!media.upsert) return;
     if (busy) return;
     setBusy(true);
     try {
-      const id = await upsert.mutateAsync({
-        mediaType: credit.media_type,
-        tmdbId: credit.id,
-      });
+      const id = await upsert.mutateAsync(media.upsert);
       router.push(`/media/${id}`);
     } catch {
       // Swallow: keep busy off so the card stays tappable for a retry. A
@@ -125,7 +132,7 @@ export function MediaCard({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open ${credit.title}`}
+      accessibilityLabel={`Open ${media.title}`}
       accessibilityState={{ busy }}
       className="w-full active:opacity-70"
       onPress={onPress}
@@ -137,7 +144,7 @@ export function MediaCard({
             className="h-full w-full"
             contentFit="cover"
             accessible
-            accessibilityLabel={credit.title}
+            accessibilityLabel={media.title}
           />
         ) : (
           <View className="h-full w-full items-center justify-center">
@@ -157,7 +164,7 @@ export function MediaCard({
             inside the poster's overflow-hidden wrapper (its collapsed glyph
             + slide-out row clip to the poster). See card-actions.tsx. */}
         <CardActions
-          credit={credit}
+          media={media}
           tracking={tracking ?? null}
           onMutated={onMutated}
         />
@@ -167,7 +174,7 @@ export function MediaCard({
         className="mt-1.5 text-sm font-medium text-text-primary"
         numberOfLines={1}
       >
-        {credit.title}
+        {media.title}
       </Text>
 
       {/* Meta row — viewer rating (else community avg), loved heart, year. */}
@@ -182,7 +189,7 @@ export function MediaCard({
             fill={colors["accent-movie"]}
           />
         ) : null}
-        <Text className="text-xs text-text-muted">{credit.year ?? "—"}</Text>
+        <Text className="text-xs text-text-muted">{media.year ?? "—"}</Text>
       </View>
     </Pressable>
   );

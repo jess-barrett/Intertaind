@@ -16,15 +16,16 @@
  * all of which support lazy-create for an untracked item. This component
  * is the COMPACT, poster-overlay analogue of `action-strip.tsx`.
  *
- * ── The ensure-id landmine (uncataloged credits) ──────────────────────
- * A filmography credit may have no catalog row yet (`media_item_id` null).
- * The tracking mutations need a real `media_id`, so any action first calls
- * `ensureId()`, which get-or-creates the catalog row via
- * `useMediaUpsertMutation` (the `media-upsert` Edge Function) and CACHES
- * the returned id in local state — so repeated actions on the same card
- * never re-upsert. While that first upsert is in flight the actions are
- * disabled and a small spinner shows (the same "enriching…" busy language
- * as the card's own tap-to-enrich).
+ * ── The ensure-id landmine (uncataloged descriptors) ──────────────────
+ * A `CardMedia` may have no catalog row yet (`mediaItemId` null) — only the
+ * filmography-credit source produces those (it carries an `upsert` payload);
+ * catalog-row sources (home rails) always have a `mediaItemId`. The tracking
+ * mutations need a real `media_id`, so any action first calls `ensureId()`,
+ * which get-or-creates the catalog row via `useMediaUpsertMutation` (the
+ * `media-upsert` Edge Function) and CACHES the returned id in local state —
+ * so repeated actions on the same card never re-upsert. While that first
+ * upsert is in flight the actions are disabled and a small spinner shows (the
+ * same "enriching…" busy language as the card's own tap-to-enrich).
  *
  * ── The notch ─────────────────────────────────────────────────────────
  * The tab background is a `react-native-svg` polygon matching web's
@@ -71,11 +72,11 @@ import {
   starsToRating,
   type MediaType,
 } from "@intertaind/types";
-import type { MergedCredit } from "@intertaind/media";
 import type { Tables } from "@intertaind/supabase";
 
 import StarRating from "@/components/star-rating";
 import AppSheet, { type AppSheetRef } from "@/components/sheet/app-sheet";
+import type { CardMedia } from "@/components/media/card-media";
 import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
 import { trackingErrorMessage } from "@/lib/tracking-errors";
 import { useMediaUpsertMutation } from "@/queries/media";
@@ -97,15 +98,6 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-/**
- * The card credit's `media_type` is the TMDb "movie" | "tv"; the domain
- * `MediaType` (and TRACKING_CONFIG) uses "movie" | "tv_show". Filmography
- * credits are only ever movies or TV, so this two-value map is total.
- */
-function toMediaType(t: MergedCredit["media_type"]): MediaType {
-  return t === "tv" ? "tv_show" : "movie";
 }
 
 /** Per-type accent HEX for the tab glyph + active states (react-native-svg
@@ -237,11 +229,11 @@ function SheetRow({
 }
 
 export function CardActions({
-  credit,
+  media,
   tracking,
   onMutated,
 }: {
-  credit: MergedCredit;
+  media: CardMedia;
   tracking: {
     status: string;
     rating: number | null;
@@ -260,13 +252,13 @@ export function CardActions({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Cache the resolved catalog id so repeated actions don't re-upsert an
-  // already-enriched credit (see file header). Seeded from the credit's
+  // already-enriched credit (see file header). Seeded from the descriptor's
   // existing catalog id.
   const [resolvedId, setResolvedId] = useState<string | null>(
-    credit.media_item_id,
+    media.mediaItemId,
   );
 
-  const mediaType = toMediaType(credit.media_type);
+  const mediaType = media.mediaType;
   const config = TRACKING_CONFIG[mediaType];
   const accent = TYPE_ACCENT[mediaType];
   const isGame = mediaType === "video_game";
@@ -288,17 +280,21 @@ export function CardActions({
   const busy = upsert.isPending;
 
   /**
-   * Resolve a real `media_id`. Cataloged credits already have one; an
-   * uncataloged credit is get-or-created via the media-upsert Edge Function
-   * and the id cached so a second action reuses it. Throws on failure so
-   * the caller aborts (the settle-refetch / a re-tap recovers).
+   * Resolve a real `media_id`. Cataloged descriptors already have one; an
+   * uncataloged filmography credit is get-or-created via the media-upsert Edge
+   * Function (its `upsert` payload) and the id cached so a second action
+   * reuses it. Catalog-row cards always carry a `mediaItemId`, so they never
+   * reach the guard throw. Throws on failure so the caller aborts (the
+   * settle-refetch / a re-tap recovers).
    */
   async function ensureId(): Promise<string> {
     if (resolvedId) return resolvedId;
-    const id = await upsert.mutateAsync({
-      mediaType: credit.media_type,
-      tmdbId: credit.id,
-    });
+    if (!media.upsert) {
+      throw new Error(
+        "Cannot resolve a catalog id: no media_item_id and no enrich payload",
+      );
+    }
+    const id = await upsert.mutateAsync(media.upsert);
     setResolvedId(id);
     return id;
   }
@@ -518,7 +514,7 @@ export function CardActions({
 
       {/* The per-type ⋯ menu — an AppSheet bottom sheet (mounted here as a
           BottomSheetModal portal sibling; opened via its ref). */}
-      <AppSheet ref={sheetRef} accessibilityLabel={`Actions for ${credit.title}`}>
+      <AppSheet ref={sheetRef} accessibilityLabel={`Actions for ${media.title}`}>
         <View className="gap-1">
           {/* Header — the title. */}
           <View className="pb-2">
@@ -526,7 +522,7 @@ export function CardActions({
               className="text-lg font-bold text-text-primary"
               numberOfLines={2}
             >
-              {credit.title}
+              {media.title}
             </Text>
           </View>
 

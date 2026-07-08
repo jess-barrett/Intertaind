@@ -37,6 +37,7 @@ import {
 } from "@intertaind/media";
 
 import { MediaCard } from "@/components/media/media-card";
+import { cardMediaFromCredit } from "@/components/media/card-media";
 import { FilterPicker } from "@/components/media/filter-picker";
 import { SectionHeading } from "@/components/media/section-heading";
 import type { PersonTrackingEntry } from "@/queries/person";
@@ -136,7 +137,7 @@ export function FilmographyList({
           // of each card's intrinsic width.
           <View className="flex-1">
             <MediaCard
-              credit={item}
+              media={cardMediaFromCredit(item)}
               tracking={id ? tracking.get(id) ?? null : null}
               avgRating={id ? mediaMeta.get(id) ?? null : null}
               onMutated={onMutated}
