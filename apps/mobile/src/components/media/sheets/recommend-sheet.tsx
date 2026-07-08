@@ -1,12 +1,27 @@
 /**
- * RecommendSheet — the "Intertain friends" cross-media recommend sheet, the
+ * RecommendSheet — the "Intertain friends" cross-media recommend flow, the
  * RN mirror of web's `RecommendButton`/`RecommendModal`
  * (apps/web/src/components/recommendations/recommend-button.tsx). Applies to
  * EVERY media type (Intertain is the cross-media headline feature): "if a
  * friend liked THIS, try THAT."
  *
- * ── Flow (two states in one sheet, mirroring web's modal) ──────────────
- * 1. No target yet → a `MediaSearchPicker`: search + pick another title.
+ * ── Why a native Modal, not an AppSheet ────────────────────────────────
+ * Unlike the log/status sheets, this flow hosts a VARIABLE-height search
+ * results list plus a keyboard-tracked note field. A `@gorhom/bottom-sheet`
+ * dynamic-sizing measure is unstable against that combination — it reads the
+ * list's full content height and over-expands, pops past the top, or slides
+ * down as results/keyboard change. So this flow renders a native RN `Modal`
+ * (iOS `presentationStyle="pageSheet"`): a full, roomy card with a PLAIN
+ * scrollable list that simply fills its bounded space. The other log/status
+ * sheets keep AppSheet — only this flow changed. The ref API is identical
+ * (`forwardRef<AppSheetRef, { media }>` with `present()`/`dismiss()`), so
+ * media/[id].tsx's `onIntertain: () => recommendRef.current?.present()` and
+ * the mount are unchanged; presentation is backed by a `visible` boolean
+ * instead of an imperative modal ref.
+ *
+ * ── Flow (two states in one card, mirroring web's modal) ───────────────
+ * 1. No target yet → a `MediaSearchPicker`: search + pick another title
+ *    (its list fills the flex body and scrolls).
  * 2. Target picked → its poster/title/year/type with a "Change" affordance
  *    (clears the target → back to search), an optional note field (≤280),
  *    and a prominent brand "Recommend" button.
@@ -22,15 +37,14 @@
  *      on the resolved id — a duplicate title resolving to the source is the
  *      only way this trips.)
  *   3. `createRec.mutateAsync({ sourceMediaId, recommendedMediaId, note })`.
- * Then dismiss via the OUTER sheet ref.
+ * Then dismiss (setVisible(false)).
  *
  * ── The mutateAsync-dismiss pattern (why not `mutate(…, { onSuccess })`) ─
  * `useCreateRecommendationMutation` invalidates the source's media detail on
  * success, which can remount the detail screen's sheet tree; a per-call
  * `onSuccess` would be DROPPED if this form unmounts mid-mutation (TanStack
- * v5). So we `await` the mutateAsync chain and dismiss via the OUTER ref
- * (`onDismiss`), which targets the stable AppSheet — exactly the log sheets'
- * pattern.
+ * v5). So we `await` the mutateAsync chain and dismiss via the OUTER handle
+ * (`onDismiss`) — exactly the log sheets' pattern.
  *
  * ── Errors ────────────────────────────────────────────────────────────
  * The create hook already maps 23505 ("You've already intertaind this
@@ -40,26 +54,34 @@
  * user-facing message) — NEVER the raw Supabase error.
  *
  * ── Fresh on re-open ──────────────────────────────────────────────────
- * State (target/note) is reset when the sheet dismisses, via a remount key
- * bumped in `onDismiss` (the seedKey pattern) — re-opening always starts at
- * the empty search state.
+ * State (target/note) is reset when the modal dismisses, via a remount key
+ * bumped when `visible` goes false (the seedKey pattern) — re-opening always
+ * starts at the empty search state.
  */
 
 import {
   forwardRef,
+  useCallback,
   useImperativeHandle,
-  useRef,
   useState,
 } from "react";
-import { Pressable, Text, View } from "react-native";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { X } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 import type { SearchResult } from "@intertaind/types";
 
 import { Image } from "@/components/image";
 import { MediaSearchPicker } from "@/components/media/media-search-picker";
-import AppSheet, { type AppSheetRef } from "@/components/sheet/app-sheet";
+import { type AppSheetRef } from "@/components/sheet/app-sheet";
 import { MEDIA_TYPE_ICONS, MEDIA_TYPE_ICON_COLOR } from "@/lib/media-type-icons";
 import { trackingErrorMessage } from "@/lib/tracking-errors";
 import type { MediaDetailItem } from "@/queries/media";
@@ -154,6 +176,11 @@ function TargetPreview({
  * The form body. Split from the ref wrapper so it REMOUNTS (via the parent's
  * `key`) on each dismiss — re-opening always starts fresh (no stale target
  * or note).
+ *
+ * Layout note: the ROOT is `flex-1` and, in the no-target state, the picker
+ * is wrapped in a `flex-1` region so its FlatList gets a bounded height and
+ * scrolls normally inside the full pageSheet. In the target-picked state the
+ * content is short (preview + note + button) and sits at the top.
  */
 function RecommendForm({
   media,
@@ -190,8 +217,8 @@ function RecommendForm({
         recommendedMediaId,
         note: note.trim() || undefined,
       });
-      // Dismiss via the OUTER sheet ref (stable across the create hook's
-      // detail invalidation → potential remount).
+      // Dismiss via the OUTER handle (stable across the create hook's detail
+      // invalidation → potential remount).
       onDismiss();
     } catch (err) {
       setErrorMessage(messageFor(err));
@@ -201,7 +228,7 @@ function RecommendForm({
   const remaining = MAX_NOTE - note.length;
 
   return (
-    <View className="gap-5">
+    <View className="flex-1 gap-5">
       {/* Header: label + source title + the cross-media hint (web parity). */}
       <View className="flex-row items-start justify-between gap-3">
         <View className="flex-1 gap-1">
@@ -231,21 +258,24 @@ function RecommendForm({
       </View>
 
       {target === null ? (
-        // No target yet → the search-and-pick widget.
-        <MediaSearchPicker onPick={setTarget} />
+        // No target yet → the search-and-pick widget. Wrap it in a flex-1
+        // region so its FlatList fills the remaining space and scrolls.
+        <View className="flex-1">
+          <MediaSearchPicker onPick={setTarget} />
+        </View>
       ) : (
         <>
           {/* Picked target preview + Change. */}
           <TargetPreview target={target} onChange={() => setTarget(null)} />
 
-          {/* Optional note (≤280). BottomSheetTextInput so it rides above the
-              keyboard. */}
+          {/* Optional note (≤280). Rides above the keyboard via the outer
+              KeyboardAvoidingView. */}
           <View className="gap-1.5">
             <Text className="text-sm font-medium text-text-secondary">
               Add a note{" "}
               <Text className="text-text-muted">(optional)</Text>
             </Text>
-            <BottomSheetTextInput
+            <TextInput
               value={note}
               onChangeText={setNote}
               placeholder="Why is this a good pair?"
@@ -295,18 +325,19 @@ function RecommendForm({
 }
 
 /**
- * Ref-driven recommend sheet. Parent presents it via `AppSheetRef`
- * (`present()`); the sheet dismisses itself on a successful recommend. Mount
+ * Ref-driven recommend flow. Parent presents it via `AppSheetRef`
+ * (`present()`); the flow dismisses itself on a successful recommend. Mount
  * it on the media detail screen (all types) and wire `present()` to the
  * action strip's `onIntertain`.
  *
- * Uses AppSheet's DYNAMIC sizing (no fixed snap) so the sheet fits its
- * content in both states — short in the target-picked state (preview + note
- * + button) rather than leaving a tall sheet half-empty. The search results
- * list stays scroll-bounded by its own `maxHeight` in `MediaSearchPicker`
- * (so it caps the measured height + scrolls internally). The form is
- * REMOUNTED on each dismiss via a `resetKey` so re-opening starts fresh
- * (empty search, no note).
+ * Presentation is a native `Modal` backed by a `visible` boolean:
+ * `present()` → `setVisible(true)`, `dismiss()` → the single `close()`
+ * handler. On iOS it's a `presentationStyle="pageSheet"` card (roomy, native
+ * swipe-to-close); `onRequestClose` routes the Android back button / iOS
+ * swipe-dismiss through that same `close()`. `close()` both hides the modal
+ * AND bumps a `resetKey`, remounting the form so re-opening always starts
+ * fresh (empty search, no note) — one handler for EVERY close path, so the
+ * reset isn't a setState-in-effect anti-pattern.
  */
 const RecommendSheet = forwardRef<
   AppSheetRef,
@@ -314,33 +345,52 @@ const RecommendSheet = forwardRef<
     media: MediaDetailItem;
   }
 >(function RecommendSheet({ media }, ref) {
-  const sheetRef = useRef<AppSheetRef>(null);
-  // Bumped on dismiss to remount the form with fresh state (seedKey pattern).
+  const insets = useSafeAreaInsets();
+  const [visible, setVisible] = useState(false);
+  // Bumped on every close to remount the form with fresh state (seedKey
+  // pattern).
   const [resetKey, setResetKey] = useState(0);
+
+  // The one close path: hide + reset. Used by the imperative `dismiss()`, the
+  // in-form close/success handler, and the modal's `onRequestClose` (native
+  // swipe/back) — so re-opening is always fresh. Cleanup only, never a save
+  // side-effect. Idempotent, so a swipe-then-dismiss double-fire is harmless.
+  const close = useCallback(() => {
+    setVisible(false);
+    setResetKey((k) => k + 1);
+  }, []);
 
   useImperativeHandle(
     ref,
     () => ({
-      present: () => sheetRef.current?.present(),
-      dismiss: () => sheetRef.current?.dismiss(),
+      present: () => setVisible(true),
+      dismiss: close,
     }),
-    [],
+    [close],
   );
 
   return (
-    <AppSheet
-      ref={sheetRef}
-      accessibilityLabel={`Recommend a pairing for ${media.title}`}
-      // Reset on ANY dismiss (programmatic or swipe-to-close) so re-opening
-      // is fresh — cleanup only, never a save side-effect.
-      onDismiss={() => setResetKey((k) => k + 1)}
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={close}
     >
-      <RecommendForm
-        key={resetKey}
-        media={media}
-        onDismiss={() => sheetRef.current?.dismiss()}
-      />
-    </AppSheet>
+      <KeyboardAvoidingView
+        className="flex-1 bg-surface-default"
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <View
+          className="flex-1 px-5 pb-6"
+          // Safe-area top so the header clears the notch/status bar (the
+          // pageSheet card doesn't inset its own content on iOS).
+          style={{ paddingTop: insets.top + 16 }}
+          accessibilityLabel={`Recommend a pairing for ${media.title}`}
+        >
+          <RecommendForm key={resetKey} media={media} onDismiss={close} />
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 });
 

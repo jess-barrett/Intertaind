@@ -14,13 +14,14 @@
  * field updates instantly (local `query`), but the search only fires once
  * typing settles — so each cached key is a settled query, not a keystroke.
  *
- * ── Scroll inside a bottom sheet ──────────────────────────────────────
- * The results use `BottomSheetFlatList` (NOT RN's `FlatList`): a plain
- * scrollable can't scroll inside a `@gorhom/bottom-sheet` — the sheet's
- * pan gesture swallows the drag. The list is height-BOUNDED (`maxHeight`)
- * so it has a scroll region of its own while living inside the sheet's
- * `BottomSheetView` (the parent sheet pins itself to `snapPoints` so the
- * bounded list + surrounding chrome fit predictably).
+ * ── Layout: plain RN primitives in a full modal ───────────────────────
+ * The recommend flow now hosts this picker inside a native `Modal`
+ * (pageSheet), not a `@gorhom/bottom-sheet`, so it uses PLAIN RN
+ * `TextInput` + `FlatList` (no `BottomSheet*` wrappers, no fixed-height /
+ * peek hacks). The picker ROOT is `flex-1`, so the FlatList (`flex: 1`)
+ * inherits a bounded height and scrolls normally; rows size to their
+ * natural height. `keyboardShouldPersistTaps="handled"` keeps a tap on a
+ * result working while the keyboard is up.
  *
  * ── States ────────────────────────────────────────────────────────────
  * prompt (query too short) · loading (spinner) · empty ("No results") ·
@@ -28,8 +29,14 @@
  */
 
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { BottomSheetFlatList, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { Search } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 import type { SearchResult } from "@intertaind/types";
@@ -57,18 +64,6 @@ function resultKey(r: SearchResult): string {
   return `${r.media_type}-${JSON.stringify(r.external_ids)}`;
 }
 
-/**
- * Fixed height per result row (pt). Two reasons it's fixed: (1) it lets the
- * list size to an exact ~3.5-row peek, and (2) it makes the list measure
- * DETERMINISTICALLY under the sheet's dynamic sizing — a `maxHeight`'d
- * BottomSheetFlatList reports its FULL content height to the measure, which
- * over-expands the sheet and leaves blank space below the clipped rows. The
- * w-10 (2:3) poster + the 2-line title + the type/year line fit within it.
- */
-const ROW_HEIGHT = 72;
-/** Rows shown before the fold; the .5 peeks the next row to signal scroll. */
-const PEEK_ROWS = 3.5;
-
 function ResultRow({
   result,
   onPress,
@@ -84,8 +79,7 @@ function ResultRow({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${result.title}${year ? `, ${year}` : ""}`}
-      className="flex-row items-center gap-3 px-1 active:opacity-60"
-      style={{ height: ROW_HEIGHT }}
+      className="flex-row items-center gap-3 px-1 py-2 active:opacity-60"
       onPress={onPress}
     >
       {/* 2:3 poster — SearchResult.cover_image_url is a full URL (the search
@@ -137,12 +131,13 @@ export function MediaSearchPicker({
   const tooShort = debouncedQuery.trim().length < 2;
 
   return (
-    <View className="gap-3">
-      {/* Search field — BottomSheetTextInput so the sheet keeps it above the
-          keyboard while typing. */}
+    // flex-1 so the FlatList below inherits a bounded height and scrolls
+    // inside the modal's flex body.
+    <View className="flex-1 gap-3">
+      {/* Search field. */}
       <View className="flex-row items-center gap-2 rounded-sm border border-surface-border bg-surface-overlay px-3 py-2.5">
         <Search size={16} color={colors["text-muted"]} />
-        <BottomSheetTextInput
+        <TextInput
           value={query}
           onChangeText={setQuery}
           placeholder="Search movies, shows, games, books…"
@@ -155,8 +150,7 @@ export function MediaSearchPicker({
         />
       </View>
 
-      {/* Results / states. The list is height-bounded so it scrolls inside
-          the sheet (BottomSheetFlatList; a plain FlatList wouldn't). */}
+      {/* Results / states. */}
       {tooShort ? (
         <View className="py-6">
           <Text className="text-center text-sm text-text-muted">
@@ -184,30 +178,15 @@ export function MediaSearchPicker({
           </Text>
         </View>
       ) : (
-        // The fixed height goes on this PLAIN wrapper View — a real layout
-        // boundary the sheet's dynamic-size measure respects. A height on the
-        // BottomSheetFlatList itself is ignored by that measure (it reads the
-        // list's FULL content height), which is why many results over-expanded
-        // the sheet while few didn't. Height = exactly the rows to show: all of
-        // them when few (no blank below), else a 3.5-row peek that scrolls.
-        <View
-          style={{ height: Math.min(results.length, PEEK_ROWS) * ROW_HEIGHT }}
-        >
-          <BottomSheetFlatList
-            data={results}
-            keyExtractor={resultKey}
-            keyboardShouldPersistTaps="handled"
-            getItemLayout={(_, index) => ({
-              length: ROW_HEIGHT,
-              offset: ROW_HEIGHT * index,
-              index,
-            })}
-            style={{ flex: 1 }}
-            renderItem={({ item }) => (
-              <ResultRow result={item} onPress={() => onPick(item)} />
-            )}
-          />
-        </View>
+        <FlatList
+          data={results}
+          keyExtractor={resultKey}
+          keyboardShouldPersistTaps="handled"
+          style={{ flex: 1 }}
+          renderItem={({ item }) => (
+            <ResultRow result={item} onPress={() => onPick(item)} />
+          )}
+        />
       )}
     </View>
   );
