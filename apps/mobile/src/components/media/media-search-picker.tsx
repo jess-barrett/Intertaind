@@ -57,6 +57,18 @@ function resultKey(r: SearchResult): string {
   return `${r.media_type}-${JSON.stringify(r.external_ids)}`;
 }
 
+/**
+ * Fixed height per result row (pt). Two reasons it's fixed: (1) it lets the
+ * list size to an exact ~3.5-row peek, and (2) it makes the list measure
+ * DETERMINISTICALLY under the sheet's dynamic sizing — a `maxHeight`'d
+ * BottomSheetFlatList reports its FULL content height to the measure, which
+ * over-expands the sheet and leaves blank space below the clipped rows. The
+ * w-10 (2:3) poster + the 2-line title + the type/year line fit within it.
+ */
+const ROW_HEIGHT = 72;
+/** Rows shown before the fold; the .5 peeks the next row to signal scroll. */
+const PEEK_ROWS = 3.5;
+
 function ResultRow({
   result,
   onPress,
@@ -72,7 +84,8 @@ function ResultRow({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${result.title}${year ? `, ${year}` : ""}`}
-      className="flex-row items-center gap-3 px-1 py-2 active:opacity-60"
+      className="flex-row items-center gap-3 px-1 active:opacity-60"
+      style={{ height: ROW_HEIGHT }}
       onPress={onPress}
     >
       {/* 2:3 poster — SearchResult.cover_image_url is a full URL (the search
@@ -175,7 +188,15 @@ export function MediaSearchPicker({
           data={results}
           keyExtractor={resultKey}
           keyboardShouldPersistTaps="handled"
-          style={{ maxHeight: 360 }}
+          getItemLayout={(_, index) => ({
+            length: ROW_HEIGHT,
+            offset: ROW_HEIGHT * index,
+            index,
+          })}
+          // Height = exactly the rows to show: all of them when few (no blank
+          // space below), else a 3.5-row peek that scrolls. A FIXED height (not
+          // maxHeight) so the sheet's dynamic sizing measures it correctly.
+          style={{ height: Math.min(results.length, PEEK_ROWS) * ROW_HEIGHT }}
           renderItem={({ item }) => (
             <ResultRow result={item} onPress={() => onPick(item)} />
           )}
