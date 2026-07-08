@@ -9,15 +9,22 @@
  */
 
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "@intertaind/design-system";
 
 import { useSignOutMutation } from "@/queries/auth";
 
 export default function ExploreScreen() {
   const signOut = useSignOutMutation();
+  // Headerless tab anchor — reserve the top safe-area so content clears the
+  // status bar / camera notch.
+  const insets = useSafeAreaInsets();
 
   return (
-    <View className="flex-1 gap-4 bg-surface-default px-6 pt-16">
+    <View
+      className="flex-1 gap-4 bg-surface-default px-6"
+      style={{ paddingTop: insets.top + 16 }}
+    >
       <Pressable
         className="items-center rounded-lg bg-brand px-4 py-3"
         onPress={() => signOut.mutate()}

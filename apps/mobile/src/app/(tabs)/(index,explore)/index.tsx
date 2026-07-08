@@ -28,6 +28,7 @@
  */
 import { useCallback, useMemo } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/components/auth-provider";
@@ -56,6 +57,10 @@ export default function HomeScreen() {
   const queryClient = useQueryClient();
   // Reserve space so the last rail clears the persistent bottom navbar.
   const bottomInset = useBottomInset();
+  // This tab has no native header, so the screen must reserve the top
+  // safe-area itself — otherwise the header collides with the status bar /
+  // camera notch (see apps/mobile/AGENTS.md "content clears the safe area").
+  const insets = useSafeAreaInsets();
 
   // Continue + Recommended are viewer-derived (self-hide when empty / signed
   // out); the four Popular rails are the always-present public-catalog core.
@@ -157,10 +162,18 @@ export default function HomeScreen() {
     popularGames.length === 0;
 
   return (
-    <ScrollView
+    // The outer View reserves the top safe-area as a solid strip so content
+    // sits below the status bar (and never scrolls up under it); the bottom
+    // inset is reserved inside the scroll content so the last rail clears the
+    // navbar.
+    <View
       className="flex-1 bg-surface-default"
-      contentContainerStyle={{ paddingTop: 12, paddingBottom: bottomInset }}
+      style={{ paddingTop: insets.top }}
     >
+      <ScrollView
+        className="flex-1 bg-surface-default"
+        contentContainerStyle={{ paddingTop: 12, paddingBottom: bottomInset }}
+      >
       {/* Minimal, static welcome header. No profile/name read here — the
           Profile milestone owns profile reads. */}
       {/* TODO(profile): personalized greeting once a profile hook lands */}
@@ -215,6 +228,7 @@ export default function HomeScreen() {
       {/* Popular Lists rail deferred: no list-detail route on mobile yet, so
           list cards would dead-end. usePopularLists stays unused until a
           later milestone mounts a list-detail route. */}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }

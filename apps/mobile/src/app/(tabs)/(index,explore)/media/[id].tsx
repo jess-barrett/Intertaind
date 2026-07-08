@@ -9,9 +9,13 @@
  * `(tabs)/_layout.tsx`), which stays visible on detail. Native/gesture
  * back returns within the tab's stack; detail→detail pushes a fresh
  * instance. The per-tab Stack (`(index,explore)/_layout.tsx`) hides
- * headers by default; this screen opts a transparent header back in via
- * `<Stack.Screen options>` (the expo-router per-screen idiom) for the
- * native back affordance.
+ * headers by default, and this screen keeps it that way: instead of a
+ * native header it renders its OWN scroll-fading top bar
+ * (`DetailHeaderBar`) so the backdrop hero reads full-bleed to the very
+ * top of the screen (Letterboxd-style). At rest only a translucent back
+ * pill shows over the backdrop; as the hero scrolls up, a solid
+ * background + the title fade in. The pending/error states render a
+ * `FloatingBackButton` for the same back affordance.
  *
  * Route gating: under this shared structure the detail URL resolves
  * under `(tabs)` (`segments[0] === "(tabs)"`), so `RootNavigator`'s
@@ -44,17 +48,20 @@
  * same byline/secondary-line/tagline/stat composition. Web is the
  * source of truth; keep the two in lockstep.
  */
-import { useRef } from "react";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { useRef, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
-  ScrollView,
+  StyleSheet,
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import {
+  ArrowLeft,
   BookOpen,
   BookOpenCheck,
   Eye,
@@ -96,6 +103,10 @@ import {
 
 /** Hero height in pt — the backdrop + its gradient fade. */
 const HERO_HEIGHT = 288;
+
+/** Height (pt) of the nav-bar content row beneath the status bar — the
+ *  back button + fading title sit here (added to the top safe-area inset). */
+const NAV_BAR_HEIGHT = 44;
 
 /**
  * Per-media-type accent hex for the lucide type icon. Icons color via
@@ -301,20 +312,11 @@ export default function MediaDetailScreen() {
   const detail = useMediaDetail(id);
 
   return (
+    // The per-tab Stack hides headers by default (see the layout), so this
+    // screen has NO native header — the backdrop hero reads full-bleed to the
+    // very top of the screen (Letterboxd-style), and a custom, scroll-fading
+    // top bar (rendered inside the body) provides the back affordance + title.
     <View className="flex-1 bg-surface-default">
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: "",
-          // Transparent header so the backdrop hero reads full-bleed
-          // behind the native back button (web's edge-to-edge hero).
-          headerTransparent: true,
-          headerStyle: { backgroundColor: "transparent" },
-          headerTintColor: colors["text-primary"],
-          headerShadowVisible: false,
-        }}
-      />
-
       {detail.isPending ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator />
@@ -336,6 +338,110 @@ export default function MediaDetailScreen() {
       ) : (
         <MediaDetailBody item={detail.data} />
       )}
+
+      {/* Back affordance for the pending / error states (the data state
+          renders its own scroll-fading bar). Absolute so it floats over the
+          centered content. */}
+      {detail.isPending || detail.error ? <FloatingBackButton /> : null}
+    </View>
+  );
+}
+
+/**
+ * A translucent circular back button — legible over both a bright backdrop
+ * (the data state, before the header bg fades in) and the solid page bg (the
+ * pending/error states). Self-contained: reads the router directly.
+ */
+function BackPill() {
+  const router = useRouter();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Go back"
+      hitSlop={8}
+      className="h-9 w-9 items-center justify-center rounded-full active:opacity-70"
+      style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+      onPress={() => router.back()}
+    >
+      <ArrowLeft size={22} color={colors["text-primary"]} />
+    </Pressable>
+  );
+}
+
+/** The back pill positioned at the top-left, honoring the safe-area inset.
+ *  Used by the non-scrolling (pending / error) states. */
+function FloatingBackButton() {
+  const insets = useSafeAreaInsets();
+  return (
+    <View
+      pointerEvents="box-none"
+      style={{ position: "absolute", top: insets.top + 6, left: 12 }}
+    >
+      <BackPill />
+    </View>
+  );
+}
+
+/**
+ * The scroll-fading top bar over the backdrop hero — the RN analogue of
+ * Letterboxd's detail header. At rest (hero in view) only the translucent
+ * back pill shows over the full-bleed backdrop; as the hero scrolls up behind
+ * the bar, a solid `surface-default` background + the title FADE IN together
+ * (driven by `scrollY`, native-driver opacity). The back pill stays visible
+ * throughout. `pointerEvents="box-none"` lets scroll gestures pass through the
+ * bar's empty area to the list beneath.
+ */
+function DetailHeaderBar({
+  title,
+  scrollY,
+}: {
+  title: string;
+  scrollY: Animated.Value;
+}) {
+  const insets = useSafeAreaInsets();
+  const barHeight = insets.top + NAV_BAR_HEIGHT;
+  // Fade the bg + title in as the hero's lower edge passes behind the bar.
+  const fadeStart = HERO_HEIGHT - barHeight - 80;
+  const fadeEnd = HERO_HEIGHT - barHeight - 8;
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [fadeStart, fadeEnd],
+    outputRange: [0, 1],
+    extrapolate: "clamp",
+  });
+
+  return (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        height: barHeight,
+        paddingTop: insets.top,
+      }}
+    >
+      {/* Fading solid background + hairline bottom border. */}
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { opacity: headerOpacity }]}
+        className="border-b border-surface-border bg-surface-default"
+      />
+
+      {/* Nav row: back pill (always visible) + fading title. */}
+      <View
+        style={{ height: NAV_BAR_HEIGHT }}
+        className="flex-row items-center gap-2 px-3"
+      >
+        <BackPill />
+        <Animated.Text
+          numberOfLines={1}
+          style={{ opacity: headerOpacity }}
+          className="flex-1 text-base font-semibold text-text-primary"
+        >
+          {title}
+        </Animated.Text>
+      </View>
     </View>
   );
 }
@@ -416,6 +522,12 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
   // Reserve space so content clears the persistent bottom navbar (added
   // on top of the 48pt content breathing room at the end of the scroll).
   const bottomInset = useBottomInset();
+  // Drives the Letterboxd-style top bar: as the hero scrolls up, the bar's
+  // background + title fade in (see DetailHeaderBar). Native-driver opacity,
+  // so it stays smooth. Lazy useState so the Animated.Value is created ONCE
+  // and never re-instantiated across renders (a ref's `.current` can't be
+  // read during render under the react-hooks lint).
+  const [scrollY] = useState(() => new Animated.Value(0));
   // The movie log/review sheet (Task 2.4). Only meaningful for movies —
   // the strip's movie "Review or log…" opener presents it; the sheet
   // self-gates its render to movies below.
@@ -450,9 +562,14 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
 
   return (
     <>
-      <ScrollView
-        className="flex-1"
+      <Animated.ScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 48 + bottomInset }}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true },
+        )}
+        scrollEventThrottle={16}
       >
         {/* Full-bleed backdrop hero with its bottom fade. */}
         <BackdropHero backdropUrl={item.backdrop_url} />
@@ -647,7 +764,12 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
             after the info strip (the "no empty headings" grammar). */}
           <RecommendationsSection mediaId={item.id} />
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
+
+      {/* Letterboxd-style top bar — back pill always visible; the solid bg +
+          title fade in as the hero scrolls past. Sibling of the scroll view so
+          it floats above the full-bleed backdrop. */}
+      <DetailHeaderBar title={item.title} scrollY={scrollY} />
 
       {/* Movie log/review sheet (Task 2.4). Ref-driven overlay (a
           BottomSheetModal portal), so it mounts as a sibling of the
