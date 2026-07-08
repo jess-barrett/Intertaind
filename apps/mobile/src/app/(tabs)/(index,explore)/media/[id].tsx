@@ -74,6 +74,7 @@ import { ActionStrip } from "@/components/media/action-strip";
 import { InfoSections } from "@/components/media/info-sections";
 import { RatingsHistogram } from "@/components/media/ratings-histogram";
 import { SeasonCards } from "@/components/media/season-cards";
+import GameLogSheet from "@/components/media/sheets/game-log-sheet";
 import GameStatusSheet from "@/components/media/sheets/game-status-sheet";
 import MovieLogSheet from "@/components/media/sheets/movie-log-sheet";
 import type { AppSheetRef } from "@/components/sheet/app-sheet";
@@ -416,6 +417,9 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
   // strip's game status pill presents it via onOpenStatusPicker.
   const gameStatusRef = useRef<AppSheetRef>(null);
   const isGame = item.media_type === "video_game";
+  // The game log/review sheet — only for video games; the strip's game
+  // "Log game…" opener presents it via onOpenLog (routed by type below).
+  const gameLogRef = useRef<AppSheetRef>(null);
 
   return (
     <>
@@ -558,9 +562,13 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
             viewerRow={tracking.data ?? null}
             trackingPending={tracking.isPending}
             handlers={{
-              // Movie log/review sheet (Task 2.4) — present the ref-driven
-              // sheet mounted below. (Only movies route here.)
-              onOpenLog: () => movieLogRef.current?.present(),
+              // Log/review sheet — presents the RIGHT sheet by type: movie
+              // → movie-log, game → game-log. (Book stays stubbed until a
+              // later task builds its book sheets.)
+              onOpenLog: () => {
+                if (isMovie) movieLogRef.current?.present();
+                else if (isGame) gameLogRef.current?.present();
+              },
               // TODO(2.6): TV log-season / log-episode / current-episode sheets.
               onOpenLogSeason: () => {},
               onOpenLogEpisode: () => {},
@@ -619,6 +627,18 @@ function MediaDetailBody({ item }: { item: MediaDetailItem }) {
       {isGame ? (
         <GameStatusSheet
           ref={gameStatusRef}
+          media={item}
+          viewerRow={tracking.data ?? null}
+        />
+      ) : null}
+
+      {/* Game log/review sheet. Ref-driven overlay, mounted as a sibling of
+          the scroll content. Only for games — the strip's "Log game…"
+          opener presents it, and its fields (play status / hours) are
+          game-specific. */}
+      {isGame ? (
+        <GameLogSheet
+          ref={gameLogRef}
           media={item}
           viewerRow={tracking.data ?? null}
         />
