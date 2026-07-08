@@ -27,12 +27,14 @@ const colors = Object.freeze({
   "brand-light": "#FF4D97",
   "brand-dark": "#D1005A",
 
-  // Surface — true near-black, neutral. The default → border ramp
-  // is "background up to outline" so utilities layer cleanly.
-  "surface-default": "#0A0A0A",
-  "surface-raised": "#141414",
-  "surface-overlay": "#1F1F1F",
-  "surface-border": "#2E2E2E",
+  // Surface — dark neutral GRAY (lifted off pure black). The default →
+  // border ramp is "background up to outline" so utilities layer cleanly;
+  // the whole ramp is shifted up together so cards/overlays still read as
+  // elevated above the grayer base.
+  "surface-default": "#1A1A1A",
+  "surface-raised": "#242424",
+  "surface-overlay": "#2E2E2E",
+  "surface-border": "#3C3C3C",
 
   // Media-type accents — full neon saturation. Used by the
   // `MEDIA_TYPE_CONFIG` table in `@intertaind/types` so any
@@ -51,8 +53,9 @@ const colors = Object.freeze({
 
   // Page background / foreground — wired separately from
   // surface-default so future themes can split them (e.g., a beige
-  // foreground over a near-black surface).
-  background: "#0A0A0A",
+  // foreground over a near-black surface). Kept in step with the grayer
+  // surface-default base.
+  background: "#1A1A1A",
   foreground: "#F0F0F0",
 });
 
