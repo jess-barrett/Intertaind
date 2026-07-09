@@ -54,8 +54,12 @@ if (
 const DEBOUNCE_MS = 250;
 /** Min chars before the hook invokes (matches useUserSearch's gate). */
 const MIN_QUERY_LENGTH = 2;
-/** Bar / collapsed-button height (also the collapsed width — a circle). */
-const BAR_HEIGHT = 40;
+/** Bar / collapsed-button height (also the collapsed width — a circle). Matches
+ *  the settings gear's explicit size so the two buttons are identical. */
+const BAR_HEIGHT = 36;
+/** Corner radius for the OPEN bar's left edge — "rounded small" (the right edge
+ *  stays a circular cap, matching the collapsed button it grows from). */
+const OPEN_LEFT_RADIUS = 6;
 /** The slide-out/collapse tween (the "slide"). */
 const SLIDE = LayoutAnimation.create(
   200,
@@ -71,9 +75,9 @@ export function HeaderUserSearch() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
-  // Expanded width: grow leftward toward (but not over) the avatar. Capped so
-  // it stays a comfortable field on any width.
-  const expandedWidth = Math.min(300, width - 120);
+  // Expanded width: ~2/3 of the earlier full width — a compact field that grows
+  // leftward. Capped so it stays reasonable on any screen width.
+  const expandedWidth = Math.round(Math.min(300, width - 120) * (2 / 3));
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), DEBOUNCE_MS);
@@ -108,11 +112,17 @@ export function HeaderUserSearch() {
           top: 0,
           height: BAR_HEIGHT,
           width: open ? expandedWidth : BAR_HEIGHT,
+          // Right edge is always a circular cap (matches the collapsed button /
+          // the gear); when open the LEFT edge is "rounded small" — collapsed
+          // it's a full circle.
+          borderTopRightRadius: BAR_HEIGHT / 2,
+          borderBottomRightRadius: BAR_HEIGHT / 2,
+          borderTopLeftRadius: open ? OPEN_LEFT_RADIUS : BAR_HEIGHT / 2,
+          borderBottomLeftRadius: open ? OPEN_LEFT_RADIUS : BAR_HEIGHT / 2,
         }}
-        // Collapsed: a border-only circle that MATCHES the settings gear
-        // (h-10 w-10, no fill). Open: fill with surface-raised so it reads as a
-        // search field.
-        className={`flex-row items-center overflow-hidden rounded-full border border-surface-border ${
+        // Collapsed: a border-only circle that MATCHES the settings gear (no
+        // fill). Open: fill with surface-raised so it reads as a search field.
+        className={`flex-row items-center overflow-hidden border border-surface-border ${
           open ? "bg-surface-raised" : ""
         }`}
       >

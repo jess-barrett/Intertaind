@@ -43,8 +43,28 @@ import {
   type ProfileRow,
 } from "@/queries/profile";
 
-/** Fixed media-type order for the header count row (movie → tv → book → game). */
-const COUNT_ORDER: MediaType[] = ["movie", "tv_show", "book", "video_game"];
+/**
+ * One media-type engagement count — an icon-ABOVE-number stack (no label), a
+ * fixed-width cell so the header's 2×2 grid columns align. Icon colors via the
+ * `color` PROP (react-native-svg). "—" while the counts read is still pending.
+ */
+function StatStack({
+  type,
+  value,
+}: {
+  type: MediaType;
+  value: number | undefined;
+}) {
+  const Icon = MEDIA_TYPE_ICONS[type];
+  return (
+    <View style={{ width: 38 }} className="items-center gap-0.5">
+      <Icon size={16} color={MEDIA_TYPE_ICON_COLOR[type]} />
+      <Text className="text-sm font-semibold text-text-primary">
+        {value != null ? value.toLocaleString() : "—"}
+      </Text>
+    </View>
+  );
+}
 
 export function ProfileHeader({
   profile,
@@ -86,68 +106,20 @@ export function ProfileHeader({
           </View>
         )}
 
-        {/* Content column (flex-1) beside the avatar, three lines:
-            (1) display name + the find-users & gear/Follow actions,
-            (2) @username + the media-type counts,
-            (3) follower / following. */}
-        <View className="flex-1 gap-1.5 pt-0.5">
-          {/* Line 1 — name (left) + find-users then gear/Follow (right). The
-              find-users button slides its search bar out to the LEFT, so it
-              sits to the LEFT of the gear (room to expand). */}
-          <View className="flex-row items-start justify-between gap-2">
-            <Text
-              className="shrink text-xl font-bold text-text-primary"
-              numberOfLines={1}
-            >
-              {displayName}
-            </Text>
-            <View className="flex-row items-center gap-2">
-              <HeaderUserSearch />
-              {isOwner ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Settings"
-                  hitSlop={8}
-                  className="h-10 w-10 items-center justify-center rounded-full border border-surface-border active:opacity-70"
-                  // TODO(profile): open the settings screen once it exists.
-                  onPress={() => {}}
-                >
-                  <Settings size={20} color={colors["text-secondary"]} />
-                </Pressable>
-              ) : (
-                <FollowButton
-                  targetUserId={profile.id}
-                  username={profile.username}
-                  isPrivate={profile.is_private}
-                />
-              )}
-            </View>
-          </View>
-
-          {/* Line 2 — @username (left) + media-type counts (right): a row of
-              four icon-ABOVE-number stacks, no labels. "—" while pending. */}
-          <View className="flex-row items-center justify-between gap-2">
-            <Text className="shrink text-sm text-text-muted" numberOfLines={1}>
-              @{profile.username}
-            </Text>
-            <View className="flex-row gap-4">
-              {COUNT_ORDER.map((type) => {
-                const Icon = MEDIA_TYPE_ICONS[type];
-                const value = counts?.[type];
-                return (
-                  <View key={type} className="items-center gap-0.5">
-                    <Icon size={16} color={MEDIA_TYPE_ICON_COLOR[type]} />
-                    <Text className="text-sm font-semibold text-text-primary">
-                      {value != null ? value.toLocaleString() : "—"}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Line 3 — follower / following. Tappable → the M6a sub-screens. */}
-          <View className="flex-row gap-5">
+        {/* LEFT — the identity block: name / @username / follower-following,
+            stacked tightly and INDEPENDENT of the right column, so it sits
+            within the avatar's height (nothing on the right inflates it). */}
+        <View className="flex-1 gap-0.5 pt-0.5">
+          <Text
+            className="text-xl font-bold text-text-primary"
+            numberOfLines={1}
+          >
+            {displayName}
+          </Text>
+          <Text className="text-sm text-text-muted" numberOfLines={1}>
+            @{profile.username}
+          </Text>
+          <View className="mt-1 flex-row gap-4">
             <CountPill
               value={profile.followers_count}
               label="Followers"
@@ -158,6 +130,46 @@ export function ProfileHeader({
               label="Following"
               onPress={() => router.push(`/u/${profile.username}/following`)}
             />
+          </View>
+        </View>
+
+        {/* RIGHT — find-users + gear/Follow on top (the ＋ sits LEFT of the gear
+            so its bar can slide out into open space), then the media-type
+            counts as a 2×2 grid beneath (a single row of four would be too wide
+            to sit beside a one-line follower count). */}
+        <View className="items-end gap-2">
+          <View className="flex-row items-center gap-2">
+            <HeaderUserSearch />
+            {isOwner ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Settings"
+                hitSlop={8}
+                className="items-center justify-center rounded-full border border-surface-border active:opacity-70"
+                style={{ width: 36, height: 36 }}
+                // TODO(profile): open the settings screen once it exists.
+                onPress={() => {}}
+              >
+                <Settings size={20} color={colors["text-secondary"]} />
+              </Pressable>
+            ) : (
+              <FollowButton
+                targetUserId={profile.id}
+                username={profile.username}
+                isPrivate={profile.is_private}
+              />
+            )}
+          </View>
+
+          <View className="gap-1.5">
+            <View className="flex-row gap-2">
+              <StatStack type="movie" value={counts?.movie} />
+              <StatStack type="tv_show" value={counts?.tv_show} />
+            </View>
+            <View className="flex-row gap-2">
+              <StatStack type="book" value={counts?.book} />
+              <StatStack type="video_game" value={counts?.video_game} />
+            </View>
           </View>
         </View>
       </View>
