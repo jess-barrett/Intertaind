@@ -138,7 +138,9 @@ export function ProfileHeader({
             counts as a single tight row of four beneath. */}
         <View className="items-end gap-2">
           <View className="flex-row items-center gap-2">
-            <HeaderUserSearch />
+            {/* Find-users is the viewer's OWN tool — shown on the owner's
+                profile only, not when viewing someone else. */}
+            {isOwner ? <HeaderUserSearch /> : null}
             {isOwner ? (
               <Pressable
                 accessibilityRole="button"
