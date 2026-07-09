@@ -57,7 +57,7 @@ function StatStack({
 }) {
   const Icon = MEDIA_TYPE_ICONS[type];
   return (
-    <View style={{ width: 38 }} className="items-center gap-0.5">
+    <View style={{ width: 30 }} className="items-center gap-0.5">
       <Icon size={16} color={MEDIA_TYPE_ICON_COLOR[type]} />
       <Text className="text-sm font-semibold text-text-primary">
         {value != null ? value.toLocaleString() : "—"}
@@ -119,7 +119,7 @@ export function ProfileHeader({
           <Text className="text-sm text-text-muted" numberOfLines={1}>
             @{profile.username}
           </Text>
-          <View className="mt-1 flex-row gap-4">
+          <View className="mt-1 flex-row gap-3">
             <CountPill
               value={profile.followers_count}
               label="Followers"
@@ -135,8 +135,7 @@ export function ProfileHeader({
 
         {/* RIGHT — find-users + gear/Follow on top (the ＋ sits LEFT of the gear
             so its bar can slide out into open space), then the media-type
-            counts as a 2×2 grid beneath (a single row of four would be too wide
-            to sit beside a one-line follower count). */}
+            counts as a single tight row of four beneath. */}
         <View className="items-end gap-2">
           <View className="flex-row items-center gap-2">
             <HeaderUserSearch />
@@ -161,15 +160,11 @@ export function ProfileHeader({
             )}
           </View>
 
-          <View className="gap-1.5">
-            <View className="flex-row gap-2">
-              <StatStack type="movie" value={counts?.movie} />
-              <StatStack type="tv_show" value={counts?.tv_show} />
-            </View>
-            <View className="flex-row gap-2">
-              <StatStack type="book" value={counts?.book} />
-              <StatStack type="video_game" value={counts?.video_game} />
-            </View>
+          <View className="flex-row gap-1.5">
+            <StatStack type="movie" value={counts?.movie} />
+            <StatStack type="tv_show" value={counts?.tv_show} />
+            <StatStack type="book" value={counts?.book} />
+            <StatStack type="video_game" value={counts?.video_game} />
           </View>
         </View>
       </View>
@@ -200,13 +195,13 @@ function CountPill({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${value} ${label}`}
-      className="flex-row items-baseline gap-1.5 active:opacity-70"
+      className="flex-row items-baseline gap-1 active:opacity-70"
       onPress={onPress}
     >
-      <Text className="text-base font-bold text-text-primary">
+      <Text className="text-sm font-bold text-text-primary">
         {value.toLocaleString()}
       </Text>
-      <Text className="text-sm text-text-muted">{label}</Text>
+      <Text className="text-xs text-text-muted">{label}</Text>
     </Pressable>
   );
 }

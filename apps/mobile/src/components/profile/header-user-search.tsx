@@ -60,6 +60,9 @@ const BAR_HEIGHT = 36;
 /** Corner radius for the OPEN bar's left edge — "rounded small" (the right edge
  *  stays a circular cap, matching the collapsed button it grows from). */
 const OPEN_LEFT_RADIUS = 6;
+/** How far the results dropdown's RIGHT edge is pulled in from the bar's right
+ *  (the dropdown stays left-aligned with the bar). */
+const DROPDOWN_RIGHT_INSET = 24;
 /** The slide-out/collapse tween (the "slide"). */
 const SLIDE = LayoutAnimation.create(
   200,
@@ -137,8 +140,15 @@ export function HeaderUserSearch() {
             autoCorrect={false}
             autoCapitalize="none"
             accessibilityLabel="Find users"
+            textAlignVertical="center"
             className="min-w-0 flex-1 pl-4 text-sm text-text-primary"
-            style={{ color: colors["text-primary"] }}
+            // Fill the bar height + zero vertical padding so the text sits on
+            // the vertical center (not riding high).
+            style={{
+              color: colors["text-primary"],
+              height: BAR_HEIGHT,
+              paddingVertical: 0,
+            }}
           />
         ) : null}
         <Pressable
@@ -162,9 +172,12 @@ export function HeaderUserSearch() {
         <View
           style={{
             position: "absolute",
-            top: BAR_HEIGHT + 6,
-            right: 0,
-            width: expandedWidth,
+            // Connected to the bar (no gap — sits flush beneath it) and its
+            // RIGHT edge pulled in (inset) so it doesn't reach the bar's edge;
+            // left edge stays aligned with the bar.
+            top: BAR_HEIGHT,
+            right: DROPDOWN_RIGHT_INSET,
+            width: expandedWidth - DROPDOWN_RIGHT_INSET,
             zIndex: 30,
             elevation: 8,
           }}
