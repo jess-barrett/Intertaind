@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -95,9 +96,15 @@ export function UserSearchBar({ onClose }: { onClose: () => void }) {
           {trackingErrorMessage(search.error, "the search", "user-search")}
         </Text>
       ) : results.length === 0 ? (
-        <Text className="px-1 py-3 text-sm text-text-muted">No users found.</Text>
+        <View className="rounded-sm border border-surface-border bg-surface-raised px-3 py-3">
+          <Text className="text-sm text-text-muted">No users found.</Text>
+        </View>
       ) : (
-        <View className="overflow-hidden rounded-sm border border-surface-border bg-surface-raised">
+        <ScrollView
+          style={{ maxHeight: 360 }}
+          keyboardShouldPersistTaps="handled"
+          className="overflow-hidden rounded-sm border border-surface-border bg-surface-raised"
+        >
           {results.map((hit) => (
             <UserRow
               key={hit.id}
@@ -106,7 +113,7 @@ export function UserSearchBar({ onClose }: { onClose: () => void }) {
               onPress={() => selectHit(hit.username)}
             />
           ))}
-        </View>
+        </ScrollView>
       )}
     </View>
   );

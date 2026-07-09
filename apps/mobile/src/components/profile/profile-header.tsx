@@ -49,6 +49,7 @@ export function ProfileHeader({
   profile,
   counts,
   isOwner,
+  onFindUsers,
 }: {
   profile: ProfileRow;
   /** The four per-type counts (from `useProfileMediaCounts`); undefined while
@@ -56,6 +57,8 @@ export function ProfileHeader({
   counts?: ProfileMediaCounts;
   /** Viewer is looking at their OWN profile → settings gear vs Follow button. */
   isOwner: boolean;
+  /** Open the "find users" search overlay — the user+ button below the gear. */
+  onFindUsers: () => void;
 }) {
   const router = useRouter();
   const displayName = profile.display_name ?? profile.username;
@@ -142,25 +145,39 @@ export function ProfileHeader({
           </View>
         </View>
 
-        {/* Right action — settings gear (owner) or a Follow placeholder. */}
-        {isOwner ? (
+        {/* Right actions — the settings gear (owner) or Follow (visitor) on
+            top, with the "find users" button stacked directly beneath it. */}
+        <View className="items-end gap-2">
+          {isOwner ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              hitSlop={8}
+              className="h-10 w-10 items-center justify-center rounded-full border border-surface-border active:opacity-70"
+              // TODO(profile): open the settings screen once it exists.
+              onPress={() => {}}
+            >
+              <Settings size={20} color={colors["text-secondary"]} />
+            </Pressable>
+          ) : (
+            <FollowButton
+              targetUserId={profile.id}
+              username={profile.username}
+              isPrivate={profile.is_private}
+            />
+          )}
+
+          {/* Find users — opens the search overlay (web parity). */}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Settings"
+            accessibilityLabel="Find users"
             hitSlop={8}
             className="h-10 w-10 items-center justify-center rounded-full border border-surface-border active:opacity-70"
-            // TODO(profile): open the settings screen once it exists.
-            onPress={() => {}}
+            onPress={onFindUsers}
           >
-            <Settings size={20} color={colors["text-secondary"]} />
+            <UserPlus size={20} color={colors["text-secondary"]} />
           </Pressable>
-        ) : (
-          <FollowButton
-            targetUserId={profile.id}
-            username={profile.username}
-            isPrivate={profile.is_private}
-          />
-        )}
+        </View>
       </View>
 
       {/* Bio — clamped ~3 lines with the Letterboxd fade cue; tap toggles. */}
