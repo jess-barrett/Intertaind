@@ -39,14 +39,7 @@
  * action must not be lost. Moves into settings when that surface lands.
  */
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowLeft } from "lucide-react-native";
@@ -59,7 +52,6 @@ import { ProfileHeader } from "@/components/profile/profile-header";
 import { RecommendationsTab } from "@/components/profile/recommendations-tab";
 import { SegmentedControl } from "@/components/profile/segmented-control";
 import { ShelvesTab } from "@/components/profile/shelves-tab";
-import { UserSearchBar } from "@/components/profile/user-search-bar";
 import { useBottomInset } from "@/lib/use-bottom-inset";
 import { useProfile, useProfileMediaCounts } from "@/queries/profile";
 import { useSignOutMutation } from "@/queries/auth";
@@ -95,9 +87,6 @@ export function ProfileView({
   const countsQuery = useProfileMediaCounts(profileUserId);
 
   const [segment, setSegment] = useState<Segment>("Profile");
-  // The "find users" bar (user+ toggle → full-width user search). Lives in the
-  // top row beside the primary tabs; open swaps the tabs for the search field.
-  const [userSearchOpen, setUserSearchOpen] = useState(false);
 
   // ── Pending ──────────────────────────────────────────────────────────
   if (profileQuery.isPending) {
@@ -170,7 +159,6 @@ export function ProfileView({
           profile={profile}
           counts={countsQuery.data}
           isOwner={isOwner}
-          onFindUsers={() => setUserSearchOpen(true)}
         />
 
         {/* Active segment body. Overview (M2) + Shelves (M3) + Recs (M4) +
@@ -184,25 +172,6 @@ export function ProfileView({
           />
         </View>
       </ScrollView>
-
-      {/* Find-users overlay — a floating, connected dropdown pinned over the
-          TOP of the page (absolute, so it never shifts the scroll content).
-          A transparent full-screen catcher closes it on an outside tap. */}
-      {userSearchOpen ? (
-        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close user search"
-            style={StyleSheet.absoluteFill}
-            onPress={() => setUserSearchOpen(false)}
-          />
-          <View
-            style={{ position: "absolute", top: insets.top + 8, left: 16, right: 16 }}
-          >
-            <UserSearchBar onClose={() => setUserSearchOpen(false)} />
-          </View>
-        </View>
-      ) : null}
     </ProfileShell>
   );
 }

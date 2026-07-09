@@ -30,6 +30,7 @@ import { type MediaType } from "@intertaind/types";
 
 import { Image } from "@/components/image";
 import { ExpandableText } from "@/components/media/expandable-text";
+import { HeaderUserSearch } from "@/components/profile/header-user-search";
 import {
   MEDIA_TYPE_ICONS,
   MEDIA_TYPE_ICON_COLOR,
@@ -49,7 +50,6 @@ export function ProfileHeader({
   profile,
   counts,
   isOwner,
-  onFindUsers,
 }: {
   profile: ProfileRow;
   /** The four per-type counts (from `useProfileMediaCounts`); undefined while
@@ -57,8 +57,6 @@ export function ProfileHeader({
   counts?: ProfileMediaCounts;
   /** Viewer is looking at their OWN profile → settings gear vs Follow button. */
   isOwner: boolean;
-  /** Open the "find users" search overlay — the user+ button below the gear. */
-  onFindUsers: () => void;
 }) {
   const router = useRouter();
   const displayName = profile.display_name ?? profile.username;
@@ -167,16 +165,8 @@ export function ProfileHeader({
             />
           )}
 
-          {/* Find users — opens the search overlay (web parity). */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Find users"
-            hitSlop={8}
-            className="h-10 w-10 items-center justify-center rounded-full border border-surface-border active:opacity-70"
-            onPress={onFindUsers}
-          >
-            <UserPlus size={20} color={colors["text-secondary"]} />
-          </Pressable>
+          {/* Find users — a slide-out user search beneath the gear/Follow. */}
+          <HeaderUserSearch />
         </View>
       </View>
 
