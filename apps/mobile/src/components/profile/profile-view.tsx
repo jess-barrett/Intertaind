@@ -9,10 +9,11 @@
  *
  * ── States ──────────────────────────────────────────────────────────────
  *   - pending → a centered spinner.
- *   - null (missing OR RLS-hidden) → "This profile is private" when the row
- *     came back private-and-not-owned is impossible to know (RLS returned no
- *     row), so we show "Profile not found" for a genuine null. When we DO have
- *     a row that is `is_private && !isOwner`, we show the private empty state.
+ *   - null → "Profile not found". A row missing because RLS hides a private
+ *     profile is indistinguishable from a genuinely missing one (both return
+ *     no row), so both land here.
+ *   - loaded but `is_private && !isOwner` → the "This profile is private"
+ *     empty state (we DID get the row — e.g. it's the owner's own).
  *   - error → "Couldn't load this profile."
  *   - else → header + segmented control + the active segment's body.
  *
