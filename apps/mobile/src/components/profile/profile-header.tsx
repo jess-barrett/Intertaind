@@ -86,28 +86,51 @@ export function ProfileHeader({
           </View>
         )}
 
-        {/* Name column (flex-1). Name + @username + follower/following stack
-            tightly so the whole block sits WITHIN the avatar's height; the
-            media-type counts sit to the RIGHT of the name/handle. */}
+        {/* Content column (flex-1) beside the avatar, three lines:
+            (1) display name + the find-users & gear/Follow actions,
+            (2) @username + the media-type counts,
+            (3) follower / following. */}
         <View className="flex-1 gap-1.5 pt-0.5">
-          {/* Name + @username on the left; the counts (top-right red region)
-              on the right, their icon/number rows aligning to name/@username. */}
-          <View className="flex-row items-start gap-3">
-            <View className="min-w-0 flex-1 gap-0.5">
-              <Text
-                className="text-xl font-bold text-text-primary"
-                numberOfLines={1}
-              >
-                {displayName}
-              </Text>
-              <Text className="text-sm text-text-muted" numberOfLines={1}>
-                @{profile.username}
-              </Text>
+          {/* Line 1 — name (left) + find-users then gear/Follow (right). The
+              find-users button slides its search bar out to the LEFT, so it
+              sits to the LEFT of the gear (room to expand). */}
+          <View className="flex-row items-start justify-between gap-2">
+            <Text
+              className="shrink text-xl font-bold text-text-primary"
+              numberOfLines={1}
+            >
+              {displayName}
+            </Text>
+            <View className="flex-row items-center gap-2">
+              <HeaderUserSearch />
+              {isOwner ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Settings"
+                  hitSlop={8}
+                  className="h-10 w-10 items-center justify-center rounded-full border border-surface-border active:opacity-70"
+                  // TODO(profile): open the settings screen once it exists.
+                  onPress={() => {}}
+                >
+                  <Settings size={20} color={colors["text-secondary"]} />
+                </Pressable>
+              ) : (
+                <FollowButton
+                  targetUserId={profile.id}
+                  username={profile.username}
+                  isPrivate={profile.is_private}
+                />
+              )}
             </View>
+          </View>
 
-            {/* Media-type counts — a row of four icon-ABOVE-number stacks (no
-                labels). "—" while the counts read is pending. */}
-            <View className="flex-row gap-3">
+          {/* Line 2 — @username (left) + media-type counts (right): a row of
+              four icon-ABOVE-number stacks, no labels. "—" while pending. */}
+          <View className="flex-row items-center justify-between gap-2">
+            <Text className="shrink text-sm text-text-muted" numberOfLines={1}>
+              @{profile.username}
+            </Text>
+            <View className="flex-row gap-4">
               {COUNT_ORDER.map((type) => {
                 const Icon = MEDIA_TYPE_ICONS[type];
                 const value = counts?.[type];
@@ -123,50 +146,19 @@ export function ProfileHeader({
             </View>
           </View>
 
-          {/* Follower / following — beneath the username. Tappable → the M6a
-              Followers / Following sub-screens (pushed onto the current tab). */}
+          {/* Line 3 — follower / following. Tappable → the M6a sub-screens. */}
           <View className="flex-row gap-5">
             <CountPill
               value={profile.followers_count}
               label="Followers"
-              onPress={() =>
-                router.push(`/u/${profile.username}/followers`)
-              }
+              onPress={() => router.push(`/u/${profile.username}/followers`)}
             />
             <CountPill
               value={profile.following_count}
               label="Following"
-              onPress={() =>
-                router.push(`/u/${profile.username}/following`)
-              }
+              onPress={() => router.push(`/u/${profile.username}/following`)}
             />
           </View>
-        </View>
-
-        {/* Right actions — the settings gear (owner) or Follow (visitor) on
-            top, with the "find users" button stacked directly beneath it. */}
-        <View className="items-end gap-2">
-          {isOwner ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Settings"
-              hitSlop={8}
-              className="h-10 w-10 items-center justify-center rounded-full border border-surface-border active:opacity-70"
-              // TODO(profile): open the settings screen once it exists.
-              onPress={() => {}}
-            >
-              <Settings size={20} color={colors["text-secondary"]} />
-            </Pressable>
-          ) : (
-            <FollowButton
-              targetUserId={profile.id}
-              username={profile.username}
-              isPrivate={profile.is_private}
-            />
-          )}
-
-          {/* Find users — a slide-out user search beneath the gear/Follow. */}
-          <HeaderUserSearch />
         </View>
       </View>
 

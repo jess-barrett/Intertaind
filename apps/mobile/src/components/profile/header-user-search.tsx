@@ -109,7 +109,12 @@ export function HeaderUserSearch() {
           height: BAR_HEIGHT,
           width: open ? expandedWidth : BAR_HEIGHT,
         }}
-        className="flex-row items-center overflow-hidden rounded-full border border-surface-border bg-surface-raised"
+        // Collapsed: a border-only circle that MATCHES the settings gear
+        // (h-10 w-10, no fill). Open: fill with surface-raised so it reads as a
+        // search field.
+        className={`flex-row items-center overflow-hidden rounded-full border border-surface-border ${
+          open ? "bg-surface-raised" : ""
+        }`}
       >
         {open ? (
           <TextInput
