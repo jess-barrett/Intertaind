@@ -59,8 +59,6 @@ import { X } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 import {
   ratingToStars,
-  setEpisodeLog,
-  starsToRating,
   type EpisodeLog,
   type ProgressRecord,
   type TrackingStatus,
@@ -69,7 +67,9 @@ import type { Tables } from "@intertaind/supabase";
 
 import AppSheet, { type AppSheetRef } from "@/components/sheet/app-sheet";
 import StarRating from "@/components/star-rating";
+import { SpoilerToggle } from "@/components/media/log-form";
 import { trackingErrorMessage } from "@/lib/tracking-errors";
+import { buildEpisodeLogVars } from "@/lib/tv-log";
 import { parseTvSeasons } from "@/lib/tv-metadata";
 import type { MediaDetailItem } from "@/queries/media";
 import { OPTIMISTIC_ID, useTrackMediaMutation } from "@/queries/tracking";
@@ -165,6 +165,7 @@ function TvLogEpisodeForm({
     seedLog?.rating != null ? ratingToStars(seedLog.rating) : null,
   );
   const [review, setReview] = useState(seedLog?.review ?? "");
+  const [hasSpoilers, setHasSpoilers] = useState(seedLog?.has_spoilers ?? false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const trackMutation = useTrackMediaMutation();
@@ -177,70 +178,48 @@ function TvLogEpisodeForm({
   const storedStars =
     currentStored?.rating != null ? ratingToStars(currentStored.rating) : null;
   const storedReview = currentStored?.review ?? "";
+  const storedHasSpoilers = currentStored?.has_spoilers ?? false;
   const isDirty =
     episode != null &&
-    (!currentStored || stars !== storedStars || review !== storedReview);
+    (!currentStored ||
+      stars !== storedStars ||
+      review !== storedReview ||
+      hasSpoilers !== storedHasSpoilers);
 
   function handleSelectSeason(next: number) {
     setSeason(next);
     setEpisode(null);
     setStars(null);
     setReview("");
+    setHasSpoilers(false);
   }
 
   function handleSelectEpisode(next: number) {
     setEpisode(next);
-    // Reseed rating/review from any existing log for this episode.
+    // Reseed rating/review/spoiler from any existing log for this episode.
     const existing = storedLog(season, next);
     setStars(existing?.rating != null ? ratingToStars(existing.rating) : null);
     setReview(existing?.review ?? "");
+    setHasSpoilers(existing?.has_spoilers ?? false);
   }
 
   async function handleSave() {
     if (!isDirty || episode == null || saving) return; // saving guard prevents a double-fire mid-await
     setErrorMessage(null);
 
-    // Per-episode log — rating on the 1–10 DB scale, review verbatim.
-    // setEpisodeLog also marks the episode watched (web parity).
-    const progress = setEpisodeLog(existingProgress, season, episode, {
-      rating: starsToRating(stars),
+    // Shared episode-log rules (per-episode log + watched mark + the pointer
+    // advance / season-&-series-finale handling). No top-level rating/review —
+    // those live in episode_logs (web parity). See lib/tv-log.
+    const vars = buildEpisodeLogVars({
+      existingProgress,
+      seasonMeta,
+      currentStatus: (viewerRow?.status as TrackingStatus | undefined) ?? null,
+      season,
+      episode,
+      stars,
       review,
+      hasSpoilers,
     });
-
-    // Advance the "currently on" pointer + apply the season/series-finale
-    // rule — web's exact logic (media-detail-client / tv-progress-header).
-    const seasonEpCount = seasonMeta.episodeCountFor(season);
-    let nextSeason = season;
-    let nextEpisode: number = episode + 1;
-    let newStatus: TrackingStatus =
-      (viewerRow?.status as TrackingStatus | undefined) ?? "in_progress";
-    let isSeriesFinale = false;
-
-    if (seasonEpCount > 0 && episode >= seasonEpCount) {
-      const nextSeasonNum = season + 1;
-      const nextSeasonHasEps = seasonMeta.episodeCountFor(nextSeasonNum);
-      if (nextSeasonHasEps > 0) {
-        nextSeason = nextSeasonNum;
-        nextEpisode = 1;
-      } else {
-        // Series finale — keep the pointer, mark completed.
-        nextEpisode = episode;
-        newStatus = "completed";
-        isSeriesFinale = true;
-      }
-    }
-
-    progress.current_season = nextSeason;
-    progress.current_episode = nextEpisode;
-
-    const vars = {
-      mediaId: media.id,
-      status: newStatus,
-      // No top-level rating/review — the episode's rating/review live in
-      // episode_logs (web parity); omitting leaves those columns untouched.
-      progress: progress as Tables<"user_media">["progress"],
-      completed_at: isSeriesFinale ? new Date().toISOString() : null,
-    };
 
     // Use mutateAsync + await rather than mutate(vars, { onSuccess }): the
     // optimistic write bumps viewerRow → the parent recomputes `seed` →
@@ -249,7 +228,7 @@ function TvLogEpisodeForm({
     // mutation settles. The awaited continuation still runs, and onDismiss
     // targets the OUTER sheet's stable ref (which does not remount).
     try {
-      await trackMutation.mutateAsync(vars);
+      await trackMutation.mutateAsync({ mediaId: media.id, ...vars });
       onDismiss();
     } catch (err) {
       setErrorMessage(
@@ -329,6 +308,16 @@ function TvLogEpisodeForm({
               }}
             />
           </Field>
+
+          {/* Spoiler toggle — disabled until the review has text (same control
+              as the shared LogForm). */}
+          <View className="flex-row">
+            <SpoilerToggle
+              value={hasSpoilers}
+              onChange={setHasSpoilers}
+              disabled={review.trim().length === 0}
+            />
+          </View>
         </>
       ) : null}
 
@@ -401,6 +390,9 @@ const TvLogEpisodeSheet = forwardRef<
     <AppSheet
       ref={sheetRef}
       accessibilityLabel={`Log an episode of ${media.title}`}
+      // Content-panning off so the drag-to-rate stars aren't swallowed by the
+      // sheet's body-drag (handle + backdrop + close still dismiss).
+      enableContentPanningGesture={false}
     >
       <TvLogEpisodeForm
         key={seed.seedKey}

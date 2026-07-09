@@ -58,8 +58,6 @@ import { X } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 import {
   ratingToStars,
-  setSeasonLog,
-  starsToRating,
   type ProgressRecord,
   type SeasonLog,
 } from "@intertaind/types";
@@ -67,7 +65,9 @@ import type { Tables } from "@intertaind/supabase";
 
 import AppSheet, { type AppSheetRef } from "@/components/sheet/app-sheet";
 import StarRating from "@/components/star-rating";
+import { SpoilerToggle } from "@/components/media/log-form";
 import { trackingErrorMessage } from "@/lib/tracking-errors";
+import { buildSeasonLogVars } from "@/lib/tv-log";
 import { parseTvSeasons } from "@/lib/tv-metadata";
 import type { MediaDetailItem } from "@/queries/media";
 import { OPTIMISTIC_ID, useTrackMediaMutation } from "@/queries/tracking";
@@ -85,6 +85,7 @@ type Seed = {
   season: number;
   stars: number | null;
   review: string;
+  hasSpoilers: boolean;
   /** Serialized seed identity so re-seeding remounts the form state. */
   seedKey: string;
 };
@@ -102,11 +103,13 @@ function deriveSeed(
   const existing = seasons[String(season)];
   const stars = existing?.rating != null ? ratingToStars(existing.rating) : null;
   const review = existing?.review ?? "";
+  const hasSpoilers = existing?.has_spoilers ?? false;
   return {
     season,
     stars,
     review,
-    seedKey: `${season}|${stars ?? ""}|${review}`,
+    hasSpoilers,
+    seedKey: `${season}|${stars ?? ""}|${hasSpoilers}|${review}`,
   };
 }
 
@@ -145,6 +148,7 @@ function TvLogSeasonForm({
   const [season, setSeason] = useState(seed.season);
   const [stars, setStars] = useState<number | null>(seed.stars);
   const [review, setReview] = useState(seed.review);
+  const [hasSpoilers, setHasSpoilers] = useState(seed.hasSpoilers);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const trackMutation = useTrackMediaMutation();
@@ -156,65 +160,42 @@ function TvLogSeasonForm({
       : null;
   const existingSeasons = readSeasons(existingProgress);
 
-  // Dirty check: Save enabled once the chosen season's rating/review
+  // Dirty check: Save enabled once the chosen season's rating/review/spoiler
   // differs from what's stored (or the season was never logged). Mirrors
   // web's tv-modal, which disables Save until the seasons map changes.
   const storedForSeason = existingSeasons[String(season)];
   const storedStars =
     storedForSeason?.rating != null ? ratingToStars(storedForSeason.rating) : null;
   const storedReview = storedForSeason?.review ?? "";
+  const storedHasSpoilers = storedForSeason?.has_spoilers ?? false;
   const isDirty =
-    !storedForSeason || stars !== storedStars || review !== storedReview;
+    !storedForSeason ||
+    stars !== storedStars ||
+    review !== storedReview ||
+    hasSpoilers !== storedHasSpoilers;
 
   function handleSelectSeason(next: number) {
     setSeason(next);
     const existing = existingSeasons[String(next)];
     setStars(existing?.rating != null ? ratingToStars(existing.rating) : null);
     setReview(existing?.review ?? "");
+    setHasSpoilers(existing?.has_spoilers ?? false);
   }
 
   async function handleSave() {
     if (!isDirty || saving) return; // saving guard prevents a double-fire mid-await
     setErrorMessage(null);
 
-    // Per-season log — rating on the 1–10 DB scale (stars → DB), review
-    // verbatim, completed:true (web's tv-modal always marks completed).
-    const progress = setSeasonLog(existingProgress, season, {
-      rating: starsToRating(stars),
+    // Shared season-log rules (per-season log + current_season + all-complete
+    // status + rated-season average). See lib/tv-log.
+    const vars = buildSeasonLogVars({
+      existingProgress,
+      seasonMeta,
+      season,
+      stars,
       review,
-      completed: true,
+      hasSpoilers,
     });
-
-    // Recompute current_season + the completed set from the MERGED map
-    // (web: `current_season = completed + 1`, `status = all ? completed`).
-    const mergedSeasons = progress.seasons as Record<string, SeasonLog>;
-    const seasonValues = Object.values(mergedSeasons);
-    const completedCount = seasonValues.filter((s) => s.completed).length;
-    const seasonCount = Math.max(seasonMeta.seasonNumbers.length, 1);
-    const all = completedCount >= seasonCount;
-    progress.current_season = completedCount + 1;
-
-    // Top-level rating = rounded average of every RATED season (DB scale),
-    // exactly like web's `commit()`. Null when no season carries a rating.
-    const ratedSeasons = seasonValues.filter((s) => s.rating != null);
-    const avgRating =
-      ratedSeasons.length > 0
-        ? Math.round(
-            ratedSeasons.reduce((sum, s) => sum + (s.rating ?? 0), 0) /
-              ratedSeasons.length,
-          )
-        : null;
-
-    const vars = {
-      mediaId: media.id,
-      status: all ? ("completed" as const) : ("in_progress" as const),
-      // Top-level rating = rated-season average; review stays empty
-      // (web parity — the season's own review lives in the log object).
-      rating: avgRating,
-      review: "",
-      progress: progress as Tables<"user_media">["progress"],
-      completed_at: all ? new Date().toISOString() : null,
-    };
 
     // Use mutateAsync + await rather than mutate(vars, { onSuccess }): the
     // optimistic write bumps viewerRow → the parent recomputes `seed` →
@@ -223,7 +204,7 @@ function TvLogSeasonForm({
     // mutation settles. The awaited continuation still runs, and onDismiss
     // targets the OUTER sheet's stable ref (which does not remount).
     try {
-      await trackMutation.mutateAsync(vars);
+      await trackMutation.mutateAsync({ mediaId: media.id, ...vars });
       onDismiss();
     } catch (err) {
       setErrorMessage(
@@ -292,6 +273,16 @@ function TvLogSeasonForm({
         />
       </Field>
 
+      {/* Spoiler toggle — disabled until the review has text (same control as
+          the shared LogForm). */}
+      <View className="flex-row">
+        <SpoilerToggle
+          value={hasSpoilers}
+          onChange={setHasSpoilers}
+          disabled={review.trim().length === 0}
+        />
+      </View>
+
       {/* Footer: Save (brand, bottom-right). Marking a season complete is
           the whole action — no separate "completed" toggle (web always
           sets completed:true on a season log). */}
@@ -357,7 +348,13 @@ const TvLogSeasonSheet = forwardRef<
   );
 
   return (
-    <AppSheet ref={sheetRef} accessibilityLabel={`Log a season of ${media.title}`}>
+    <AppSheet
+      ref={sheetRef}
+      accessibilityLabel={`Log a season of ${media.title}`}
+      // Content-panning off so the drag-to-rate stars aren't swallowed by the
+      // sheet's body-drag (handle + backdrop + close still dismiss).
+      enableContentPanningGesture={false}
+    >
       <TvLogSeasonForm
         key={seed.seedKey}
         media={media}

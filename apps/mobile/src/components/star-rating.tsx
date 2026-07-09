@@ -28,8 +28,14 @@
  * color web uses everywhere) and `surface-border` for the empty
  * outline. Chrome (the value + Clear button) uses className tokens.
  */
-import { useId } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useId, useMemo, useRef } from "react";
+import {
+  type AccessibilityActionEvent,
+  Pressable,
+  Text,
+  View,
+} from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { ClipPath, Defs, Path, Rect } from "react-native-svg";
 import { colors } from "@intertaind/design-system";
 import { formatStars } from "@intertaind/types";
@@ -48,14 +54,40 @@ const STAR_PATH =
 
 type StarFill = "full" | "half" | "empty";
 
+/**
+ * Literal inter-star gap (pt). It must match the row's `style={{ gap }}` AND
+ * the drag→value math in `starsFromX` — they're kept in sync via this one
+ * constant. (NOT gap-1: NativeWind inlines rem at 14pt, so gap-1 ≈ 3.5pt.)
+ */
+const STAR_GAP = 4;
+
+/**
+ * Map a horizontal offset (pt, measured from the star row's left edge) to a
+ * half-star value in [0.5, 5] — the drag/tap hit test. Assumes five `size`-wide
+ * stars separated by `STAR_GAP`: the left half of a star is n−0.5, the right
+ * half (and the gap after it) is n. Clamped to the row's bounds.
+ */
+function starsFromX(x: number, size: number): number {
+  const step = size + STAR_GAP;
+  const width = 5 * size + 4 * STAR_GAP;
+  const clamped = Math.max(0, Math.min(x, width));
+  const index = Math.min(4, Math.floor(clamped / step));
+  const within = (clamped - index * step) / size;
+  return Math.min(5, index + (within <= 0.5 ? 0.5 : 1));
+}
+
 function StarGlyph({
   size,
   fill,
   clipId,
+  hideOutline,
 }: {
   size: number;
   fill: StarFill;
   clipId: string;
+  /** Skip the empty outline (background). In earned-only mode a half star then
+   *  shows just its left filled portion — no outline on the empty right half. */
+  hideOutline?: boolean;
 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
@@ -66,15 +98,17 @@ function StarGlyph({
           </ClipPath>
         </Defs>
       ) : null}
-      {/* Empty outline (background) */}
-      <Path
-        d={STAR_PATH}
-        fill="none"
-        stroke={colors["surface-border"]}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      {/* Empty outline (background) — omitted in earned-only mode. */}
+      {!hideOutline ? (
+        <Path
+          d={STAR_PATH}
+          fill="none"
+          stroke={colors["surface-border"]}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ) : null}
       {/* Filled star, clipped to the left half for .5 values */}
       {fill !== "empty" ? (
         <Path
@@ -91,23 +125,13 @@ function StarGlyph({
   );
 }
 
-/** "Rate 3 and a half stars" / "Rate 4 stars" — VoiceOver/TalkBack. */
-function halfStepLabel(stars: number): string {
-  const whole = Math.floor(stars);
-  if (stars % 1 !== 0) {
-    return whole === 0
-      ? "Rate half a star"
-      : `Rate ${whole} and a half stars`;
-  }
-  return `Rate ${whole} ${whole === 1 ? "star" : "stars"}`;
-}
-
 export default function StarRating({
   value,
   onChange,
   readOnly,
   size = 28,
   starsOnly,
+  hideEmpty,
 }: {
   /** Display-scale stars, 0.5–5.0 in half steps; null = unrated. */
   value: number | null;
@@ -122,6 +146,13 @@ export default function StarRating({
    * clear affordance, so the value/clear can't shift the stars' position.
    */
   starsOnly?: boolean;
+  /**
+   * Earned-only display: render just the filled/half stars, with NO empty
+   * outlines at all (a 3.5 shows three full + one left-half glyph, nothing
+   * more). For compact read-only badges (e.g. shelf cards). Meaningless when
+   * interactive — the tap targets need all five stars — so pair with readOnly.
+   */
+  hideEmpty?: boolean;
 }) {
   // useId output contains ":" — strip to stay a safe SVG id fragment.
   const clipPrefix = useId().replace(/[^a-zA-Z0-9_-]/g, "");
@@ -129,58 +160,107 @@ export default function StarRating({
   const display = value ?? 0;
   const valueLabel = formatStars(value);
 
+  // Latest onChange/size behind a ref so the gesture object stays STABLE across
+  // renders. If the gesture were rebuilt when `onChange` changes (a fresh
+  // closure most renders), the ACTIVE gesture would be swapped mid-interaction:
+  // the pan's onUpdate stream stops (stars freeze instead of following the
+  // finger) and a tap races the swap (the perceptible delay).
+  const latestRef = useRef({ onChange, size });
+  /* eslint-disable react-hooks/refs -- read only inside the gesture callbacks
+     (at interaction time, never during render); a stable gesture is required so
+     an in-progress drag isn't interrupted. */
+  latestRef.current = { onChange, size };
+  const gesture = useMemo(() => {
+    const setFromX = (x: number) =>
+      latestRef.current.onChange?.(starsFromX(x, latestRef.current.size));
+    // runOnJS(true): callbacks run on the JS thread (no worklet hop), so they
+    // update state immediately. Tap rates at the touch point; Pan drags across
+    // ratings live; activeOffsetX lets a vertical drag pass through to an
+    // enclosing bottom sheet / scroll. `e.x` is relative to the gesture's view.
+    const tap = Gesture.Tap()
+      .runOnJS(true)
+      .onEnd((e) => setFromX(e.x));
+    const pan = Gesture.Pan()
+      .runOnJS(true)
+      .activeOffsetX([-8, 8])
+      .onUpdate((e) => setFromX(e.x));
+    return Gesture.Race(pan, tap);
+  }, []);
+  /* eslint-enable react-hooks/refs */
+
+  // VoiceOver/TalkBack: the row is an "adjustable"; swipe up/down nudges the
+  // rating a half-star (down past a half clears it).
+  function onA11yAction(event: AccessibilityActionEvent) {
+    const current = value ?? 0;
+    if (event.nativeEvent.actionName === "increment") {
+      onChange?.(Math.min(5, current + 0.5));
+    } else if (event.nativeEvent.actionName === "decrement") {
+      const next = current - 0.5;
+      onChange?.(next < 0.5 ? null : next);
+    }
+  }
+
+  // The five star glyphs (earned-only mode drops the empty ones). Input is
+  // handled by the row's gesture below — no per-star Pressables.
+  const stars = [1, 2, 3, 4, 5].map((n) => {
+    const fill: StarFill =
+      display >= n ? "full" : display >= n - 0.5 ? "half" : "empty";
+    if (hideEmpty && fill === "empty") return null;
+    return (
+      <View key={n} style={{ width: size, height: size }}>
+        <StarGlyph
+          size={size}
+          fill={fill}
+          clipId={`${clipPrefix}s${n}`}
+          hideOutline={hideEmpty}
+        />
+      </View>
+    );
+  });
+
+  const starRow = (
+    <View
+      className="flex-row items-center"
+      style={{ gap: STAR_GAP }}
+      // Interactive: one "adjustable" element (drag/tap rates; the a11y
+      // swipe nudges). Display-only: one labeled element ("Rated 3.5 stars").
+      accessible
+      accessibilityRole={interactive ? "adjustable" : undefined}
+      accessibilityLabel={
+        interactive
+          ? "Rating"
+          : valueLabel != null
+            ? `Rated ${valueLabel} stars`
+            : "Not rated"
+      }
+      accessibilityValue={
+        interactive
+          ? {
+              min: 0,
+              max: 5,
+              now: value ?? 0,
+              text: valueLabel != null ? `${valueLabel} stars` : "Not rated",
+            }
+          : undefined
+      }
+      accessibilityActions={
+        interactive ? [{ name: "increment" }, { name: "decrement" }] : undefined
+      }
+      onAccessibilityAction={interactive ? onA11yAction : undefined}
+    >
+      {stars}
+    </View>
+  );
+
   return (
     <View className="flex-row items-center gap-2">
-      <View
-        className="flex-row items-center"
-        // Literal 4pt gap (NOT gap-1): NativeWind inlines rem at 14pt, so
-        // gap-1 is 3.5pt — which would leave a 0.5pt overlap between the
-        // adjacent stars' 2pt+2pt outward hitSlops below. The literal keeps
-        // the hitSlop math exact.
-        style={{ gap: 4 }}
-        // Display-only mode reads as one element ("Rated 3.5 stars");
-        // interactive mode exposes the per-half buttons instead.
-        accessible={!interactive}
-        accessibilityLabel={
-          valueLabel != null ? `Rated ${valueLabel} stars` : "Not rated"
-        }
-      >
-        {[1, 2, 3, 4, 5].map((n) => {
-          const fill: StarFill =
-            display >= n ? "full" : display >= n - 0.5 ? "half" : "empty";
-          return (
-            <View key={n} style={{ width: size, height: size }}>
-              <StarGlyph size={size} fill={fill} clipId={`${clipPrefix}s${n}`} />
-              {interactive ? (
-                // Horizontal hitSlop math: the star row uses a literal
-                // 4pt gap between stars (see row style above). Each half
-                // extends 2pt on its OUTER edge only — left half grows
-                // left, right half grows right — so adjacent stars split
-                // each 4pt gap 2pt/2pt with no overlap, and the seam
-                // between the two halves of one star stays exact.
-                <View className="absolute inset-0 flex-row">
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={halfStepLabel(n - 0.5)}
-                    accessibilityState={{ selected: value === n - 0.5 }}
-                    hitSlop={{ top: 8, bottom: 8, left: 2 }}
-                    className="flex-1"
-                    onPress={() => onChange?.(n - 0.5)}
-                  />
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={halfStepLabel(n)}
-                    accessibilityState={{ selected: value === n }}
-                    hitSlop={{ top: 8, bottom: 8, right: 2 }}
-                    className="flex-1"
-                    onPress={() => onChange?.(n)}
-                  />
-                </View>
-              ) : null}
-            </View>
-          );
-        })}
-      </View>
+      {/* Drag across the stars to rate; tap to set at a point. Wrapped in a
+          GestureDetector only when interactive. */}
+      {interactive ? (
+        <GestureDetector gesture={gesture}>{starRow}</GestureDetector>
+      ) : (
+        starRow
+      )}
 
       {/* Numeric readout, web parity ("3.5" in the star accent). */}
       {!starsOnly && valueLabel != null ? (

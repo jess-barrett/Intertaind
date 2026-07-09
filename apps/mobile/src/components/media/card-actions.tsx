@@ -524,8 +524,14 @@ export function CardActions({
       </Pressable>
 
       {/* The per-type ⋯ menu — an AppSheet bottom sheet (mounted here as a
-          BottomSheetModal portal sibling; opened via its ref). */}
-      <AppSheet ref={sheetRef} accessibilityLabel={`Actions for ${media.title}`}>
+          BottomSheetModal portal sibling; opened via its ref). Content-panning
+          is OFF so the drag-to-rate StarRating below isn't swallowed by the
+          sheet's body-drag (handle + backdrop still dismiss). */}
+      <AppSheet
+        ref={sheetRef}
+        accessibilityLabel={`Actions for ${media.title}`}
+        enableContentPanningGesture={false}
+      >
         <View className="gap-1">
           {/* Header — the title. */}
           <View className="pb-2">

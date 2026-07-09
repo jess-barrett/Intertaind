@@ -65,13 +65,25 @@ export type GameSubStatus =
  * A single per-episode log entry (tv_show `episode_logs[season][episode]`).
  * `review` is a required string (empty when none) — web always persists it
  * as a string and its read sites assume that shape, so keeping it required
- * keeps mobile/web episode-log blobs identical.
+ * keeps mobile/web episode-log blobs identical. `has_spoilers` is OPTIONAL and
+ * mobile-only for now (marks the review as a spoiler); web doesn't set or read
+ * it, so an absent value is the norm.
  */
-export type EpisodeLog = { rating: number | null; review: string };
+export type EpisodeLog = {
+  rating: number | null;
+  review: string;
+  has_spoilers?: boolean;
+};
 
 /** A single per-season log entry (tv_show `seasons[season]`). `review` is a
- *  required string (empty when none), matching web's tv-modal payload. */
-export type SeasonLog = { rating: number | null; review: string; completed: boolean };
+ *  required string (empty when none), matching web's tv-modal payload.
+ *  `has_spoilers` is OPTIONAL / mobile-only (see EpisodeLog). */
+export type SeasonLog = {
+  rating: number | null;
+  review: string;
+  completed: boolean;
+  has_spoilers?: boolean;
+};
 
 /**
  * Normalize the `existing` argument to a plain object we can spread.

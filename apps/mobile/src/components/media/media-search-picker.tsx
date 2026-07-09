@@ -145,8 +145,17 @@ export function MediaSearchPicker({
           autoCorrect={false}
           autoCapitalize="none"
           accessibilityLabel="Search for a title to recommend"
-          className="flex-1 text-sm text-text-primary"
-          style={{ color: colors["text-primary"] }}
+          className="flex-1 text-text-primary"
+          // Set fontSize via style (NOT the `text-sm` class): that class also
+          // sets a line-height, and on an iOS TextInput that line box pushes
+          // the single line down / clips descenders. With no line-height and
+          // zero padding, the glyph centers within the row's items-center.
+          style={{
+            color: colors["text-primary"],
+            fontSize: 14,
+            padding: 0,
+            textAlignVertical: "center",
+          }}
         />
       </View>
 

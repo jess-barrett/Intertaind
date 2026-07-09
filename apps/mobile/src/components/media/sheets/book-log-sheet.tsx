@@ -3,53 +3,44 @@
  *
  * The RN mirror of web's `apps/web/src/components/modals/book-modal.tsx`
  * (opened from the book detail page's "Read" action and its "Review…" log
- * button). Serves BOTH entry points: the shelf choice (Finished vs Didn't
- * finish) + the rating/review/loved fields on one sheet. Fields top→bottom:
- * Finished/DNF · Rating (StarRating) · Review (multiline) · a Loved toggle
- * · Save.
+ * button). Now renders the SHARED `LogForm` (the same form quick-log + the
+ * movie sheet use) for the common fields, with ONE book-specific extra kept
+ * above it: the Finished / Didn't-finish shelf toggle.
  *
- * Built on the LOCKED movie-log-sheet template (`movie-log-sheet.tsx`) —
- * same AppSheet chrome, `deriveSeed` + `seedKey` remount, `isDirty` gate,
- * `BottomSheetTextInput` review, one `useTrackMediaMutation` write on Save,
- * mapped inline errors, and the progress-merge OPTIMISTIC_ID guard.
+ * Fields top→bottom: Shelf (Finished vs DNF) · then LogForm — Read on (wheel
+ * date) · Rating + Loved · Review · First read↔Reread + spoiler toggles.
+ * `LogForm` is `showStatus={false}` (the shelf toggle owns the book's status)
+ * and gets `BottomSheetTextInput` for the review; the AppSheet disables
+ * content-panning so the drag-to-rate stars aren't swallowed.
  *
  * ── Finished vs DNF ↔ status/sub_shelf (web book-modal parity) ────────
- * Web's modal is a two-step (pick shelf → fields); mobile collapses to one
- * sheet with a two-option segmented toggle at the top:
  *   Finished     → status "completed", progress.sub_shelf "finished"
  *   Didn't finish→ status "dropped",   progress.sub_shelf "dnf"
- * `initialDnf` biases the default when opened via a DNF-specific entry, but
- * we keep it simple: default to Finished (unless the row is already dnf),
- * and let the user pick DNF.
+ * `initialDnf` biases the default when opened via a DNF-specific entry.
  *
  * ── One write on Save ─────────────────────────────────────────────────
- * A single `useTrackMediaMutation` call (web's modal fires one `onSave`):
+ * A single `useTrackMediaMutation` call:
  *   status:       finished ? "completed" : "dropped"
- *   progress:     buildBookProgress(existing, { sub_shelf: finished
- *                   ? "finished" : "dnf" })
  *   rating:       starsToRating(stars)         (display 0.5–5 → 1–10 DB)
  *   review:       the review text (trackMedia normalizes ""→null)
  *   is_favorite:  the Loved toggle
- *   completed_at: today's ISO timestamp when Finished, null for DNF (web
- *                 sets `completed_at` = now for finished, null for dnf).
+ *   progress:     buildBookProgress(existing, { sub_shelf }) THEN
+ *                 buildLogProgress(…, "book", { isRepeat→is_reread, hasSpoilers })
+ *   completed_at: the Read-on date when Finished, null for DNF (web parity).
  *
  * ── The progress-merge landmine ───────────────────────────────────────
  * `useTrackMediaMutation`'s progress payload REPLACES the JSONB column, so
- * `buildBookProgress` MUST merge from the viewer's CURRENT progress or a
- * sibling key (e.g. `custom_cover_url`, or a saved `total_pages` from the
- * reading sheet) is silently wiped. The `existing` base is GUARDED against
- * an `OPTIMISTIC_ID` row (its progress isn't the real DB value yet).
- *
- * ── Finished date without a native picker ─────────────────────────────
- * Web sets `completed_at` = `new Date().toISOString()` at save time (no
- * user-facing date field), so there's nothing to surface — the sheet just
- * stamps NOW on save (following the movie-log no-native-picker precedent).
+ * the builders MUST merge from the viewer's CURRENT progress or a sibling key
+ * (`custom_cover_url`, a saved `total_pages`) is silently wiped. The `existing`
+ * base is GUARDED against an `OPTIMISTIC_ID` row (its progress isn't the real
+ * DB value yet).
  *
  * ── Seeding from an already-logged book ───────────────────────────────
- * Seeds finished/dnf from `progress.sub_shelf`, rating DB→stars, review,
- * loved from the row (mirroring web's `initial`). State is seeded
- * per-present via a `key` that changes with the seed, so re-opening after
- * an external change re-seeds.
+ * Seeds finished/dnf from `progress.sub_shelf`, the Read-on date from
+ * `completed_at`, reread from `progress.is_reread`, spoilers from
+ * `progress.has_spoilers`, rating DB→stars, review, loved from the row. State
+ * is seeded per-present via a `key` that changes with the seed, so re-opening
+ * after an external change re-seeds.
  */
 import {
   forwardRef,
@@ -60,7 +51,7 @@ import {
 } from "react";
 import { Pressable, Text, View } from "react-native";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
-import { BookOpenCheck, Heart, X } from "lucide-react-native";
+import { BookOpenCheck, X } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 import {
   buildBookProgress,
@@ -71,23 +62,20 @@ import {
 import type { Tables } from "@intertaind/supabase";
 
 import AppSheet, { type AppSheetRef } from "@/components/sheet/app-sheet";
-import StarRating from "@/components/star-rating";
+import {
+  LogForm,
+  buildLogProgress,
+  fromISODateOnly,
+  logFormValueDirty,
+  type LogFormValue,
+} from "@/components/media/log-form";
 import { trackingErrorMessage } from "@/lib/tracking-errors";
 import type { MediaDetailItem } from "@/queries/media";
 import { OPTIMISTIC_ID, useTrackMediaMutation } from "@/queries/tracking";
 
-/**
- * The seed values for the form, derived from the viewer's row (mirroring
- * web's `initial`). `finished` defaults true (web's Finished shelf) unless
- * the row is already on the dnf shelf; `initialDnf` biases the default when
- * the sheet is opened via a DNF-specific entry point. Rating converted
- * DB→stars; review "" when absent; loved false when absent.
- */
 type Seed = {
   finished: boolean;
-  stars: number | null;
-  review: string;
-  isFavorite: boolean;
+  value: LogFormValue;
   /** Serialized seed identity so re-seeding remounts the form state. */
   seedKey: string;
 };
@@ -98,37 +86,31 @@ function deriveSeed(
 ): Seed {
   const progress = (viewerRow?.progress ?? null) as ProgressRecord | null;
   const subShelf = progress?.sub_shelf as string | undefined;
-  // If the row is already on a book shelf, honour it; else default to
-  // Finished unless the opener biased toward DNF.
+  // If the row is already on a book shelf, honour it; else default to Finished
+  // unless the opener biased toward DNF.
   const finished =
     subShelf === "dnf" ? false : subShelf === "finished" ? true : !initialDnf;
-  const stars =
+  const rating =
     viewerRow?.rating != null ? ratingToStars(Number(viewerRow.rating)) : null;
   const review = viewerRow?.review ?? "";
-  const isFavorite = viewerRow?.is_favorite ?? false;
+  const loved = viewerRow?.is_favorite ?? false;
+  const isRepeat = (progress?.is_reread as boolean | undefined) ?? false;
+  const hasSpoilers = (progress?.has_spoilers as boolean | undefined) ?? false;
   return {
     finished,
-    stars,
-    review,
-    isFavorite,
-    seedKey: `${finished}|${stars ?? ""}|${isFavorite}|${review}`,
+    value: {
+      date: fromISODateOnly(viewerRow?.completed_at),
+      // Placeholder — the shelf toggle owns the book's real status; LogForm
+      // hides its status chips (showStatus={false}).
+      status: finished ? "completed" : "dropped",
+      rating,
+      review,
+      loved,
+      isRepeat,
+      hasSpoilers,
+    },
+    seedKey: `${finished}|${rating ?? ""}|${loved}|${isRepeat}|${hasSpoilers}|${review}`,
   };
-}
-
-/** A labeled section — the locked field grammar (muted label + content). */
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <View className="gap-1.5">
-      <Text className="text-sm font-medium text-text-secondary">{label}</Text>
-      {children}
-    </View>
-  );
 }
 
 /** One segment of the Finished/DNF toggle — selected reads in its accent. */
@@ -170,10 +152,10 @@ function ShelfSegment({
 }
 
 /**
- * The form body. Split from the ref wrapper so its state is REMOUNTED
- * (via the `key` in the parent) whenever the seed changes — re-opening
- * the sheet after an external tracking change re-seeds the fields cleanly
- * rather than retaining stale local state.
+ * The form body. Split from the ref wrapper so its state is REMOUNTED (via the
+ * `key` in the parent) whenever the seed changes — re-opening the sheet after
+ * an external tracking change re-seeds cleanly rather than retaining stale
+ * local state.
  */
 function BookLogForm({
   media,
@@ -187,66 +169,55 @@ function BookLogForm({
   onDismiss: () => void;
 }) {
   const [finished, setFinished] = useState(seed.finished);
-  const [stars, setStars] = useState<number | null>(seed.stars);
-  const [review, setReview] = useState(seed.review);
-  const [isFavorite, setIsFavorite] = useState(seed.isFavorite);
+  const [value, setValue] = useState<LogFormValue>(seed.value);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
   const trackMutation = useTrackMediaMutation();
+  const saving = trackMutation.isPending;
 
-  // Dirty check (mirrors web's modal): Save is disabled until something
-  // changes vs the seed, so re-saving an unchanged log can't fire a no-op
-  // upsert.
-  const isDirty =
-    finished !== seed.finished ||
-    stars !== seed.stars ||
-    review !== seed.review ||
-    isFavorite !== seed.isFavorite;
+  const patch = (p: Partial<LogFormValue>) => setValue((v) => ({ ...v, ...p }));
+  const dirty =
+    finished !== seed.finished || logFormValueDirty(value, seed.value);
 
   async function handleSave() {
-    if (!isDirty || saving) return; // saving guard prevents a double-fire mid-await
+    if (!dirty || saving) return; // saving guard prevents a double-fire mid-await
     setErrorMessage(null);
 
-    // Merge onto the viewer's CURRENT progress so sibling keys (e.g.
-    // custom_cover_url, a saved total_pages) survive — but NEVER merge from
-    // an optimistic row, whose progress isn't the real DB value yet.
+    // Merge onto the viewer's CURRENT progress so sibling keys (custom_cover_url,
+    // a saved total_pages) survive — but NEVER merge from an optimistic row.
     const existingProgress =
       viewerRow && viewerRow.id !== OPTIMISTIC_ID
         ? ((viewerRow.progress ?? null) as ProgressRecord | null)
         : null;
-    const progress = buildBookProgress(existingProgress, {
+    // Book base (sub_shelf) → then the shared log flags (is_reread + spoilers).
+    const base = buildBookProgress(existingProgress, {
       sub_shelf: finished ? "finished" : "dnf",
     });
+    const progress = buildLogProgress(
+      base as Tables<"user_media">["progress"],
+      "book",
+      {
+        date: value.date,
+        isRepeat: value.isRepeat,
+        hasSpoilers: value.hasSpoilers,
+      },
+    );
 
-    const vars = {
-      mediaId: media.id,
-      status: finished ? ("completed" as const) : ("dropped" as const),
-      // Display stars → 1–10 DB scale (two-scale rule); null clears.
-      rating: starsToRating(stars),
-      review,
-      is_favorite: isFavorite,
-      // Json is the column type; ProgressRecord is a plain object.
-      progress: progress as Tables<"user_media">["progress"],
-      // completed_at = now when Finished, null for DNF (web parity:
-      // `shelf === "finished" ? new Date().toISOString() : null`).
-      completed_at: finished ? new Date().toISOString() : null,
-    };
-
-    // Use mutateAsync + await rather than mutate(vars, { onSuccess }): the
-    // optimistic write bumps viewerRow → the parent recomputes `seed` →
-    // `seedKey` changes → React UNMOUNTS this form, and TanStack Query v5
-    // DROPS a per-call `onSuccess` when the caller unmounts before the
-    // mutation settles. The awaited continuation still runs, and onDismiss
-    // targets the OUTER sheet's stable ref (which does not remount).
     try {
-      await trackMutation.mutateAsync(vars);
+      await trackMutation.mutateAsync({
+        mediaId: media.id,
+        status: finished ? "completed" : "dropped",
+        rating: starsToRating(value.rating),
+        review: value.review,
+        is_favorite: value.loved,
+        progress,
+        // completed_at = the Read-on day when Finished, null for DNF (web parity).
+        completed_at: finished ? value.date.toISOString() : null,
+      });
       onDismiss();
     } catch (err) {
       setErrorMessage(trackingErrorMessage(err, "your log", "book-log-sheet"));
     }
   }
-
-  const saving = trackMutation.isPending;
 
   return (
     <View className="gap-5">
@@ -274,11 +245,13 @@ function BookLogForm({
         </Pressable>
       </View>
 
-      {/* Shelf — Finished vs Didn't finish, a two-option segmented toggle
-          (the native analogue of web's shelf-picker step). Finished reads
-          green (accent-book), DNF pink (accent-movie), matching web's icon
-          colors. */}
-      <Field label="Shelf">
+      {/* Shelf — Finished vs Didn't finish, a two-option segmented toggle (the
+          native analogue of web's shelf-picker step). This owns the book's
+          status, so LogForm's own status chips are hidden below. */}
+      <View>
+        <Text className="mb-2 text-xs font-medium uppercase tracking-wider text-text-muted">
+          Shelf
+        </Text>
         <View className="flex-row gap-2">
           <ShelfSegment
             label="Finished"
@@ -297,63 +270,26 @@ function BookLogForm({
             onPress={() => setFinished(false)}
           />
         </View>
-      </Field>
+      </View>
 
-      {/* Rating — gold StarRating (owns the color) + numeric value + Clear. */}
-      <Field label="Rating">
-        <StarRating value={stars} onChange={setStars} size={30} />
-      </Field>
+      {/* The shared log form (status hidden — the shelf toggle owns it). */}
+      <LogForm
+        mediaType="book"
+        value={value}
+        onChange={patch}
+        showStatus={false}
+        ReviewInput={BottomSheetTextInput}
+      />
 
-      {/* Review — BottomSheetTextInput so the field rides above the
-          keyboard while the sheet stays presented. */}
-      <Field label="Review">
-        <BottomSheetTextInput
-          value={review}
-          onChangeText={setReview}
-          placeholder="Your thoughts on this book..."
-          placeholderTextColor={colors["text-muted"]}
-          multiline
-          accessibilityLabel="Review"
-          className="min-h-[88px] rounded-sm border border-surface-border bg-surface-overlay px-3 py-2.5 text-sm text-text-primary"
-          style={{
-            color: colors["text-primary"],
-            textAlignVertical: "top",
-          }}
-        />
-      </Field>
-
-      {/* Footer: Loved (pink, bottom-left) + Save (brand, bottom-right). */}
-      <View className="flex-row items-center justify-between pt-1">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={isFavorite ? "Loved" : "Love it?"}
-          accessibilityState={{ selected: isFavorite }}
-          className={`flex-row items-center gap-1.5 rounded-sm px-3 py-2.5 active:opacity-70 ${
-            isFavorite ? "bg-accent-movie/15" : ""
-          }`}
-          onPress={() => setIsFavorite((v) => !v)}
-        >
-          <Heart
-            size={16}
-            color={isFavorite ? colors["accent-movie"] : colors["text-muted"]}
-            fill={isFavorite ? colors["accent-movie"] : "none"}
-          />
-          <Text
-            className={`text-sm ${
-              isFavorite ? "font-semibold text-accent-movie" : "text-text-muted"
-            }`}
-          >
-            {isFavorite ? "Loved" : "Love it?"}
-          </Text>
-        </Pressable>
-
+      {/* Save (brand, bottom-right). */}
+      <View className="flex-row items-center justify-end pt-1">
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Save log"
-          accessibilityState={{ disabled: saving || !isDirty, busy: saving }}
-          disabled={saving || !isDirty}
+          accessibilityState={{ disabled: saving || !dirty, busy: saving }}
+          disabled={saving || !dirty}
           className={`rounded-sm bg-brand px-6 py-2.5 active:opacity-80 ${
-            saving || !isDirty ? "opacity-50" : ""
+            saving || !dirty ? "opacity-50" : ""
           }`}
           onPress={handleSave}
         >
@@ -374,11 +310,10 @@ function BookLogForm({
 }
 
 /**
- * Ref-driven book log/review sheet (serves "Read" + "Review"). Parent
- * presents it via the `AppSheetRef` (`present()`), the sheet dismisses
- * itself on save. Only meaningful for books — mount it on the book detail
- * screen and wire its `present()` to the action strip's `onOpenReadFinished`
- * and (routed by type) `onOpenLog`.
+ * Ref-driven book log/review sheet (serves "Read" + "Review"). Parent presents
+ * it via the `AppSheetRef` (`present()`), the sheet dismisses itself on save.
+ * Only meaningful for books — mount it on the book detail screen and wire its
+ * `present()` to the action strip's `onOpenReadFinished` / `onOpenLog`.
  */
 const BookLogSheet = forwardRef<
   AppSheetRef,
@@ -401,19 +336,21 @@ const BookLogSheet = forwardRef<
     [],
   );
 
-  // Seed the form from the viewer's row; the seedKey remounts the form
-  // (fresh state) whenever the seed changes, so re-opening after an
-  // external tracking change re-seeds cleanly. (Same movie-log caveat: the
-  // remount would discard in-progress edits if `viewerRow` changed WHILE
-  // the sheet is open — safe here, the only such change is this sheet's own
-  // save-then-dismiss.)
+  // Seed from the viewer's row; the seedKey remounts the form whenever the seed
+  // changes, so re-opening after an external tracking change re-seeds cleanly.
   const seed = useMemo(
     () => deriveSeed(viewerRow, initialDnf),
     [viewerRow, initialDnf],
   );
 
   return (
-    <AppSheet ref={sheetRef} accessibilityLabel={`Log ${media.title}`}>
+    <AppSheet
+      ref={sheetRef}
+      accessibilityLabel={`Log ${media.title}`}
+      // Content-panning off so LogForm's drag-to-rate stars aren't swallowed by
+      // the sheet's body-drag (handle + backdrop + close still dismiss).
+      enableContentPanningGesture={false}
+    >
       <BookLogForm
         key={seed.seedKey}
         media={media}

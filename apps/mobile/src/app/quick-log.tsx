@@ -5,20 +5,19 @@
  * navigating to a media detail screen.
  *
  * Two steps, both inline (no bottom sheets — this is a native modal, and
- * @gorhom sheets misbehave over one, same reason the recommend flow is a modal):
+ * @gorhom sheets misbehave over one):
  *   1. SEARCH — `MediaSearchPicker` over the `media-search` Edge Function; tap a
  *      result → `media-upsert` get-or-creates its catalog row (→ media id).
- *   2. LOG — a compact per-type panel: a status (Watched/Read/Played vs the
- *      watchlist) + an optional star rating + a Loved toggle. "Log" writes it
- *      all in ONE `useTrackMediaMutation` call and dismisses the modal.
+ *   2. LOG — `QuickLogForm`: the SAME per-type logging as the detail screen's
+ *      sheets (book Finished/DNF, game play-status + hours, TV Show/Season/
+ *      Episode, movie generic). Each panel assembles a `TrackMediaVars` and
+ *      hands it here via `onLog`; we fire ONE `useTrackMediaMutation` and
+ *      dismiss.
  *
- * Scope (v1): status + rating + loved only — no progress JSONB (so the
- * read-merge progress landmine can't bite) and no per-type rich fields
- * (watched-on date, seasons, hours). Those live on the full detail screen.
- *
- * Ratings are the two-scale rule: the picker is 0.5–5 STARS; the DB is 1–10, so
- * convert with `starsToRating` at the write boundary. Writes use `mutateAsync`
- * + `router.back()` (the modal dismiss) since the screen unmounts on success.
+ * The viewer's existing row (via `useViewerTracking`) is threaded to
+ * `QuickLogForm` so a re-log MERGES progress rather than replacing it (the
+ * read-merge landmine). Writes use `mutateAsync` + `router.back()` (the modal
+ * dismiss) since the screen unmounts on success.
  */
 import { useState } from "react";
 import {
@@ -32,36 +31,17 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ArrowLeft, Heart, X } from "lucide-react-native";
+import { ArrowLeft, X } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
-import {
-  starsToRating,
-  type MediaType,
-  type SearchResult,
-  type TrackingStatus,
-} from "@intertaind/types";
+import type { SearchResult } from "@intertaind/types";
 
 import { Image } from "@/components/image";
-import StarRating from "@/components/star-rating";
+import { QuickLogForm } from "@/components/media/quick-log-form";
 import { MediaSearchPicker } from "@/components/media/media-search-picker";
 import { MEDIA_TYPE_ICONS, MEDIA_TYPE_ICON_COLOR } from "@/lib/media-type-icons";
 import { trackingErrorMessage } from "@/lib/tracking-errors";
-import { useMediaUpsertMutation } from "@/queries/media";
-import { useTrackMediaMutation } from "@/queries/tracking";
-
-/**
- * Per-type quick-log labels: the "completed" primary (Watched/Read/Played) and
- * the backlog (Watchlist/TBR/Wishlist). Both map to a `TrackingStatus`.
- */
-const QUICK_LOG_LABELS: Record<
-  MediaType,
-  { completed: string; want: string }
-> = {
-  movie: { completed: "Watched", want: "Watchlist" },
-  tv_show: { completed: "Watched", want: "Watchlist" },
-  book: { completed: "Read", want: "Want to Read" },
-  video_game: { completed: "Played", want: "Wishlist" },
-};
+import { useMediaUpsertMutation, useViewerTracking } from "@/queries/media";
+import { useTrackMediaMutation, type TrackMediaVars } from "@/queries/tracking";
 
 /** First 4 digits of an ISO date (mirrors the search picker's `yearFrom`). */
 function yearFrom(dateString: string | null): string | null {
@@ -79,42 +59,33 @@ export default function QuickLogScreen() {
   const [picked, setPicked] = useState<{ id: string; result: SearchResult } | null>(
     null,
   );
-  // Log-panel state (reset on each pick).
-  const [status, setStatus] = useState<TrackingStatus>("completed");
-  const [stars, setStars] = useState<number | null>(null);
-  const [loved, setLoved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The viewer's existing row for the picked item, so a re-log MERGES progress
+  // instead of replacing it (empty key before a pick → resolves to null).
+  const tracking = useViewerTracking(picked?.id ?? "");
 
   const dismiss = () => router.back();
 
-  // SEARCH → pick: upsert the search result to a catalog id, then advance to
-  // the log step. Reset the log panel for the new pick.
+  // SEARCH → pick: upsert the search result to a catalog id, then advance.
   async function onPick(result: SearchResult) {
     if (upsert.isPending) return;
     setError(null);
     try {
       const id = await upsert.mutateAsync({ searchResult: result });
-      setStatus("completed");
-      setStars(null);
-      setLoved(false);
       setPicked({ id, result });
     } catch (err) {
       setError(trackingErrorMessage(err, "that title", "quick-log"));
     }
   }
 
-  // LOG → save: one write sets status (+ rating/loved when present), then the
-  // modal dismisses. mutateAsync so the unmount-on-success can't drop it.
-  async function onSave() {
-    if (!picked || track.isPending) return;
+  // LOG → save: one write, then dismiss. mutateAsync so the unmount-on-success
+  // can't drop it.
+  async function onLog(vars: TrackMediaVars) {
+    if (track.isPending) return;
     setError(null);
     try {
-      await track.mutateAsync({
-        mediaId: picked.id,
-        status,
-        rating: stars != null ? starsToRating(stars) : undefined,
-        is_favorite: loved,
-      });
+      await track.mutateAsync(vars);
       dismiss();
     } catch (err) {
       setError(trackingErrorMessage(err, "your log", "quick-log"));
@@ -140,8 +111,11 @@ export default function QuickLogScreen() {
             <ArrowLeft size={22} color={colors["text-primary"]} />
           </Pressable>
         ) : null}
-        <Text className="flex-1 text-xl font-bold text-text-primary">
-          {picked ? "Log it" : "Quick log"}
+        <Text
+          className="flex-1 text-xl font-bold text-text-primary"
+          numberOfLines={1}
+        >
+          {picked ? `Log ${picked.result.title}` : "Quick log"}
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -162,13 +136,9 @@ export default function QuickLogScreen() {
       {picked ? (
         <LogPanel
           result={picked.result}
-          status={status}
-          onStatus={setStatus}
-          stars={stars}
-          onStars={setStars}
-          loved={loved}
-          onLoved={() => setLoved((v) => !v)}
-          onSave={onSave}
+          mediaId={picked.id}
+          viewerRow={tracking.data ?? null}
+          onLog={onLog}
           saving={track.isPending}
         />
       ) : (
@@ -187,31 +157,22 @@ export default function QuickLogScreen() {
 }
 
 /**
- * The per-type log panel: the picked title's poster/meta, a status choice
- * (completed vs backlog), an optional star rating, a Loved toggle, and Log.
+ * The log step: the picked title's poster/meta on top, then the per-type
+ * `QuickLogForm` (which owns its own fields + Log button).
  */
 function LogPanel({
   result,
-  status,
-  onStatus,
-  stars,
-  onStars,
-  loved,
-  onLoved,
-  onSave,
+  mediaId,
+  viewerRow,
+  onLog,
   saving,
 }: {
   result: SearchResult;
-  status: TrackingStatus;
-  onStatus: (s: TrackingStatus) => void;
-  stars: number | null;
-  onStars: (s: number | null) => void;
-  loved: boolean;
-  onLoved: () => void;
-  onSave: () => void;
+  mediaId: string;
+  viewerRow: React.ComponentProps<typeof QuickLogForm>["viewerRow"];
+  onLog: (vars: TrackMediaVars) => void;
   saving: boolean;
 }) {
-  const labels = QUICK_LOG_LABELS[result.media_type];
   const TypeIcon = MEDIA_TYPE_ICONS[result.media_type];
   const year = yearFrom(result.release_date);
 
@@ -222,7 +183,7 @@ function LogPanel({
       contentContainerStyle={{ paddingBottom: 32 }}
     >
       {/* Picked title. */}
-      <View className="flex-row gap-4">
+      <View className="mb-6 flex-row gap-4">
         {result.cover_image_url ? (
           <Image
             source={{ uri: result.cover_image_url }}
@@ -251,92 +212,13 @@ function LogPanel({
         </View>
       </View>
 
-      {/* Status — completed (primary) vs the backlog. */}
-      <Text className="mb-2 mt-6 text-xs font-medium uppercase tracking-wider text-text-muted">
-        Status
-      </Text>
-      <View className="flex-row gap-2">
-        <StatusChip
-          label={labels.completed}
-          active={status === "completed"}
-          onPress={() => onStatus("completed")}
-        />
-        <StatusChip
-          label={labels.want}
-          active={status === "want"}
-          onPress={() => onStatus("want")}
-        />
-      </View>
-
-      {/* Rating (optional). */}
-      <Text className="mb-2 mt-6 text-xs font-medium uppercase tracking-wider text-text-muted">
-        Rating
-      </Text>
-      <StarRating value={stars} onChange={onStars} size={28} starsOnly />
-
-      {/* Loved. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ selected: loved }}
-        accessibilityLabel={loved ? "Remove from Loved" : "Mark as Loved"}
-        className="mt-6 flex-row items-center gap-2 active:opacity-70"
-        onPress={onLoved}
-      >
-        <Heart
-          size={22}
-          color={colors["accent-movie"]}
-          fill={loved ? colors["accent-movie"] : "none"}
-        />
-        <Text className="text-sm text-text-primary">Loved</Text>
-      </Pressable>
-
-      {/* Log. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Log"
-        disabled={saving}
-        className={`mt-8 items-center rounded-sm bg-brand py-3 active:opacity-80 ${
-          saving ? "opacity-60" : ""
-        }`}
-        onPress={onSave}
-      >
-        {saving ? (
-          <ActivityIndicator color={colors["text-primary"]} />
-        ) : (
-          <Text className="text-base font-semibold text-text-primary">Log</Text>
-        )}
-      </Pressable>
+      <QuickLogForm
+        mediaType={result.media_type}
+        mediaId={mediaId}
+        viewerRow={viewerRow}
+        saving={saving}
+        onLog={onLog}
+      />
     </ScrollView>
-  );
-}
-
-/** A selectable status chip — brand fill when active. */
-function StatusChip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      accessibilityLabel={label}
-      className={`rounded-sm px-4 py-2 active:opacity-70 ${
-        active ? "bg-brand" : "border border-surface-border"
-      }`}
-      onPress={onPress}
-    >
-      <Text
-        className={`text-sm font-medium ${
-          active ? "text-text-primary" : "text-text-muted"
-        }`}
-      >
-        {label}
-      </Text>
-    </Pressable>
   );
 }

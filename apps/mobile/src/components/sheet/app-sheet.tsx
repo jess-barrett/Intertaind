@@ -74,6 +74,14 @@ type AppSheetProps = {
   onDismiss?: () => void;
   /** Accessibility label for the sheet content. */
   accessibilityLabel?: string;
+  /**
+   * Whether dragging the sheet BODY (not the handle) dismisses it. Default
+   * true (gorhom's default). Set FALSE when the content has its own horizontal
+   * gesture — e.g. a drag-to-rate `StarRating` — that the content-panning
+   * gesture would otherwise swallow. The grab handle + backdrop tap still
+   * dismiss the sheet.
+   */
+  enableContentPanningGesture?: boolean;
 };
 
 /** Dimming backdrop: fades in as the sheet opens, tap-to-dismiss. */
@@ -89,7 +97,13 @@ function renderBackdrop(props: BottomSheetBackdropProps) {
 }
 
 const AppSheet = forwardRef<AppSheetRef, AppSheetProps>(function AppSheet(
-  { children, snapPoints, onDismiss, accessibilityLabel },
+  {
+    children,
+    snapPoints,
+    onDismiss,
+    accessibilityLabel,
+    enableContentPanningGesture = true,
+  },
   ref,
 ) {
   const modalRef = useRef<BottomSheetModal>(null);
@@ -110,6 +124,9 @@ const AppSheet = forwardRef<AppSheetRef, AppSheetProps>(function AppSheet(
       // Fixed snap points OR dynamic sizing (mutually exclusive in v5).
       snapPoints={snapPoints}
       enableDynamicSizing={!snapPoints}
+      // Off when the content owns a horizontal gesture (drag-to-rate stars) so
+      // the sheet's body-drag doesn't swallow it (see prop doc).
+      enableContentPanningGesture={enableContentPanningGesture}
       // Keep a tall (dynamic-height or "90%") sheet from growing under the
       // status bar / notch on the reference log/review forms.
       topInset={insets.top}

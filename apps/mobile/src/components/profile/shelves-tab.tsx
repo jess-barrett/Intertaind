@@ -25,8 +25,9 @@
  * mis-measure). Instead the grid is a flex-wrap `View` of fixed-width cells — a
  * 4-column poster grid (fixed quarter-width, so a partial last row left-aligns
  * rather than stretching, mirroring the search grid's fixed-cell approach).
- * Cards are poster + title only: NO year, and rating stars ONLY when the owner
- * actually rated the title (no community-average fallback → no empty stars).
+ * Cards are poster + rating stars ONLY: no title, no year, no loved heart, and
+ * no quick-actions tab/slider. The stars are earned-only (`hideEmpty`) — filled
+ * / half glyphs, no empty outlines — and show ONLY when the title is rated.
  *
  * ── Owner rating vs viewer overlay ──────────────────────────────────────────
  * Each card shows the SHELF OWNER's own rating/heart by default (it's their
@@ -229,7 +230,13 @@ export function ShelvesTab({
                 <MediaCard
                   media={cardMediaFromHomeItem(item)}
                   tracking={tracking}
+                  // Poster + just the rating stars beneath — no title, no year,
+                  // no loved heart, and no quick-actions tab/slider on the
+                  // poster. A clean, dense shelf grid.
                   showYear={false}
+                  showTitle={false}
+                  showLoved={false}
+                  showActions={false}
                   compact
                   onMutated={() => {
                     // A viewer quick-action on someone else's shelf card writes

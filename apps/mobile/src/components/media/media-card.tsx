@@ -71,6 +71,8 @@ export function MediaCard({
   compact = false,
   showActions = true,
   showYear = true,
+  showTitle = true,
+  showLoved = true,
 }: {
   media: CardMedia;
   /** The viewer's tracking row for this catalog id (null = untracked /
@@ -101,6 +103,12 @@ export function MediaCard({
       year is noise (e.g. profile shelves). When there's nothing else to show
       (no rating, not loved), the whole meta row is omitted. */
   showYear?: boolean;
+  /** Show the title beneath the poster. Default true. Set false for a
+      poster-plus-rating card (e.g. profile shelves — just stars beneath). */
+  showTitle?: boolean;
+  /** Show the loved heart in the meta row. Default true. Set false for a
+      stars-only meta row. */
+  showLoved?: boolean;
 }) {
   const router = useRouter();
   const upsert = useMediaUpsertMutation();
@@ -197,22 +205,33 @@ export function MediaCard({
           where a card is just the poster + its quick-actions slider. */}
       {showMeta ? (
         <>
-          <Text
-            className="mt-1.5 text-sm font-medium text-text-primary"
-            numberOfLines={1}
-          >
-            {media.title}
-          </Text>
+          {showTitle ? (
+            <Text
+              className="mt-1.5 text-sm font-medium text-text-primary"
+              numberOfLines={1}
+            >
+              {media.title}
+            </Text>
+          ) : null}
 
-          {/* Meta row — rating stars (only when rated), loved heart, and the
-              year (when showYear). Omitted entirely when there's nothing to
-              show, so an unrated/year-less card doesn't leave an empty gap. */}
-          {displayStars != null || favorite || (showYear && media.year) ? (
-            <View className="mt-0.5 flex-row items-center gap-1.5">
+          {/* Meta row — earned-only rating stars (only when rated), the loved
+              heart (when showLoved), and the year (when showYear). Omitted
+              entirely when there's nothing to show, so an unrated/year-less
+              card doesn't leave an empty gap. */}
+          {displayStars != null ||
+          (showLoved && favorite) ||
+          (showYear && media.year) ? (
+            <View className={`flex-row items-center gap-1.5 ${showTitle ? "mt-0.5" : "mt-1.5"}`}>
               {displayStars != null ? (
-                <StarRating value={displayStars} readOnly starsOnly size={12} />
+                <StarRating
+                  value={displayStars}
+                  readOnly
+                  starsOnly
+                  hideEmpty
+                  size={12}
+                />
               ) : null}
-              {favorite ? (
+              {showLoved && favorite ? (
                 <Heart
                   size={11}
                   color={colors["accent-movie"]}

@@ -15,5 +15,11 @@
   "devDependencies": {
     "supabase": "^2.106.0",
     "turbo": "^2"
+  },
+  "version": "1.0.0",
+  "dependencies": {
+    "expo": "~56.0.0-preview.8",
+    "react": "19.2.3",
+    "react-native": "0.85.3"
   }
 }
