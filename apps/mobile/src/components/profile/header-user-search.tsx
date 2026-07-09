@@ -60,9 +60,14 @@ const BAR_HEIGHT = 36;
 /** Corner radius for the OPEN bar's left edge — "rounded small" (the right edge
  *  stays a circular cap, matching the collapsed button it grows from). */
 const OPEN_LEFT_RADIUS = 6;
-/** How far the results dropdown's RIGHT edge is pulled in from the bar's right
- *  (the dropdown stays left-aligned with the bar). */
-const DROPDOWN_RIGHT_INSET = 24;
+/** Results-dropdown corners: SQUARE top (joins the bar seamlessly) + rounded
+ *  small bottom. */
+const DROPDOWN_RADII = {
+  borderTopLeftRadius: 0,
+  borderTopRightRadius: 0,
+  borderBottomLeftRadius: OPEN_LEFT_RADIUS,
+  borderBottomRightRadius: OPEN_LEFT_RADIUS,
+} as const;
 /** The slide-out/collapse tween (the "slide"). */
 const SLIDE = LayoutAnimation.create(
   200,
@@ -116,12 +121,13 @@ export function HeaderUserSearch() {
           height: BAR_HEIGHT,
           width: open ? expandedWidth : BAR_HEIGHT,
           // Right edge is always a circular cap (matches the collapsed button /
-          // the gear); when open the LEFT edge is "rounded small" — collapsed
-          // it's a full circle.
+          // the gear). Open: TOP-left is "rounded small", but the BOTTOM-left is
+          // SQUARE so the dropdown joins seamlessly beneath it. Collapsed: a
+          // full circle.
           borderTopRightRadius: BAR_HEIGHT / 2,
           borderBottomRightRadius: BAR_HEIGHT / 2,
           borderTopLeftRadius: open ? OPEN_LEFT_RADIUS : BAR_HEIGHT / 2,
-          borderBottomLeftRadius: open ? OPEN_LEFT_RADIUS : BAR_HEIGHT / 2,
+          borderBottomLeftRadius: open ? 0 : BAR_HEIGHT / 2,
         }}
         // Collapsed: a border-only circle that MATCHES the settings gear (no
         // fill). Open: fill with surface-raised so it reads as a search field.
@@ -172,35 +178,43 @@ export function HeaderUserSearch() {
         <View
           style={{
             position: "absolute",
-            // Connected to the bar (no gap — sits flush beneath it) and its
-            // RIGHT edge pulled in (inset) so it doesn't reach the bar's edge;
-            // left edge stays aligned with the bar.
+            // Flush beneath the bar (connected, no gap) + the SAME width as the
+            // bar (right-aligned), so together they read as one seamless unit.
             top: BAR_HEIGHT,
-            right: DROPDOWN_RIGHT_INSET,
-            width: expandedWidth - DROPDOWN_RIGHT_INSET,
+            right: 0,
+            width: expandedWidth,
             zIndex: 30,
             elevation: 8,
           }}
         >
           {search.isPending ? (
-            <View className="items-center rounded-sm border border-surface-border bg-surface-raised py-4">
+            <View
+              style={DROPDOWN_RADII}
+              className="items-center border border-surface-border bg-surface-raised py-4"
+            >
               <ActivityIndicator color={colors["text-muted"]} />
             </View>
           ) : search.error ? (
-            <View className="rounded-sm border border-surface-border bg-surface-raised px-3 py-3">
+            <View
+              style={DROPDOWN_RADII}
+              className="border border-surface-border bg-surface-raised px-3 py-3"
+            >
               <Text className="text-sm text-accent-movie">
                 {trackingErrorMessage(search.error, "the search", "user-search")}
               </Text>
             </View>
           ) : results.length === 0 ? (
-            <View className="rounded-sm border border-surface-border bg-surface-raised px-3 py-3">
+            <View
+              style={DROPDOWN_RADII}
+              className="border border-surface-border bg-surface-raised px-3 py-3"
+            >
               <Text className="text-sm text-text-muted">No users found.</Text>
             </View>
           ) : (
             <ScrollView
-              style={{ maxHeight: 320 }}
+              style={{ maxHeight: 320, ...DROPDOWN_RADII }}
               keyboardShouldPersistTaps="handled"
-              className="overflow-hidden rounded-sm border border-surface-border bg-surface-raised"
+              className="overflow-hidden border border-surface-border bg-surface-raised"
             >
               {results.map((hit) => (
                 <UserRow
