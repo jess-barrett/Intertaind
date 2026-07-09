@@ -186,6 +186,11 @@ export const queryKeys = {
     // cache stores stable (settled) queries, not every keystroke.
     media: (query: string, type: string) =>
       [...queryKeys.search.all, "media", query, type] as const,
+    // User search (profiles by username / display_name) — the profile screen's
+    // "find users" bar. Plain RLS-filtered `profiles` read, no user in the key
+    // (identical for every viewer under RLS). Caller debounces the query.
+    users: (query: string) =>
+      [...queryKeys.search.all, "users", query] as const,
   },
   recommendations: {
     all: ["recommendations"] as const,

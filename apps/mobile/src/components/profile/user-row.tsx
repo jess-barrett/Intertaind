@@ -12,11 +12,24 @@
  */
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { Lock } from "lucide-react-native";
+import { colors } from "@intertaind/design-system";
 
 import { Image } from "@/components/image";
 import type { FollowListUser } from "@/queries/profile";
 
-export function UserRow({ user }: { user: FollowListUser }) {
+export function UserRow({
+  user,
+  isPrivate = false,
+  onPress,
+}: {
+  user: FollowListUser;
+  /** Show a small lock beside the name (private profile) — used by search. */
+  isPrivate?: boolean;
+  /** Override the default navigation (e.g. close a search bar first). When
+      omitted the row pushes `/u/<username>`. */
+  onPress?: () => void;
+}) {
   const router = useRouter();
   const displayName = user.display_name ?? user.username;
   // Letter fallback for a missing avatar — first char of the username, upper
@@ -28,7 +41,7 @@ export function UserRow({ user }: { user: FollowListUser }) {
       accessibilityRole="button"
       accessibilityLabel={`View ${displayName}'s profile`}
       className="flex-row items-center gap-3 px-4 py-3 active:opacity-70"
-      onPress={() => router.push(`/u/${user.username}`)}
+      onPress={onPress ?? (() => router.push(`/u/${user.username}`))}
     >
       {user.avatar_url ? (
         <Image
@@ -46,12 +59,15 @@ export function UserRow({ user }: { user: FollowListUser }) {
       )}
 
       <View className="min-w-0 flex-1">
-        <Text
-          className="text-base font-semibold text-text-primary"
-          numberOfLines={1}
-        >
-          {displayName}
-        </Text>
+        <View className="flex-row items-center gap-1.5">
+          <Text
+            className="shrink text-base font-semibold text-text-primary"
+            numberOfLines={1}
+          >
+            {displayName}
+          </Text>
+          {isPrivate ? <Lock size={12} color={colors["text-muted"]} /> : null}
+        </View>
         <Text className="text-sm text-text-muted" numberOfLines={1}>
           @{user.username}
         </Text>

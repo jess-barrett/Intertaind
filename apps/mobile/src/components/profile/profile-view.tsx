@@ -42,7 +42,7 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ArrowLeft } from "lucide-react-native";
+import { ArrowLeft, UserPlus } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 
 import { useAuth } from "@/components/auth-provider";
@@ -52,6 +52,7 @@ import { ProfileHeader } from "@/components/profile/profile-header";
 import { RecommendationsTab } from "@/components/profile/recommendations-tab";
 import { SegmentedControl } from "@/components/profile/segmented-control";
 import { ShelvesTab } from "@/components/profile/shelves-tab";
+import { UserSearchBar } from "@/components/profile/user-search-bar";
 import { useBottomInset } from "@/lib/use-bottom-inset";
 import { useProfile, useProfileMediaCounts } from "@/queries/profile";
 import { useSignOutMutation } from "@/queries/auth";
@@ -87,6 +88,9 @@ export function ProfileView({
   const countsQuery = useProfileMediaCounts(profileUserId);
 
   const [segment, setSegment] = useState<Segment>("Profile");
+  // The "find users" bar (user+ toggle → full-width user search). Lives in the
+  // top row beside the primary tabs; open swaps the tabs for the search field.
+  const [userSearchOpen, setUserSearchOpen] = useState(false);
 
   // ── Pending ──────────────────────────────────────────────────────────
   if (profileQuery.isPending) {
@@ -146,13 +150,31 @@ export function ProfileView({
       >
         {/* Primary tabs ABOVE the profile info — the header then separates them
             from any sub-nav a segment renders (e.g. Shelves' type/status bars),
-            so the page never reads as a stack of near-identical bars. */}
+            so the page never reads as a stack of near-identical bars. A "find
+            users" toggle sits at the end of the row (web parity); tapping it
+            swaps the tabs for a full-width user-search field. */}
         <View className="px-4 pb-4">
-          <SegmentedControl
-            options={SEGMENTS}
-            value={segment}
-            onChange={setSegment}
-          />
+          {userSearchOpen ? (
+            <UserSearchBar onClose={() => setUserSearchOpen(false)} />
+          ) : (
+            <View className="flex-row items-center gap-2">
+              <View className="flex-1">
+                <SegmentedControl
+                  options={SEGMENTS}
+                  value={segment}
+                  onChange={setSegment}
+                />
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Find users"
+                className="h-9 w-9 items-center justify-center rounded-sm border border-surface-border bg-surface-raised active:opacity-70"
+                onPress={() => setUserSearchOpen(true)}
+              >
+                <UserPlus size={18} color={colors["text-secondary"]} />
+              </Pressable>
+            </View>
+          )}
         </View>
 
         <ProfileHeader

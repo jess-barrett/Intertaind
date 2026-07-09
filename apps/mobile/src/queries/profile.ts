@@ -1002,3 +1002,40 @@ export function useFollowing(userId: string | undefined) {
     },
   });
 }
+
+/** One hit from the user search — identity + the private flag (a lock cue). */
+export type UserSearchHit = Pick<
+  Tables<"profiles">,
+  "id" | "username" | "display_name" | "avatar_url" | "is_private"
+>;
+
+/** Max user-search hits (web parity). */
+const USER_SEARCH_LIMIT = 10;
+
+/**
+ * Search users by username or display name — the RN mirror of web's
+ * `searchUsers` (apps/web/src/app/actions/social.ts): a plain `profiles` read
+ * (`username.ilike.q%` OR `display_name.ilike.%q%`), RLS-filtered (so blocked /
+ * private-hidden rows never surface — nothing extra needed here). The caller
+ * DEBOUNCES the query before it reaches this key; `enabled` gates the round
+ * trip until 2+ chars. `%`/`_` are escaped so a literal wildcard in the query
+ * can't broaden the match. No user in the key — identical for every viewer
+ * under RLS.
+ */
+export function useUserSearch(query: string) {
+  const trimmed = query.trim();
+  return useQuery({
+    queryKey: queryKeys.search.users(trimmed),
+    enabled: trimmed.length >= 2,
+    queryFn: async (): Promise<UserSearchHit[]> => {
+      const escaped = trimmed.replace(/[%_]/g, "\\$&");
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, username, display_name, avatar_url, is_private")
+        .or(`username.ilike.${escaped}%,display_name.ilike.%${escaped}%`)
+        .limit(USER_SEARCH_LIMIT);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
