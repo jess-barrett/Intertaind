@@ -95,10 +95,10 @@ export function HeaderUserSearch() {
   const search = useUserSearch(debouncedQuery);
   const results = search.data ?? [];
   const tooShort = debouncedQuery.trim().length < MIN_QUERY_LENGTH;
-  // A results LIST is attached below → the bar squares its bottom to join it.
-  // Otherwise (idle, loading, empty, error) the bar keeps a rounded bottom and
-  // any state box floats as a separate rounded card.
-  const hasResults = open && !tooShort && results.length > 0;
+  // A dropdown box (loading / empty / error / results) is attached below → the
+  // bar squares its bottom to join it seamlessly. Only when NO box shows (query
+  // too short) is the bar a self-contained rounded shape.
+  const dropdownOpen = open && !tooShort;
 
   function toggle(next: boolean) {
     LayoutAnimation.configureNext(SLIDE);
@@ -125,18 +125,18 @@ export function HeaderUserSearch() {
           height: BAR_HEIGHT,
           width: open ? expandedWidth : BAR_HEIGHT,
           // TOP corners when open: left rounded-sm, right circular cap.
-          // BOTTOM corners: when a results list is attached (`hasResults`) both
-          // are SQUARE so the dropdown joins seamlessly; otherwise the bar is a
-          // self-contained shape (bottom-left rounded-sm, bottom-right circular).
-          // Collapsed: a full circle.
+          // BOTTOM corners: when a dropdown box is attached (`dropdownOpen`)
+          // both are SQUARE so it joins seamlessly; open-but-no-box is a
+          // self-contained shape (bottom-left rounded-sm, bottom-right circular);
+          // collapsed is a full circle.
           borderTopRightRadius: BAR_HEIGHT / 2,
           borderTopLeftRadius: open ? OPEN_LEFT_RADIUS : BAR_HEIGHT / 2,
-          borderBottomLeftRadius: !open
-            ? BAR_HEIGHT / 2
-            : hasResults
-              ? 0
-              : OPEN_LEFT_RADIUS,
-          borderBottomRightRadius: !open || !hasResults ? BAR_HEIGHT / 2 : 0,
+          borderBottomLeftRadius: dropdownOpen
+            ? 0
+            : open
+              ? OPEN_LEFT_RADIUS
+              : BAR_HEIGHT / 2,
+          borderBottomRightRadius: dropdownOpen ? 0 : BAR_HEIGHT / 2,
         }}
         // Collapsed: a border-only circle that MATCHES the settings gear (no
         // fill). Open: fill with surface-raised so it reads as a search field.
@@ -183,13 +183,14 @@ export function HeaderUserSearch() {
 
       {/* Results — a connected dropdown beneath the bar, right-anchored + over
           the page (absolute, so it never shifts content). */}
-      {open && !tooShort ? (
+      {dropdownOpen ? (
+        // Every state (loading / empty / error / results) joins the bar flush
+        // and shares the SQUARE-top / rounded-bottom shape, so the bar+dropdown
+        // always read as one seamless unit.
         <View
           style={{
             position: "absolute",
-            // Results list joins the bar flush (connected); the transient
-            // loading/empty/error states float just below as a separate card.
-            top: hasResults ? BAR_HEIGHT : BAR_HEIGHT + 6,
+            top: BAR_HEIGHT,
             right: 0,
             width: expandedWidth,
             zIndex: 30,
@@ -197,21 +198,29 @@ export function HeaderUserSearch() {
           }}
         >
           {search.isPending ? (
-            <View className="items-center rounded-sm border border-surface-border bg-surface-raised py-4">
+            <View
+              style={DROPDOWN_RADII}
+              className="items-center border border-surface-border bg-surface-raised py-4"
+            >
               <ActivityIndicator color={colors["text-muted"]} />
             </View>
           ) : search.error ? (
-            <View className="rounded-sm border border-surface-border bg-surface-raised px-3 py-3">
+            <View
+              style={DROPDOWN_RADII}
+              className="border border-surface-border bg-surface-raised px-3 py-3"
+            >
               <Text className="text-sm text-accent-movie">
                 {trackingErrorMessage(search.error, "the search", "user-search")}
               </Text>
             </View>
           ) : results.length === 0 ? (
-            <View className="rounded-sm border border-surface-border bg-surface-raised px-3 py-3">
+            <View
+              style={DROPDOWN_RADII}
+              className="border border-surface-border bg-surface-raised px-3 py-3"
+            >
               <Text className="text-sm text-text-muted">No users found.</Text>
             </View>
           ) : (
-            // Results list — SQUARE top (joins the squared bar), rounded bottom.
             <ScrollView
               style={{ maxHeight: 320, ...DROPDOWN_RADII }}
               keyboardShouldPersistTaps="handled"
