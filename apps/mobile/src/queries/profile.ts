@@ -22,10 +22,17 @@
  * filtering.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import type { Tables } from "@intertaind/supabase";
 import { type MediaType, TOP_4_SHELF_NAMES } from "@intertaind/types";
+import { useAuth } from "@/components/auth-provider";
 import { supabase } from "@/lib/supabase";
+import { trackingErrorMessage } from "@/lib/tracking-errors";
 import { queryKeys } from "./keys";
 import { HOME_MEDIA_COLS, type HomeMediaItem } from "./home";
 import type { ShelfSection } from "@/components/profile/shelf-config";
@@ -622,6 +629,286 @@ export function useProfileLists(
           covers: coversByList.get(list.id) ?? [],
         };
       });
+    },
+  });
+}
+
+// ─── Social graph (M6a): follow state + mutations + follower/following lists ─
+//
+// All social reads/writes go through the `follows` / `follow_requests` tables
+// (migrations 007/008) under their RLS:
+//   - `follows_insert_self`   — WITH CHECK (follower_id = auth.uid())
+//   - `follows_delete_self`   — USING (follower_id = auth.uid())
+//   - `follow_requests_insert_self`   — WITH CHECK (requester_id = auth.uid())
+//   - `follow_requests_delete_involved` — USING (requester_id = auth.uid()
+//                                                 OR target_id = auth.uid())
+//   - `follows_select_involved` — the viewer sees a follow row when they're
+//     either party OR either party's profile is public.
+// A DB trigger (`handle_follows_change`) maintains the DENORMALIZED
+// `profiles.followers_count` / `following_count` and inserts the recipient's
+// `notifications` row on INSERT/DELETE — so after a follow/unfollow we
+// INVALIDATE the affected `profile` / `byUsername` query to refetch the fresh
+// counts rather than hand-mutating them (never trust a client-side count when a
+// trigger owns it).
+//
+// Deferred (per docs/plans/2026-07-08-mobile-profile.md): blocks / block-aware
+// filtering; the private-profile follower-visibility gate (NOT DB-enforced —
+// reverted in 008, web-server-only); per-row follow buttons in the lists.
+
+/** The viewer's relationship to a target profile — the Follow button's state. */
+export type FollowState = "self" | "none" | "following" | "requested";
+
+/**
+ * The viewer's relationship to `targetUserId` (`useAuth`-scoped) — what the
+ * header Follow button renders. `"self"` when the viewer IS the target (no
+ * button); otherwise a two-step read under `follows_select_involved` /
+ * `follow_requests_select_involved`:
+ *
+ *   1. `follows` for (follower_id = viewer, following_id = target) →
+ *      `"following"` when a row exists.
+ *   2. else `follow_requests` for (requester_id = viewer, target_id = target) →
+ *      `"requested"` (a pending request against a PRIVATE target).
+ *   3. else `"none"`.
+ *
+ * Both are `.maybeSingle()` reads on the composite PK — 0-or-1 row, never a
+ * throw on "no row". `enabled: !!user && !!targetUserId`; keyed by BOTH ids
+ * (`followState(viewer, target)`) — it's inherently a per-viewer, per-target
+ * fact. The `"self"` case still runs the query (cheaply short-circuiting in the
+ * queryFn) so the key stays stable across a target switch.
+ */
+export function useFollowState(targetUserId: string | undefined) {
+  const { user } = useAuth();
+  const viewerId = user?.id;
+  return useQuery({
+    queryKey: queryKeys.user.followState(viewerId ?? "anon", targetUserId ?? ""),
+    enabled: !!viewerId && !!targetUserId,
+    queryFn: async (): Promise<FollowState> => {
+      if (viewerId === targetUserId) return "self";
+
+      const { data: follow, error: followError } = await supabase
+        .from("follows")
+        .select("follower_id")
+        .eq("follower_id", viewerId!)
+        .eq("following_id", targetUserId!)
+        .maybeSingle();
+      if (followError) throw followError;
+      if (follow) return "following";
+
+      const { data: request, error: requestError } = await supabase
+        .from("follow_requests")
+        .select("requester_id")
+        .eq("requester_id", viewerId!)
+        .eq("target_id", targetUserId!)
+        .maybeSingle();
+      if (requestError) throw requestError;
+      if (request) return "requested";
+
+      return "none";
+    },
+  });
+}
+
+/**
+ * Vars for the follow/unfollow mutations. `isPrivate` routes a FOLLOW to the
+ * right table (public → `follows`; private → `follow_requests`); `username`,
+ * when known (the header has it), lets the invalidation also refresh the
+ * username-keyed profile query so the denormalized counts refetch there too.
+ */
+export type FollowVars = {
+  /** The profile being followed/unfollowed. */
+  targetUserId: string;
+  /** PRIVATE target → a follow becomes a request (see `follows_insert_self`). */
+  isPrivate: boolean;
+  /** The target's username, when the caller knows it — invalidates byUsername. */
+  username?: string;
+};
+
+/**
+ * Invalidate every query a follow-graph change (in either direction) touches:
+ *   - the viewer's follow-STATE against this target (none↔following↔requested);
+ *   - the target's `profile(target)` + `byUsername(username)` (the DB trigger
+ *     bumped the DENORMALIZED followers_count — refetch, don't hand-mutate);
+ *   - the target's `followers(target)` list (a new/removed follower);
+ *   - the viewer's own `following(viewer)` list (they gained/lost a followee).
+ * (A pending follow_request changes no count, so its invalidation set is a
+ * subset — but re-running the whole set is harmless and keeps the call sites
+ * uniform.)
+ */
+function invalidateFollowCaches(
+  queryClient: QueryClient,
+  viewerId: string,
+  vars: FollowVars,
+): void {
+  void queryClient.invalidateQueries({
+    queryKey: queryKeys.user.followState(viewerId, vars.targetUserId),
+  });
+  void queryClient.invalidateQueries({
+    queryKey: queryKeys.user.profile(vars.targetUserId),
+  });
+  if (vars.username) {
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.user.byUsername(vars.username),
+    });
+  }
+  void queryClient.invalidateQueries({
+    queryKey: queryKeys.user.followers(vars.targetUserId),
+  });
+  void queryClient.invalidateQueries({
+    queryKey: queryKeys.user.following(viewerId),
+  });
+}
+
+/**
+ * Follow a profile. PUBLIC target → INSERT `follows` (follower_id = viewer,
+ * following_id = target) under `follows_insert_self`; the trigger bumps the
+ * counts + notifies. PRIVATE target → INSERT `follow_requests` (requester_id =
+ * viewer, target_id = target) under `follow_requests_insert_self`; its trigger
+ * notifies the target (no count change until they accept — acceptance is a
+ * later milestone). Errors surface as friendly copy via `trackingErrorMessage`
+ * (never a raw PostgREST error). Invalidate-only on success (see file header).
+ */
+export function useFollowMutation() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: FollowVars): Promise<void> => {
+      if (!user) throw new Error("Not signed in.");
+      if (vars.isPrivate) {
+        const { error } = await supabase
+          .from("follow_requests")
+          .insert({ requester_id: user.id, target_id: vars.targetUserId });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("follows")
+          .insert({ follower_id: user.id, following_id: vars.targetUserId });
+        if (error) throw error;
+      }
+    },
+    onSuccess: (_data, vars) => {
+      if (!user) return;
+      invalidateFollowCaches(queryClient, user.id, vars);
+    },
+    onError: (error) => {
+      // Map to friendly copy at the mutation boundary — a component reads
+      // `mutation.error?.message` and renders it verbatim, so never leak the
+      // raw PostgREST/network error.
+      throw new Error(trackingErrorMessage(error, "your follow", "follow"));
+    },
+  });
+}
+
+/**
+ * Unfollow a profile, OR cancel a pending follow request. DELETE from BOTH
+ * `follows` (follower_id = viewer, following_id = target — `follows_delete_self`)
+ * and `follow_requests` (requester_id = viewer, target_id = target —
+ * `follow_requests_delete_involved`): exactly one has a row for a given state
+ * (following vs requested), and deleting the absent one is a harmless 0-row
+ * delete, so a single mutation covers "Following → tap to unfollow" AND
+ * "Requested → tap to cancel" without the caller branching on state. The
+ * `follows` delete fires the trigger that decrements the counts; invalidation
+ * then refetches them. Friendly errors via `trackingErrorMessage`.
+ */
+export function useUnfollowMutation() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: FollowVars): Promise<void> => {
+      if (!user) throw new Error("Not signed in.");
+      const { error: followError } = await supabase
+        .from("follows")
+        .delete()
+        .eq("follower_id", user.id)
+        .eq("following_id", vars.targetUserId);
+      if (followError) throw followError;
+      const { error: requestError } = await supabase
+        .from("follow_requests")
+        .delete()
+        .eq("requester_id", user.id)
+        .eq("target_id", vars.targetUserId);
+      if (requestError) throw requestError;
+    },
+    onSuccess: (_data, vars) => {
+      if (!user) return;
+      invalidateFollowCaches(queryClient, user.id, vars);
+    },
+    onError: (error) => {
+      throw new Error(trackingErrorMessage(error, "your follow", "follow"));
+    },
+  });
+}
+
+/**
+ * The identity subset a Followers / Following row renders — avatar + name +
+ * @handle, all the row needs to display and navigate to `/u/<username>`.
+ */
+export type FollowListUser = Pick<
+  Tables<"profiles">,
+  "id" | "username" | "display_name" | "avatar_url"
+>;
+
+/** Rows pulled per Followers / Following page (pagination deferred for v1). */
+const FOLLOW_LIST_LIMIT = 50;
+
+/** Shape of one embedded follows → profiles row (either FK direction). */
+type FollowJoinRow = {
+  created_at: string;
+  profiles: FollowListUser | null;
+};
+
+/**
+ * A profile's FOLLOWERS — the users following `userId`. Reads `follows` filtered
+ * to `following_id = userId`, embedding the FOLLOWER's profile via the
+ * `follows_follower_id_fkey` hint (the other end of the edge), newest edge
+ * first, capped at 50. `as unknown as` cast because the embed is an explicit
+ * column subset (same pattern as home.ts). Under `follows_select_involved`, an
+ * anon/other viewer sees these rows when the profiles involved are public (RLS
+ * scopes visibility). `enabled: !!userId`, keyed by `followers(userId)`.
+ */
+export function useFollowers(userId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.user.followers(userId ?? "anon"),
+    enabled: !!userId,
+    queryFn: async (): Promise<FollowListUser[]> => {
+      const { data, error } = await supabase
+        .from("follows")
+        .select(
+          "created_at, profiles!follows_follower_id_fkey(id, username, display_name, avatar_url)",
+        )
+        .eq("following_id", userId!)
+        .order("created_at", { ascending: false })
+        .limit(FOLLOW_LIST_LIMIT);
+      if (error) throw error;
+      return (data ?? [])
+        .map((row) => (row as unknown as FollowJoinRow).profiles)
+        .filter((p): p is FollowListUser => p != null);
+    },
+  });
+}
+
+/**
+ * The users a profile is FOLLOWING — `follows` filtered to `follower_id =
+ * userId`, embedding the FOLLOWED profile via `follows_following_id_fkey`,
+ * newest edge first, capped at 50. Same cast/RLS notes as `useFollowers` (the
+ * mirror-image read). `enabled: !!userId`, keyed by `following(userId)`.
+ */
+export function useFollowing(userId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.user.following(userId ?? "anon"),
+    enabled: !!userId,
+    queryFn: async (): Promise<FollowListUser[]> => {
+      const { data, error } = await supabase
+        .from("follows")
+        .select(
+          "created_at, profiles!follows_following_id_fkey(id, username, display_name, avatar_url)",
+        )
+        .eq("follower_id", userId!)
+        .order("created_at", { ascending: false })
+        .limit(FOLLOW_LIST_LIMIT);
+      if (error) throw error;
+      return (data ?? [])
+        .map((row) => (row as unknown as FollowJoinRow).profiles)
+        .filter((p): p is FollowListUser => p != null);
     },
   });
 }

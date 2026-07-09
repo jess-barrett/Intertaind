@@ -5,21 +5,26 @@
  * follower/following counts, and the four per-media-type engagement counts;
  * the right-hand action is a settings gear (owner) or a Follow button (else).
  *
- * ── What's wired vs deferred ────────────────────────────────────────────
- *   - The follower/following counts are TAPPABLE but no-op with a TODO — the
- *     Followers / Following sub-screens are M6.
+ * ── What's wired vs deferred (M6a) ──────────────────────────────────────
+ *   - The follower/following counts are TAPPABLE — they push the Followers /
+ *     Following sub-screens (`/u/<username>/followers` · `/following`).
  *   - Owner → a settings gear that no-ops (no settings screen yet — M-later).
- *   - Non-owner → a Follow button rendered as a VISUAL PLACEHOLDER (disabled);
- *     the follow state + mutations are M6. Kept visually present per the plan.
+ *   - Non-owner → a LIVE Follow button driven by `useFollowState` +
+ *     `useFollow`/`useUnfollow` mutations (the FollowButton state machine
+ *     below). Private targets route the follow to a request ("Requested").
+ *   - Deferred: per-row follow buttons in the Followers/Following lists;
+ *     block-aware filtering; the private-follower-visibility gate.
  *
  * Design tokens only. Icons color via the `color` PROP (react-native-svg) —
  * never a className — per apps/mobile/AGENTS.md; the four media-type counts use
- * `MEDIA_TYPE_ICONS` + `MEDIA_TYPE_ICON_COLOR`. All data arrives via props from
- * `ProfileView` (which owns the `src/queries/profile.ts` hooks) — the header
- * runs NO inline supabase.
+ * `MEDIA_TYPE_ICONS` + `MEDIA_TYPE_ICON_COLOR`. The read/count data arrives via
+ * props from `ProfileView` (which owns those `src/queries/profile.ts` hooks);
+ * the follow state + mutations are the header's OWN concern, so it calls the
+ * follow hooks directly (still no inline supabase — all via profile.ts).
  */
 import { Pressable, Text, View } from "react-native";
-import { Settings, UserPlus } from "lucide-react-native";
+import { useRouter } from "expo-router";
+import { Check, Clock, Settings, UserPlus } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 import { type MediaType } from "@intertaind/types";
 
@@ -29,7 +34,13 @@ import {
   MEDIA_TYPE_ICONS,
   MEDIA_TYPE_ICON_COLOR,
 } from "@/lib/media-type-icons";
-import type { ProfileMediaCounts, ProfileRow } from "@/queries/profile";
+import {
+  useFollowMutation,
+  useFollowState,
+  useUnfollowMutation,
+  type ProfileMediaCounts,
+  type ProfileRow,
+} from "@/queries/profile";
 
 /** Fixed media-type order for the header count row (movie → tv → book → game). */
 const COUNT_ORDER: MediaType[] = ["movie", "tv_show", "book", "video_game"];
@@ -46,6 +57,7 @@ export function ProfileHeader({
   /** Viewer is looking at their OWN profile → settings gear vs Follow button. */
   isOwner: boolean;
 }) {
+  const router = useRouter();
   const displayName = profile.display_name ?? profile.username;
   // Letter fallback for a missing avatar — first char of the username, upper.
   const avatarLetter = profile.username.charAt(0).toUpperCase();
@@ -110,20 +122,22 @@ export function ProfileHeader({
             </View>
           </View>
 
-          {/* Follower / following — beneath the username (blue region).
-              Tappable (M6 sub-screens); no-op for now. */}
+          {/* Follower / following — beneath the username. Tappable → the M6a
+              Followers / Following sub-screens (pushed onto the current tab). */}
           <View className="flex-row gap-5">
             <CountPill
               value={profile.followers_count}
               label="Followers"
-              // TODO(M6): navigate to the followers sub-screen.
-              onPress={() => {}}
+              onPress={() =>
+                router.push(`/u/${profile.username}/followers`)
+              }
             />
             <CountPill
               value={profile.following_count}
               label="Following"
-              // TODO(M6): navigate to the following sub-screen.
-              onPress={() => {}}
+              onPress={() =>
+                router.push(`/u/${profile.username}/following`)
+              }
             />
           </View>
         </View>
@@ -141,20 +155,11 @@ export function ProfileHeader({
             <Settings size={20} color={colors["text-secondary"]} />
           </Pressable>
         ) : (
-          // Visual placeholder — the follow state + mutations land in M6. Kept
-          // present (and disabled) so the header reads complete now.
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Follow"
-            accessibilityState={{ disabled: true }}
-            disabled
-            className="flex-row items-center gap-1.5 rounded-sm bg-brand px-4 py-2 opacity-60"
-          >
-            <UserPlus size={16} color={colors["text-primary"]} />
-            <Text className="text-sm font-semibold text-text-primary">
-              Follow
-            </Text>
-          </Pressable>
+          <FollowButton
+            targetUserId={profile.id}
+            username={profile.username}
+            isPrivate={profile.is_private}
+          />
         )}
       </View>
 
@@ -191,6 +196,95 @@ function CountPill({
         {value.toLocaleString()}
       </Text>
       <Text className="text-sm text-text-muted">{label}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * The non-owner Follow button — a small state machine over `useFollowState`:
+ *
+ *   "none"      → "Follow"    (brand fill, UserPlus)  → follow. A PRIVATE target
+ *                 turns this into a follow REQUEST (the mutation routes it).
+ *   "following" → "Following" (outline, Check)        → unfollow.
+ *   "requested" → "Requested" (outline, Clock)        → cancel the request.
+ *   "self"      → nothing (owner sees the settings gear instead — but the
+ *                 header only mounts this for non-owners, so it's a guard).
+ *
+ * Optimistic-free (invalidate-only): follow/unfollow are low-frequency and a
+ * pending spinner reads fine; the settle-invalidate refetches `followState` +
+ * the denormalized counts (trigger-owned). While a mutation is in flight the
+ * button disables + shows a spinner so a double-tap can't fire twice. Both
+ * mutations already surface friendly copy via `trackingErrorMessage`; a failed
+ * follow just leaves the button in its prior state (the error line is out of
+ * scope for the compact header — the state simply doesn't advance).
+ */
+function FollowButton({
+  targetUserId,
+  username,
+  isPrivate,
+}: {
+  targetUserId: string;
+  username: string;
+  isPrivate: boolean;
+}) {
+  const stateQuery = useFollowState(targetUserId);
+  const follow = useFollowMutation();
+  const unfollow = useUnfollowMutation();
+
+  const state = stateQuery.data;
+  const pending = follow.isPending || unfollow.isPending;
+
+  // Nothing to render for self (guarded — the header only mounts this for
+  // non-owners) or until the state resolves (avoids a flash of the wrong label).
+  if (state === undefined || state === "self") {
+    return (
+      <View className="flex-row items-center gap-1.5 rounded-sm border border-surface-border px-4 py-2 opacity-40">
+        <UserPlus size={16} color={colors["text-secondary"]} />
+        <Text className="text-sm font-semibold text-text-secondary">
+          Follow
+        </Text>
+      </View>
+    );
+  }
+
+  const vars = { targetUserId, isPrivate, username };
+  const isFollow = state === "none";
+  const onPress = () => {
+    if (pending) return;
+    if (isFollow) follow.mutate(vars);
+    else unfollow.mutate(vars); // following → unfollow; requested → cancel
+  };
+
+  const label =
+    state === "following"
+      ? "Following"
+      : state === "requested"
+        ? "Requested"
+        : "Follow";
+  const Icon = state === "following" ? Check : state === "requested" ? Clock : UserPlus;
+
+  // "Follow" is the brand-filled primary CTA; the active states (Following /
+  // Requested) read as subtle outline buttons the user taps to undo.
+  const className = isFollow
+    ? "flex-row items-center gap-1.5 rounded-sm bg-brand px-4 py-2 active:opacity-70"
+    : "flex-row items-center gap-1.5 rounded-sm border border-surface-border px-4 py-2 active:opacity-70";
+  const iconColor = isFollow ? colors["text-primary"] : colors["text-secondary"];
+  const textClass = isFollow
+    ? "text-sm font-semibold text-text-primary"
+    : "text-sm font-semibold text-text-secondary";
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: pending, selected: !isFollow }}
+      disabled={pending}
+      className={className}
+      style={pending ? { opacity: 0.6 } : undefined}
+      onPress={onPress}
+    >
+      <Icon size={16} color={iconColor} />
+      <Text className={textClass}>{label}</Text>
     </Pressable>
   );
 }
