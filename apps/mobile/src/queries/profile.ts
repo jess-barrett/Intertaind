@@ -23,6 +23,7 @@
  */
 
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -322,6 +323,95 @@ export function useProfileRecentReviews(
       if (error) throw error;
       return (data ?? []) as unknown as ProfileActivityRow[];
     },
+  });
+}
+
+// ─── Paginated activity / reviews feeds (M6b) ────────────────────────────────
+//
+// The FULL activity + reviews sub-screens (`u/[username]/activity` + `/reviews`)
+// page `activity_log` via `useInfiniteQuery` rather than the finite `.limit(n)`
+// preview reads above — same select (ACTIVITY_COLS) + reviews filter, but a
+// windowed `.range(from, to)` per page. The `pageParam` is a 0-based PAGE INDEX
+// (not a row cursor): `from = pageParam * PAGE_SIZE`, `to = from + PAGE_SIZE -
+// 1` (inclusive, PostgREST-style). `getNextPageParam` stops (undefined) once a
+// page comes back SHORT of PAGE_SIZE — the last page — and otherwise hands the
+// next index (`allPages.length`, i.e. the count of pages already loaded).
+//
+// Index paging (vs a keyset cursor on created_at) is the pragmatic v1 choice
+// here: these feeds are append-only newest-first and short-lived per session, so
+// the classic offset caveat (an INSERT at the head shifting the window) is a
+// non-issue in practice — and mobile tracking doesn't yet WRITE activity_log
+// rows anyway (see the screens' note). A keyset cursor is the durable upgrade if
+// these feeds ever grow hot.
+
+/** Rows per page — activity feed (unfiltered, denser) pages 20 at a time. */
+const ACTIVITY_PAGE_SIZE = 20;
+/** Rows per page — reviews feed (sparser) pages 10 at a time. */
+const REVIEWS_PAGE_SIZE = 10;
+
+/**
+ * The profile's FULL activity feed, paginated — the `u/[username]/activity`
+ * sub-screen. Same select + newest-first order as `useProfileRecentActivity`,
+ * but windowed with `.range(from, to)` per `useInfiniteQuery` page (all activity
+ * types). Each page returns `ProfileActivityRow[]`; a page shorter than
+ * ACTIVITY_PAGE_SIZE is the last one (`getNextPageParam` → undefined). The
+ * caller flattens `data.pages` and drives `fetchNextPage` on end-reached.
+ *
+ * `enabled: !!userId`, keyed by `activityPage(userId)` (distinct from the
+ * preview's `recentActivity` key). RLS scopes visibility (public / owner).
+ */
+export function useProfileActivityPage(userId: string | undefined) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.user.activityPage(userId ?? "anon"),
+    enabled: !!userId,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }): Promise<ProfileActivityRow[]> => {
+      const from = pageParam * ACTIVITY_PAGE_SIZE;
+      const to = from + ACTIVITY_PAGE_SIZE - 1;
+      const { data, error } = await supabase
+        .from("activity_log")
+        .select(ACTIVITY_COLS)
+        .eq("user_id", userId!)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+      if (error) throw error;
+      return (data ?? []) as unknown as ProfileActivityRow[];
+    },
+    // A short page is the last page → stop. Otherwise the next page index is the
+    // number of pages already loaded (0-based → next index = allPages.length).
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length < ACTIVITY_PAGE_SIZE ? undefined : allPages.length,
+  });
+}
+
+/**
+ * The profile's FULL REVIEWS feed, paginated — the `u/[username]/reviews`
+ * sub-screen. Identical to `useProfileActivityPage` with the added
+ * `.eq("activity_type", "reviewed")` filter (mirrors `useProfileRecentReviews`)
+ * and a smaller REVIEWS_PAGE_SIZE (reviews are sparser than raw activity).
+ *
+ * `enabled: !!userId`, keyed by `reviewsPage(userId)`.
+ */
+export function useProfileReviewsPage(userId: string | undefined) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.user.reviewsPage(userId ?? "anon"),
+    enabled: !!userId,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }): Promise<ProfileActivityRow[]> => {
+      const from = pageParam * REVIEWS_PAGE_SIZE;
+      const to = from + REVIEWS_PAGE_SIZE - 1;
+      const { data, error } = await supabase
+        .from("activity_log")
+        .select(ACTIVITY_COLS)
+        .eq("user_id", userId!)
+        .eq("activity_type", "reviewed")
+        .order("created_at", { ascending: false })
+        .range(from, to);
+      if (error) throw error;
+      return (data ?? []) as unknown as ProfileActivityRow[];
+    },
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length < REVIEWS_PAGE_SIZE ? undefined : allPages.length,
   });
 }
 

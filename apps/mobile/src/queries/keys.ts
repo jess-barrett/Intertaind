@@ -113,6 +113,19 @@ export const queryKeys = {
     // from recentActivity so the two Overview sections cache independently.
     recentReviews: (userId: string) =>
       [...queryKeys.user.all, userId, "recent-reviews"] as const,
+    // The profile's FULL paginated activity feed — the `u/[username]/activity`
+    // sub-screen's useInfiniteQuery (M6b). Kept DISTINCT from the 3-item
+    // `recentActivity` preview key so the finite preview and the infinite feed
+    // cache independently (different queryFn shapes: T[] vs InfiniteData<T[]>) —
+    // a shared key would let one clobber the other. Profile-owner-scoped.
+    activityPage: (userId: string) =>
+      [...queryKeys.user.all, userId, "activity-page"] as const,
+    // The profile's FULL paginated reviews feed (activity_type = 'reviewed') —
+    // the `u/[username]/reviews` sub-screen's useInfiniteQuery (M6b). Distinct
+    // from both `recentReviews` (the preview) and `activityPage` (the unfiltered
+    // feed) for the same cache-independence reason. Profile-owner-scoped.
+    reviewsPage: (userId: string) =>
+      [...queryKeys.user.all, userId, "reviews-page"] as const,
     // One status-section shelf of a profile (per media type + status/section
     // key) — the Shelves tab. Keyed by owner + type + section so each section
     // caches independently and a type/section switch refetches cleanly.

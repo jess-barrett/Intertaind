@@ -166,6 +166,7 @@ export function ProfileView({
           <SegmentBody
             segment={segment}
             profileUserId={profile.id}
+            username={profile.username}
             isOwner={isOwner}
           />
         </View>
@@ -249,17 +250,24 @@ function EmptyState({ title, detail }: { title: string; detail?: string }) {
 function SegmentBody({
   segment,
   profileUserId,
+  username,
   isOwner,
 }: {
   segment: Segment;
   /** The resolved profile owner's id — every segment self-fetches by it. */
   profileUserId: string;
+  /** The resolved profile's username — Overview builds its See-all routes with it. */
+  username: string;
   isOwner: boolean;
 }) {
   if (segment === "Profile") {
     return (
       <View className="gap-6">
-        <OverviewTab userId={profileUserId} isOwner={isOwner} />
+        <OverviewTab
+          userId={profileUserId}
+          username={username}
+          isOwner={isOwner}
+        />
         {/* Owner-only, kept reachable until a settings surface lands. */}
         {isOwner ? <SignOutButton /> : null}
       </View>

@@ -12,7 +12,10 @@
  * Favorites render via `FavoritesShowcase` — one "Favorites" row of fanned
  * per-type decks that expand to fill the row on tap (see that file). Activity /
  * reviews render as `ActivityRow` lists (shared `formatActivity` phrasing),
- * each with a "See all ›" affordance (full screens land in M6).
+ * each with a "See all ›" affordance that pushes the full paginated sub-screen
+ * (M6b): `/u/<username>/activity` + `/u/<username>/reviews`. The `username`
+ * threads down from `ProfileView` (via `SegmentBody`) purely to BUILD those
+ * routes — the sub-screens re-resolve the profile by username themselves.
  *
  * Owner sign-out: NOT rendered here — `ProfileView`'s `SegmentBody` keeps the
  * existing `SignOutButton` after this component for the owner (there's no
@@ -23,6 +26,7 @@
  */
 import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 import type { MediaType } from "@intertaind/types";
@@ -40,13 +44,17 @@ const FAVORITE_ORDER: MediaType[] = ["movie", "tv_show", "book", "video_game"];
 
 export function OverviewTab({
   userId,
+  username,
   // Accepted for symmetry with the other segments + future owner-only Overview
   // affordances; sign-out itself stays in ProfileView's SegmentBody.
   isOwner: _isOwner,
 }: {
   userId: string;
+  /** The profile's username — used ONLY to build the See-all routes (M6b). */
+  username: string;
   isOwner: boolean;
 }) {
+  const router = useRouter();
   const topFoursQuery = useProfileTopFours(userId);
   const activityQuery = useProfileRecentActivity(userId);
   const reviewsQuery = useProfileRecentReviews(userId);
@@ -89,8 +97,10 @@ export function OverviewTab({
       key: "activity",
       node: (
         <View className="gap-2">
-          {/* TODO(M6): route to the full activity screen. */}
-          <SectionHeaderRow title="Recent activity" onSeeAll={() => {}} />
+          <SectionHeaderRow
+            title="Recent activity"
+            onSeeAll={() => router.push(`/u/${username}/activity`)}
+          />
           <View>
             {activity.map((row) => (
               <ActivityRow key={row.id} row={row} />
@@ -106,8 +116,10 @@ export function OverviewTab({
       key: "reviews",
       node: (
         <View className="gap-2">
-          {/* TODO(M6): route to the full reviews screen. */}
-          <SectionHeaderRow title="Recent reviews" onSeeAll={() => {}} />
+          <SectionHeaderRow
+            title="Recent reviews"
+            onSeeAll={() => router.push(`/u/${username}/reviews`)}
+          />
           <View>
             {reviews.map((row) => (
               <ActivityRow key={row.id} row={row} />
