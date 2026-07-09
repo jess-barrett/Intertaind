@@ -42,7 +42,7 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ArrowLeft } from "lucide-react-native";
+import { ArrowLeft, Lock } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 
 import { useAuth } from "@/components/auth-provider";
@@ -120,40 +120,35 @@ export function ProfileView({
     );
   }
 
-  // ── Private (row visible only because RLS let it through when owned) ────
-  if (profile.is_private && !isOwner) {
-    return (
-      <ProfileShell showBack={showBack} topInset={insets.top}>
-        <EmptyState
-          title="This profile is private"
-          detail="Follow to see their activity, shelves, and lists."
-        />
-      </ProfileShell>
-    );
-  }
-
   // ── Resolved ───────────────────────────────────────────────────────────
+  // A private profile's CONTENT is locked to non-owners (RLS), but the header
+  // (identity + counts + Follow/Request button) always shows so the viewer can
+  // find them and request to follow. Only the tabs + segment body are gated.
+  const contentLocked = profile.is_private && !isOwner;
+
   return (
     <ProfileShell showBack={showBack} topInset={insets.top}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        // Primary tabs sit at the very top; when a back pill floats there too
-        // (u/[username]), pad the content down so the tabs clear it.
+        // The top row (tabs, or the header when there are no tabs) clears a
+        // floating back pill (u/[username]) via the extra padding.
         contentContainerStyle={{
           paddingTop: showBack ? 44 : 8,
           paddingBottom: 32 + bottomInset,
         }}
       >
-        {/* Primary tabs ABOVE the profile info — the header then separates them
-            from any sub-nav a segment renders (e.g. Shelves' type/status bars),
-            so the page never reads as a stack of near-identical bars. */}
-        <View className="px-4 pb-4">
-          <SegmentedControl
-            options={SEGMENTS}
-            value={segment}
-            onChange={setSegment}
-          />
-        </View>
+        {/* Primary tabs ABOVE the profile info — hidden when the content is
+            locked (a private profile you can't view), since every segment
+            would just be the private notice. */}
+        {contentLocked ? null : (
+          <View className="px-4 pb-4">
+            <SegmentedControl
+              options={SEGMENTS}
+              value={segment}
+              onChange={setSegment}
+            />
+          </View>
+        )}
 
         <ProfileHeader
           profile={profile}
@@ -161,16 +156,30 @@ export function ProfileView({
           isOwner={isOwner}
         />
 
-        {/* Active segment body. Overview (M2) + Shelves (M3) + Recs (M4) +
-            Lists (M5) are live; each self-fetches by `profileUserId`. */}
-        <View className="px-4 pt-6">
-          <SegmentBody
-            segment={segment}
-            profileUserId={profile.id}
-            username={profile.username}
-            isOwner={isOwner}
-          />
-        </View>
+        {contentLocked ? (
+          // Private: the header + Follow button above are still shown; the
+          // content is replaced by a lock notice.
+          <View className="items-center gap-2 px-8 pt-10">
+            <Lock size={28} color={colors["text-muted"]} />
+            <Text className="text-center text-base font-semibold text-text-primary">
+              This account is private
+            </Text>
+            <Text className="text-center text-sm text-text-muted">
+              Follow to see their shelves, activity, and lists.
+            </Text>
+          </View>
+        ) : (
+          // Active segment body. Overview (M2) + Shelves (M3) + Recs (M4) +
+          // Lists (M5) are live; each self-fetches by `profileUserId`.
+          <View className="px-4 pt-6">
+            <SegmentBody
+              segment={segment}
+              profileUserId={profile.id}
+              username={profile.username}
+              isOwner={isOwner}
+            />
+          </View>
+        )}
       </ScrollView>
     </ProfileShell>
   );
