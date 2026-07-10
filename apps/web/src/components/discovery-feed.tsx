@@ -1,16 +1,8 @@
 import Link from "next/link";
-import { BookOpen, Film, Tv, Gamepad2, ArrowRight } from "lucide-react";
-import type { MediaItem, MediaType, List, Profile, UserMedia } from "@intertaind/types";
-import { MEDIA_TYPE_CONFIG } from "@intertaind/types";
+import { BookOpen, Film, Tv, Gamepad2, ArrowRight, Sparkles } from "lucide-react";
+import type { MediaItem, List, Profile, UserMedia } from "@intertaind/types";
 import MediaCard from "@/components/media-card";
 import ListCard from "@/components/lists/list-card";
-
-const MEDIA_ICONS: Record<MediaType, React.ElementType> = {
-  movie: Film,
-  tv_show: Tv,
-  book: BookOpen,
-  video_game: Gamepad2,
-};
 
 function SectionHeader({
   title,
@@ -19,7 +11,8 @@ function SectionHeader({
   iconColor,
 }: {
   title: string;
-  href: string;
+  /** Omit to render the header without a "See all" link (no dedicated page). */
+  href?: string;
   icon?: React.ElementType;
   iconColor?: string;
 }) {
@@ -29,18 +22,21 @@ function SectionHeader({
         {Icon && <Icon size={18} className={iconColor} />}
         <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
       </div>
-      <Link
-        href={href}
-        className="flex items-center gap-1 text-xs text-text-muted transition-colors hover:text-text-secondary"
-      >
-        See all <ArrowRight size={12} />
-      </Link>
+      {href && (
+        <Link
+          href={href}
+          className="flex items-center gap-1 text-xs text-text-muted transition-colors hover:text-text-secondary"
+        >
+          See all <ArrowRight size={12} />
+        </Link>
+      )}
     </div>
   );
 }
 
 export default function DiscoveryFeed({
   displayName,
+  recommendedForYou,
   popularMovies,
   popularShows,
   popularBooks,
@@ -51,6 +47,8 @@ export default function DiscoveryFeed({
   viewerTracking,
 }: {
   displayName: string;
+  /** Cross-media recs seeded from what the viewer has engaged with. */
+  recommendedForYou: MediaItem[];
   popularMovies: MediaItem[];
   popularShows: MediaItem[];
   popularBooks: MediaItem[];
@@ -82,6 +80,24 @@ export default function DiscoveryFeed({
         </h1>
         <p className="mt-2 text-text-secondary">Discover something new</p>
       </div>
+
+      {/* Recommended for you — cross-media pairings seeded from what you've
+          engaged with. Above the Popular rails so personalized discovery leads
+          (mirrors mobile's home order). */}
+      {recommendedForYou.length > 0 && (
+        <section className="mb-12">
+          <SectionHeader
+            title="Recommended for you"
+            icon={Sparkles}
+            iconColor="text-brand"
+          />
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {recommendedForYou.slice(0, 6).map((item) => (
+              <MediaCard key={item.id} item={item} compact {...cardProps(item)} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Popular media — 2x2 grid */}
       <div className="mb-12 grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -171,7 +187,8 @@ export default function DiscoveryFeed({
       )}
 
       {/* Empty state if nothing is popular yet */}
-      {popularMovies.length === 0 &&
+      {recommendedForYou.length === 0 &&
+        popularMovies.length === 0 &&
         popularShows.length === 0 &&
         popularBooks.length === 0 &&
         popularGames.length === 0 &&

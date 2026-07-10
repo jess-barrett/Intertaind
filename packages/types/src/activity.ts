@@ -181,3 +181,28 @@ export function removeActivity(previousStatus: string): ActivityDraft {
 export function addedToShelfActivity(status: TrackingStatus): ActivityDraft {
   return { activity_type: "added_to_shelf", metadata: { status } };
 }
+
+/**
+ * Authoring an "Intertain" pairing → `recommended`. The row's media is the
+ * TARGET (what to try); the source + titles go in metadata so formatActivity
+ * can render "Intertaind {target} for fans of {source}" without a join. The
+ * caller sets `media_id` = the recommended (target) media id.
+ */
+export function recommendActivity(args: {
+  sourceMediaId: string;
+  recommendedMediaId: string;
+  sourceTitle: string | null;
+  recommendedTitle: string | null;
+  hasNote: boolean;
+}): ActivityDraft {
+  return {
+    activity_type: "recommended",
+    metadata: {
+      source_media_id: args.sourceMediaId,
+      recommended_media_id: args.recommendedMediaId,
+      source_title: args.sourceTitle,
+      recommended_title: args.recommendedTitle,
+      has_note: args.hasNote,
+    },
+  };
+}

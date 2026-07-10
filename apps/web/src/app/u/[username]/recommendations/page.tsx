@@ -65,10 +65,12 @@ export default async function UserRecommendationsPage({
           {recs.map((r) => (
             <ProfileRecommendationCard
               key={r.id}
+              id={r.id}
               source={r.source_media}
               target={r.recommended_media}
               note={r.note}
               createdAt={r.created_at}
+              canDelete={isOwner}
             />
           ))}
         </div>

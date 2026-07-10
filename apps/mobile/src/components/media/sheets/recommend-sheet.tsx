@@ -216,6 +216,8 @@ function RecommendForm({
         sourceMediaId: media.id,
         recommendedMediaId,
         note: note.trim() || undefined,
+        sourceTitle: media.title,
+        recommendedTitle: target.title,
       });
       // Dismiss via the OUTER handle (stable across the create hook's detail
       // invalidation → potential remount).

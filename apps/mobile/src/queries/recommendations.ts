@@ -42,6 +42,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { recommendActivity } from "@intertaind/types";
 import type {
   MediaItem,
   Profile,
@@ -49,6 +50,7 @@ import type {
   RecommendationWithTarget,
 } from "@intertaind/types";
 import { useAuth } from "@/components/auth-provider";
+import { logActivity } from "@/lib/activity-log";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "./keys";
 
@@ -153,6 +155,10 @@ export type CreateRecommendationVars = {
   sourceMediaId: string;
   recommendedMediaId: string;
   note?: string;
+  /** Titles for the activity metadata (so the feed reads "Intertaind X for
+   *  fans of Y" without a join). The recommend sheet has both on hand. */
+  sourceTitle?: string | null;
+  recommendedTitle?: string | null;
 };
 
 /**
@@ -169,10 +175,9 @@ export type CreateRecommendationVars = {
  * `note` is trimmed and stored `note || null`; the DB's ≤280 CHECK is the
  * backstop (the picker UI will cap input length when it lands).
  *
- * Activity feed: web ALSO inserts an `activity_log` row here so followers
- * see the rec. Mobile defers ALL activity logging to the M3 Postgres
- * trigger (per the tracking.ts convention) — do NOT port web's activity
- * block here; delete web's once the trigger lands.
+ * Activity feed: logs a `recommended` activity via the shared
+ * `@intertaind/types` module (same as web), so the pairing shows in
+ * followers' feeds. Fire-and-forget (never fails the create).
  *
  * On success invalidates BOTH directions' lists for the affected media +
  * the source's media detail (the `recommendations_counts_trigger`
@@ -205,6 +210,19 @@ export function useCreateRecommendationMutation() {
         }
         throw error;
       }
+      // Log the activity (shared decision; target is the row's media). The
+      // activity's media_id is the RECOMMENDED (target) media — web parity.
+      await logActivity(
+        user.id,
+        vars.recommendedMediaId,
+        recommendActivity({
+          sourceMediaId: vars.sourceMediaId,
+          recommendedMediaId: vars.recommendedMediaId,
+          sourceTitle: vars.sourceTitle ?? null,
+          recommendedTitle: vars.recommendedTitle ?? null,
+          hasNote: !!vars.note?.trim(),
+        }),
+      );
     },
     onSuccess: (_data, vars) => {
       void queryClient.invalidateQueries({
@@ -215,6 +233,56 @@ export function useCreateRecommendationMutation() {
       });
       // The counts trigger bumped the denormalized rec counts on the
       // source's media_items row — refetch its detail so they show.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.media.detail(vars.sourceMediaId),
+      });
+      // The pairing was logged as activity — refresh the feeds.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.activity.all,
+      });
+    },
+  });
+}
+
+export type DeleteRecommendationVars = {
+  /** The recommendation row id. */
+  id: string;
+  /** For cache invalidation (both directions' lists + the source's counts +
+   *  the author's profile recs). */
+  sourceMediaId: string;
+  recommendedMediaId: string;
+  ownerId: string;
+};
+
+/**
+ * Delete one of the viewer's OWN pairings. Mirrors web `deleteRecommendation`
+ * — RLS (`recommendations_delete_self`) restricts to `user_id = auth.uid()`;
+ * the explicit `user_id` filter is defense-in-depth. The counts trigger
+ * decrements the denormalized rec counts on the source's media_items row.
+ */
+export function useDeleteRecommendationMutation() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: DeleteRecommendationVars): Promise<void> => {
+      if (!user) throw new Error("Not signed in.");
+      const { error } = await supabase
+        .from("recommendations")
+        .delete()
+        .eq("id", vars.id)
+        .eq("user_id", user.id);
+      if (error) throw error;
+    },
+    onSuccess: (_data, vars) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.user.recommendations(vars.ownerId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.recommendations.forSource(vars.sourceMediaId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.recommendations.forTarget(vars.recommendedMediaId),
+      });
       void queryClient.invalidateQueries({
         queryKey: queryKeys.media.detail(vars.sourceMediaId),
       });

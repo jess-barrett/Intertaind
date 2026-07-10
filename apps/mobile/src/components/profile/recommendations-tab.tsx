@@ -28,8 +28,8 @@
  * empty state. Mobile primitives only; icons color via the `color` PROP; design
  * tokens only.
  */
-import { ActivityIndicator, Text, View } from "react-native";
-import { Share2 } from "lucide-react-native";
+import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import { Share2, Trash2 } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 
 import { MediaCard } from "@/components/media/media-card";
@@ -39,11 +39,19 @@ import {
   useProfileRecommendations,
   type ProfileRecommendation,
 } from "@/queries/profile";
+import { useDeleteRecommendationMutation } from "@/queries/recommendations";
 
 /** Fixed poster width for the paired covers (small — the pair reads as a unit). */
 const POSTER_WIDTH = 72;
 
-export function RecommendationsTab({ userId }: { userId: string }) {
+export function RecommendationsTab({
+  userId,
+  isOwner,
+}: {
+  userId: string;
+  /** The viewer owns this profile → show delete on each pairing. */
+  isOwner: boolean;
+}) {
   const recsQuery = useProfileRecommendations(userId);
   const recs = recsQuery.data ?? [];
 
@@ -74,7 +82,7 @@ export function RecommendationsTab({ userId }: { userId: string }) {
   return (
     <View className="gap-5">
       {recs.map((rec) => (
-        <PairingCard key={rec.id} rec={rec} />
+        <PairingCard key={rec.id} rec={rec} ownerId={userId} canDelete={isOwner} />
       ))}
     </View>
   );
@@ -88,14 +96,41 @@ export function RecommendationsTab({ userId }: { userId: string }) {
  *
  * The hook drops any row missing either media side, so both are present here.
  */
-function PairingCard({ rec }: { rec: ProfileRecommendation }) {
+function PairingCard({
+  rec,
+  ownerId,
+  canDelete,
+}: {
+  rec: ProfileRecommendation;
+  ownerId: string;
+  canDelete: boolean;
+}) {
+  const deleteRec = useDeleteRecommendationMutation();
   // The hook guarantees both sides are non-null (rows missing either are
   // dropped), but narrow defensively so the render never touches a null.
   const { source, recommended } = rec;
   if (!source || !recommended) return null;
 
+  function confirmDelete() {
+    if (!source || !recommended) return;
+    Alert.alert("Delete pairing?", "This removes your recommendation.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () =>
+          deleteRec.mutate({
+            id: rec.id,
+            sourceMediaId: source.id,
+            recommendedMediaId: recommended.id,
+            ownerId,
+          }),
+      },
+    ]);
+  }
+
   return (
-    <View className="gap-3">
+    <View className={`gap-3 ${deleteRec.isPending ? "opacity-50" : ""}`}>
       {/* Two-cover pairing with the intertain glyph between (web parity). */}
       <View className="flex-row items-center gap-3">
         <View style={{ width: POSTER_WIDTH }}>
@@ -119,6 +154,20 @@ function PairingCard({ rec }: { rec: ProfileRecommendation }) {
             showActions={false}
           />
         </View>
+
+        {/* Owner-only delete. */}
+        {canDelete ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Delete pairing"
+            disabled={deleteRec.isPending}
+            hitSlop={8}
+            className="ml-auto rounded-sm p-2 active:opacity-60"
+            onPress={confirmDelete}
+          >
+            <Trash2 size={18} color={colors["text-muted"]} />
+          </Pressable>
+        ) : null}
       </View>
 
       {/* Caption — mirrors web's "If you liked {source}, try {target}". */}

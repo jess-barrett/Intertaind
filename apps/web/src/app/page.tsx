@@ -64,6 +64,37 @@ export default async function Home() {
   const popularLists =
     (listsRes.data as (List & { profiles: Profile })[]) ?? [];
 
+  // Recommended for you: cross-media pairings seeded from the media the viewer
+  // has engaged with (completed / in-progress / favorited), keeping the
+  // recommended side, newest first, deduped. Mirrors mobile's
+  // `useRecommendedForYou`.
+  const { data: engaged } = await supabase
+    .from("user_media")
+    .select("media_id")
+    .eq("user_id", user.id)
+    .or("status.in.(completed,in_progress),is_favorite.eq.true");
+  const engagedIds = [...new Set((engaged ?? []).map((r) => r.media_id))];
+  const recommendedForYou: MediaItem[] = [];
+  if (engagedIds.length > 0) {
+    const { data: recs } = await supabase
+      .from("recommendations")
+      .select(
+        "recommended_media:media_items!recommendations_recommended_media_id_fkey(*)"
+      )
+      .in("source_media_id", engagedIds)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    const seen = new Set<string>();
+    for (const row of (recs as unknown as {
+      recommended_media: MediaItem | null;
+    }[]) ?? []) {
+      const m = row.recommended_media;
+      if (!m || seen.has(m.id)) continue;
+      seen.add(m.id);
+      recommendedForYou.push(m);
+    }
+  }
+
   // Pull first-N item covers for each surfaced list so the home card
   // matches the layered preview on /lists. Same trick: order by position
   // globally so each list contributes its earliest items, cap to keep
@@ -100,6 +131,7 @@ export default async function Home() {
   // own state (watched/loved/rated, current_page/season/episode for in-
   // progress items).
   const allIds = [
+    ...recommendedForYou.map((i) => i.id),
     ...popularMovies.map((i) => i.id),
     ...popularShows.map((i) => i.id),
     ...popularBooks.map((i) => i.id),
@@ -112,6 +144,7 @@ export default async function Home() {
   return (
     <DiscoveryFeed
       displayName={displayName}
+      recommendedForYou={recommendedForYou}
       popularMovies={popularMovies}
       popularShows={popularShows}
       popularBooks={popularBooks}

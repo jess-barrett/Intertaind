@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { recommendActivity } from "@intertaind/types";
 import type {
   Recommendation,
   RecommendationWithSource,
@@ -68,21 +69,21 @@ export async function createRecommendation(
     .in("id", [sourceMediaId, recommendedMediaId]);
   const titleMap = new Map((titles ?? []).map((m) => [m.id, m.title as string]));
 
+  // Activity via the shared @intertaind/types decision (same builder mobile
+  // uses). `media_id` is the *target* — what people click through to in the
+  // feed ("X recommends [target] for fans of [source]"); the source is metadata.
+  const draft = recommendActivity({
+    sourceMediaId,
+    recommendedMediaId,
+    sourceTitle: titleMap.get(sourceMediaId) ?? null,
+    recommendedTitle: titleMap.get(recommendedMediaId) ?? null,
+    hasNote: trimmedNote.length > 0,
+  });
   await supabase.from("activity_log").insert({
     user_id: user.id,
-    // `media_id` on activity_log is the "primary" media for the event.
-    // For a rec we use the *target* — that's what people will click
-    // through to in the activity feed ("X recommends [target] for fans
-    // of [source]"). The source goes in metadata.
     media_id: recommendedMediaId,
-    activity_type: "recommended",
-    metadata: {
-      source_media_id: sourceMediaId,
-      recommended_media_id: recommendedMediaId,
-      source_title: titleMap.get(sourceMediaId) ?? null,
-      recommended_title: titleMap.get(recommendedMediaId) ?? null,
-      has_note: trimmedNote.length > 0,
-    },
+    activity_type: draft.activity_type,
+    metadata: draft.metadata,
   });
 
   return data as Recommendation;

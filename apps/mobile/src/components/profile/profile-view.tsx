@@ -289,7 +289,7 @@ function SegmentBody({
   }
 
   if (segment === "Recs") {
-    return <RecommendationsTab userId={profileUserId} />;
+    return <RecommendationsTab userId={profileUserId} isOwner={isOwner} />;
   }
 
   if (segment === "Lists") {

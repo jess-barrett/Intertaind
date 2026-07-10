@@ -99,46 +99,16 @@ import {
   resolveTrackActivity,
   reviewActivity,
   statusChangedActivity,
-  type ActivityDraft,
   type TrackingStatus,
   type TrackSnapshot,
 } from "@intertaind/types";
 import { useAuth } from "@/components/auth-provider";
+import { logActivity } from "@/lib/activity-log";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "./keys";
 
 type UserMediaRow = Tables<"user_media">;
 type ViewerTrackingKey = ReturnType<typeof queryKeys.media.viewerTracking>;
-
-/**
- * Write an activity row for a tracking change, deriving WHAT to log from the
- * shared `@intertaind/types` decision module (the single source web + mobile
- * share). Fire-and-forget: activity is secondary, so a logging failure is
- * warned, never thrown — it must not fail the tracking write.
- *
- * (Historically mobile wrote NO activity, deferring to a planned Postgres
- * trigger. We chose the shared-module path instead: a trigger can't see the
- * per-type INTENT — logged_episode/season, started_reading — that lives at the
- * action layer, and web already logs explicitly. So both platforms compute via
- * the shared module and insert directly. Web migrates onto the same module
- * next; until then it keeps its equivalent inline writes.)
- */
-async function logActivity(
-  userId: string,
-  mediaId: string,
-  draft: ActivityDraft | null,
-): Promise<void> {
-  if (!draft) return;
-  const { error } = await supabase.from("activity_log").insert({
-    user_id: userId,
-    media_id: mediaId,
-    activity_type: draft.activity_type,
-    metadata: draft.metadata as TablesInsert<"activity_log">["metadata"],
-  });
-  if (error) {
-    console.warn(`activity_log insert failed: ${error.message}`);
-  }
-}
 
 /**
  * Sentinel `id` on rows synthesized by an optimistic update for a

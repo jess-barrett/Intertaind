@@ -3,6 +3,7 @@ import {
   addedToShelfActivity,
   favoriteActivity,
   rateActivity,
+  recommendActivity,
   removeActivity,
   resolveTrackActivity,
   reviewActivity,
@@ -152,6 +153,27 @@ describe("by-id activity builders", () => {
     expect(addedToShelfActivity("want")).toEqual({
       activity_type: "added_to_shelf",
       metadata: { status: "want" },
+    });
+  });
+
+  it("recommendActivity → recommended with source/target + titles + has_note", () => {
+    expect(
+      recommendActivity({
+        sourceMediaId: "s1",
+        recommendedMediaId: "t1",
+        sourceTitle: "Heat",
+        recommendedTitle: "Collateral",
+        hasNote: true,
+      }),
+    ).toEqual({
+      activity_type: "recommended",
+      metadata: {
+        source_media_id: "s1",
+        recommended_media_id: "t1",
+        source_title: "Heat",
+        recommended_title: "Collateral",
+        has_note: true,
+      },
     });
   });
 });

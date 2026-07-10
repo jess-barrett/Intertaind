@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Share2 } from "lucide-react";
 import CoverImage from "@/components/cover-image";
+import DeleteRecommendationButton from "@/components/recommendations/delete-recommendation-button";
 import { relativeTime } from "@/lib/time";
 import type { MediaItem } from "@intertaind/types";
 
@@ -13,15 +14,20 @@ import type { MediaItem } from "@intertaind/types";
  * shows both media items.
  */
 export default function ProfileRecommendationCard({
+  id,
   source,
   target,
   note,
   createdAt,
+  canDelete = false,
 }: {
+  id: string;
   source: Pick<MediaItem, "id" | "title" | "cover_image_url">;
   target: Pick<MediaItem, "id" | "title" | "cover_image_url">;
   note: string | null;
   createdAt: string;
+  /** The viewer authored this pairing → show the delete affordance. */
+  canDelete?: boolean;
 }) {
   return (
     <div className="border-b border-surface-border/60 py-5 last:border-b-0">
@@ -97,6 +103,9 @@ export default function ProfileRecommendationCard({
             </p>
           )}
         </div>
+
+        {/* Owner-only delete. */}
+        {canDelete && <DeleteRecommendationButton id={id} />}
       </div>
     </div>
   );
