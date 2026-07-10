@@ -60,13 +60,27 @@ export type ListDetailSummary = Pick<
   | "item_count"
 >;
 
-/** One list item: its position/note/reason + the embedded media (card-ready). */
+/**
+ * The media a list item embeds. A superset of `HomeMediaItem` (so
+ * `cardMediaFromHomeItem` still adapts it) with the extra columns the
+ * backdrop hero + filter/sort controls need: `backdrop_url` (the hero),
+ * `metadata` (genre filter + length sort), `tracking_count` (popularity sort).
+ */
+export type ListItemMedia = HomeMediaItem &
+  Pick<
+    Tables<"media_items">,
+    "backdrop_url" | "metadata" | "tracking_count"
+  >;
+
+/** One list item: its position/note/reason/added-time + the embedded media. */
 export type ListDetailItem = {
   id: string;
   position: number;
   note: string | null;
   reason: string | null;
-  media: HomeMediaItem | null;
+  /** `list_items.created_at` — the "Recently added" / "Earliest added" sort. */
+  createdAt: string | null;
+  media: ListItemMedia | null;
 };
 
 /** Everything the list-detail screen renders in one payload. */
@@ -88,13 +102,17 @@ const LIST_COLS =
 const AUTHOR_EMBED =
   "profiles!lists_user_id_fkey(id, username, display_name, avatar_url)";
 
+/** Item media columns = the home card subset + hero/filter/sort extras. */
+const ITEM_MEDIA_COLS = `${HOME_MEDIA_COLS}, backdrop_url, metadata, tracking_count`;
+
 type ListRow = ListDetailSummary & { profiles: ListDetailAuthor };
 type ListItemRow = {
   id: string;
   position: number;
   note: string | null;
   reason: string | null;
-  media_items: HomeMediaItem | null;
+  created_at: string | null;
+  media_items: ListItemMedia | null;
 };
 
 /**
@@ -132,7 +150,9 @@ export function useListDetail(listId: string | undefined) {
           : Promise.resolve({ data: null, error: null }),
         supabase
           .from("list_items")
-          .select(`id, position, note, reason, media_items(${HOME_MEDIA_COLS})`)
+          .select(
+            `id, position, note, reason, created_at, media_items(${ITEM_MEDIA_COLS})`,
+          )
           .eq("list_id", listId!)
           .order("position", { ascending: true }),
         user
@@ -161,6 +181,7 @@ export function useListDetail(listId: string | undefined) {
         position: row.position,
         note: row.note,
         reason: row.reason,
+        createdAt: row.created_at,
         media: row.media_items,
       }));
 
