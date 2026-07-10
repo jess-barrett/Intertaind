@@ -83,7 +83,7 @@ export default function StarRating({
                 >
                   <Star
                     size={size}
-                    className="fill-accent-game text-accent-game"
+                    className="fill-brand text-brand"
                   />
                 </div>
               )}
@@ -93,7 +93,7 @@ export default function StarRating({
       </div>
 
       {value && (
-        <span className="ml-1 text-sm font-medium text-accent-game">
+        <span className="ml-1 text-sm font-medium text-brand">
           {value.toFixed(1)}
         </span>
       )}
@@ -140,7 +140,7 @@ export function StarRatingDisplay({
                 className="absolute inset-0 overflow-hidden"
                 style={{ width: `${fillPercent}%` }}
               >
-                <Star size={size} className="fill-accent-game text-accent-game" />
+                <Star size={size} className="fill-brand text-brand" />
               </span>
             )}
           </span>

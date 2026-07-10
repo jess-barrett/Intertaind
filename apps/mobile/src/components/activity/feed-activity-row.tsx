@@ -1,23 +1,39 @@
 /**
- * FeedActivityRow — one row of the Activity tab's FRIENDS feed. Unlike the
- * profile's `ActivityRow` (where the actor is implied by whose profile you're
- * on), a feed row must show WHO acted: an avatar + name, then the shared
- * `formatActivity` sentence (its leading verb lowercased so it reads
- * "Jess added Heat to Watchlist"), a relative time, and the media thumbnail.
+ * FeedActivityRow — one row of the Activity tab's FRIENDS feed. Like the
+ * profile `ActivityRow`, but a feed row must show WHO acted: an actor avatar +
+ * name lead the row. The attribution comes from the shared `formatActivity`
+ * sentence ("Jess rated Inception"), and — matching the You feed — the rich
+ * bits render beneath it: a stars row + Loved heart, and the review text.
  *
- * Two tap targets: the avatar/name → the actor's profile (`/u/<username>`);
- * the sentence + thumbnail → the media (`/media/<id>`) when the row has one.
- * Mobile primitives only; glyph colors via the `color` PROP.
+ * Rows are separated by a hairline (`border-b`); all text is grayish
+ * (`text-text-secondary`). Tap targets: the avatar/name → the actor's profile;
+ * the content + cover → the media (`/media/<id>`).
  */
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { formatActivity, type MediaType } from "@intertaind/types";
+import { Heart } from "lucide-react-native";
+import { formatActivity, ratingToStars, type MediaType } from "@intertaind/types";
 import { colors } from "@intertaind/design-system";
 
 import { Image } from "@/components/image";
+import StarRating from "@/components/star-rating";
 import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
 import { timeAgo } from "@/lib/time";
 import type { ActivityFeedRow } from "@/queries/activity";
+
+/** Read `metadata` defensively (Json | null → object or empty). */
+function readMeta(metadata: unknown): Record<string, unknown> {
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>)
+    : {};
+}
+
+/** A small pink Loved heart (filled). */
+function LovedHeart() {
+  return (
+    <Heart size={13} color={colors["accent-movie"]} fill={colors["accent-movie"]} />
+  );
+}
 
 export function FeedActivityRow({ row }: { row: ActivityFeedRow }) {
   const router = useRouter();
@@ -25,28 +41,44 @@ export function FeedActivityRow({ row }: { row: ActivityFeedRow }) {
   const name = actor?.display_name ?? actor?.username ?? "Someone";
   const avatarLetter = (actor?.username ?? "?").charAt(0).toUpperCase();
 
+  const meta = readMeta(row.metadata);
   const cover = row.media?.cover_image_url ?? null;
-  // DB enum has a 5th type (board_game) the app doesn't surface; narrow to the
-  // 4 domain types (or null) for the glyph map.
   const mediaType = (row.media?.media_type ?? null) as MediaType | null;
   const MediaGlyph = mediaType ? MEDIA_TYPE_ICONS[mediaType] : null;
   const canOpenMedia = !!row.media_id;
 
-  // Shared sentence, first letter lowercased so it follows the actor's name.
+  // Sentence, first letter lowercased so it follows the actor's name.
   const sentence = formatActivity(row);
   const tail = sentence.charAt(0).toLowerCase() + sentence.slice(1);
 
+  // Rich enrichments (same rules as ActivityRow).
+  const ratingDb = typeof meta.rating === "number" ? meta.rating : null;
+  const stars = ratingDb != null ? ratingToStars(ratingDb) : null;
+  const isFavorite = meta.is_favorite === true;
+  const reviewText =
+    typeof meta.review_text === "string" && meta.review_text.trim().length > 0
+      ? meta.review_text
+      : null;
+  const isSeasonEpisode =
+    row.activity_type === "logged_season" ||
+    row.activity_type === "logged_episode";
+  const showStars = !isSeasonEpisode && stars != null;
+  const showReview = !isSeasonEpisode && reviewText != null;
+  const isFavoritedOnly = row.activity_type === "favorited";
+
+  const openMedia = canOpenMedia
+    ? () => router.push(`/media/${row.media_id}`)
+    : undefined;
+
   return (
-    <View className="flex-row items-center gap-3 py-2.5">
+    <View className="flex-row gap-3 border-b border-surface-border py-3">
       {/* Actor avatar → profile. */}
       <Pressable
         accessibilityRole={actor ? "button" : undefined}
         accessibilityLabel={actor ? `View ${name}'s profile` : undefined}
         disabled={!actor}
         className="active:opacity-70"
-        onPress={
-          actor ? () => router.push(`/u/${actor.username}`) : undefined
-        }
+        onPress={actor ? () => router.push(`/u/${actor.username}`) : undefined}
       >
         {actor?.avatar_url ? (
           <Image
@@ -64,33 +96,55 @@ export function FeedActivityRow({ row }: { row: ActivityFeedRow }) {
         )}
       </Pressable>
 
-      {/* Sentence (actor name bold + lowercased verb) + relative time. */}
+      {/* Content → media. */}
       <Pressable
         accessibilityRole={canOpenMedia ? "button" : undefined}
         accessibilityLabel={canOpenMedia ? `${name} ${tail}` : undefined}
         disabled={!canOpenMedia}
-        className="min-w-0 flex-1 active:opacity-70"
-        onPress={
-          canOpenMedia ? () => router.push(`/media/${row.media_id}`) : undefined
-        }
+        className="min-w-0 flex-1 gap-1 active:opacity-70"
+        onPress={openMedia}
       >
-        <Text className="text-sm text-text-secondary" numberOfLines={2}>
-          <Text className="font-semibold text-text-primary">{name}</Text> {tail}
-        </Text>
-        {row.created_at ? (
-          <Text className="mt-0.5 text-xs text-text-muted">
-            {timeAgo(row.created_at)}
+        <View className="flex-row items-start justify-between gap-2">
+          <View className="min-w-0 flex-1 flex-row items-center gap-1.5">
+            <Text
+              className="shrink text-sm text-text-secondary"
+              numberOfLines={2}
+            >
+              <Text className="font-semibold text-text-secondary">{name}</Text>{" "}
+              {tail}
+            </Text>
+            {isFavoritedOnly ? <LovedHeart /> : null}
+          </View>
+          {row.created_at ? (
+            <Text className="shrink-0 text-xs text-text-muted">
+              {timeAgo(row.created_at)}
+            </Text>
+          ) : null}
+        </View>
+
+        {showStars && (stars != null || isFavorite) ? (
+          <View className="flex-row items-center gap-1.5">
+            {stars != null ? (
+              <StarRating value={stars} readOnly starsOnly hideEmpty size={13} />
+            ) : null}
+            {isFavorite ? <LovedHeart /> : null}
+          </View>
+        ) : null}
+
+        {showReview ? (
+          <Text className="text-sm text-text-secondary" numberOfLines={4}>
+            {reviewText}
           </Text>
         ) : null}
       </Pressable>
 
-      {/* Media thumbnail → media. */}
+      {/* Media cover → media. */}
       {canOpenMedia ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={row.media?.title ?? "Open media"}
           className="h-14 w-10 shrink-0 overflow-hidden rounded-sm border border-surface-border bg-surface-overlay active:opacity-70"
-          onPress={() => router.push(`/media/${row.media_id}`)}
+          onPress={openMedia}
         >
           {cover ? (
             <Image

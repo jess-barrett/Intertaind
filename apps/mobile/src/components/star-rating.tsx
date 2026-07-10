@@ -24,9 +24,9 @@
  *
  * Colors: star fills are SVG props, which NativeWind can't reach, so
  * they come straight from the token object (`colors` from
- * `@intertaind/design-system`) — `accent-game` for the fill (the star
- * color web uses everywhere) and `surface-border` for the empty
- * outline. Chrome (the value + Clear button) uses className tokens.
+ * `@intertaind/design-system`) — `brand` (the intertaind pink) for the fill
+ * and `surface-border` for the empty outline. Chrome (the value + Clear button)
+ * uses className tokens.
  */
 import { useId, useMemo, useRef } from "react";
 import {
@@ -113,8 +113,8 @@ function StarGlyph({
       {fill !== "empty" ? (
         <Path
           d={STAR_PATH}
-          fill={colors["accent-game"]}
-          stroke={colors["accent-game"]}
+          fill={colors.brand}
+          stroke={colors.brand}
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -266,7 +266,7 @@ export default function StarRating({
       {!starsOnly && valueLabel != null ? (
         <Text
           className="text-sm font-medium"
-          style={{ color: colors["accent-game"] }}
+          style={{ color: colors.brand }}
           accessibilityElementsHidden // redundant with star labels
           importantForAccessibility="no-hide-descendants"
         >

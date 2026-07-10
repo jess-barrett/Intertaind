@@ -5,14 +5,17 @@
  * Mirrors the `user_media` WRITE semantics of web's server actions in
  * `apps/web/src/app/actions/media.ts` (`trackMedia`,
  * `updateTrackingStatus`, `rateMedia`, `toggleFavorite`, `reviewMedia`,
- * `removeTracking`) with ONE deliberate difference:
+ * `removeTracking`).
  *
- *   NO `activity_log` writes. Web logs activity inline after each
- *   write; for mobile that responsibility moves to a Postgres trigger
- *   (M3). Until the trigger ships, mobile-originated tracking changes
- *   produce no feed rows — known and accepted for M2. Do NOT port
- *   web's activity blocks here later; delete web's instead once the
- *   trigger lands.
+ *   `activity_log` writes: each mutation logs its activity via `logActivity`
+ *   (below), deriving WHAT to log from the shared `@intertaind/types` decision
+ *   module (`resolveTrackActivity` + the by-id builders) — the SAME logic web
+ *   uses, so both platforms produce identical feed rows. (This supersedes the
+ *   earlier plan to move logging into a Postgres trigger: a trigger can't see
+ *   the per-type INTENT — logged_episode/season, started_reading — that lives
+ *   at the action layer. Web keeps its equivalent inline writes until it
+ *   migrates onto the same shared module.) Logging is fire-and-forget: it never
+ *   fails the tracking write.
  *
  * Ratings: `user_media.rating` is the **1–10 DB scale**, not 0.5–5
  * stars — see the two-scale rule in `packages/types/src/rating.ts`.
@@ -45,11 +48,12 @@
  * `userMediaId` when the panel has a tracking row (exact web byId
  * semantics), omit it for an untracked item and the mutation looks up
  * the viewer's row by (user_id, media_id) and, when none exists,
- * inserts `{ status: "want", ...field }`. Read-then-write (not a blind
- * upsert) so a stale-cache caller can never clobber an existing row's
- * status back to "want". Web reaches the same end state in two writes
- * (insert want, then update field); we collapse to one insert — no
- * observable difference now that activity logging is out of band.
+ * inserts a NEW row. Rate/review lazy-create it as `status: "completed"`
+ * (rating or reviewing implies you CONSUMED it — so the detail page
+ * highlights watched/played/read, not the Watchlist bookmark); favorite
+ * lazy-creates `status: "want"` (a love can be aspirational). Read-then-write
+ * (not a blind upsert) so a stale-cache caller can never clobber an EXISTING
+ * row's status.
  * Both lazy-create insert paths catch Postgres 23505 (a concurrent
  * lazy-create won the (user_id, media_id) unique race) and finish as
  * an update instead of throwing — see `patchOrLazyCreate`'s doc.
@@ -87,13 +91,54 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import type { Tables, TablesInsert } from "@intertaind/supabase";
-import { isValidDbRating, type TrackingStatus } from "@intertaind/types";
+import {
+  favoriteActivity,
+  isValidDbRating,
+  rateActivity,
+  removeActivity,
+  resolveTrackActivity,
+  reviewActivity,
+  statusChangedActivity,
+  type ActivityDraft,
+  type TrackingStatus,
+  type TrackSnapshot,
+} from "@intertaind/types";
 import { useAuth } from "@/components/auth-provider";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "./keys";
 
 type UserMediaRow = Tables<"user_media">;
 type ViewerTrackingKey = ReturnType<typeof queryKeys.media.viewerTracking>;
+
+/**
+ * Write an activity row for a tracking change, deriving WHAT to log from the
+ * shared `@intertaind/types` decision module (the single source web + mobile
+ * share). Fire-and-forget: activity is secondary, so a logging failure is
+ * warned, never thrown — it must not fail the tracking write.
+ *
+ * (Historically mobile wrote NO activity, deferring to a planned Postgres
+ * trigger. We chose the shared-module path instead: a trigger can't see the
+ * per-type INTENT — logged_episode/season, started_reading — that lives at the
+ * action layer, and web already logs explicitly. So both platforms compute via
+ * the shared module and insert directly. Web migrates onto the same module
+ * next; until then it keeps its equivalent inline writes.)
+ */
+async function logActivity(
+  userId: string,
+  mediaId: string,
+  draft: ActivityDraft | null,
+): Promise<void> {
+  if (!draft) return;
+  const { error } = await supabase.from("activity_log").insert({
+    user_id: userId,
+    media_id: mediaId,
+    activity_type: draft.activity_type,
+    metadata: draft.metadata as TablesInsert<"activity_log">["metadata"],
+  });
+  if (error) {
+    console.warn(`activity_log insert failed: ${error.message}`);
+  }
+}
 
 /**
  * Sentinel `id` on rows synthesized by an optimistic update for a
@@ -131,9 +176,15 @@ function invalidateTrackingCaches(
   void queryClient.invalidateQueries({
     queryKey: queryKeys.media.detail(mediaId),
   });
+  // All of the viewer's user-scoped data (prefix match): shelves + media counts
+  // AND the activity / reviews feeds — the "You" tab (`user.activityPage`), the
+  // profile Overview preview, and the full lists. A tracking write can change
+  // any of them, and may have just logged activity.
   void queryClient.invalidateQueries({
-    queryKey: queryKeys.user.shelves(userId),
+    queryKey: [...queryKeys.user.all, userId],
   });
+  // Feeds that surface this user's activity to OTHERS (the Friends feed).
+  void queryClient.invalidateQueries({ queryKey: queryKeys.activity.all });
 }
 
 /**
@@ -239,10 +290,16 @@ async function patchOrLazyCreate(
   const targetId = userMediaId ?? (await findByMedia());
   if (targetId) return patchById(targetId);
 
+  // Lazy-create an untracked item as COMPLETED (not "want"): rating or
+  // reviewing something implies you've consumed it, so the detail page
+  // highlights the watched / played / read icon rather than the Watchlist
+  // bookmark. (An already-tracked row keeps its status — that's the
+  // `patchById` path above.)
   const payload: TablesInsert<"user_media"> = {
     user_id: userId,
     media_id: mediaId,
-    status: "want",
+    status: "completed",
+    completed_at: new Date().toISOString(),
     ...patch,
   };
   const { data, error } = await supabase
@@ -302,6 +359,15 @@ export function useTrackMediaMutation() {
       if (!user) throw new Error("Not signed in.");
       assertValidRating(vars.rating);
 
+      // Read the row as it was so the shared decision can tell an add from a
+      // status change / newly-set rating|review (mirrors web's trackMedia).
+      const { data: prior } = await supabase
+        .from("user_media")
+        .select("status, rating, review, is_favorite, progress")
+        .eq("user_id", user.id)
+        .eq("media_id", vars.mediaId)
+        .maybeSingle();
+
       const payload: TablesInsert<"user_media"> = {
         user_id: user.id,
         media_id: vars.mediaId,
@@ -326,6 +392,29 @@ export function useTrackMediaMutation() {
         .select("id")
         .single();
       if (error) throw error;
+
+      const priorSnap: TrackSnapshot | null = prior
+        ? {
+            status: prior.status,
+            rating: prior.rating,
+            review: prior.review,
+            is_favorite: prior.is_favorite ?? false,
+            progress: (prior.progress ?? null) as Record<string, unknown> | null,
+          }
+        : null;
+      await logActivity(
+        user.id,
+        vars.mediaId,
+        resolveTrackActivity({
+          prior: priorSnap,
+          status: vars.status,
+          rating: vars.rating,
+          review: vars.review,
+          is_favorite: vars.is_favorite,
+          progress: (vars.progress ?? null) as Record<string, unknown> | null,
+        }),
+      );
+
       return data.id;
     },
     onMutate: async (vars) => {
@@ -423,6 +512,11 @@ export function useUpdateStatusMutation() {
         .select("media_id")
         .single();
       if (error) throw error;
+      await logActivity(
+        user.id,
+        data.media_id,
+        statusChangedActivity(vars.status),
+      );
       return data.media_id;
     },
     onMutate: async (vars) => {
@@ -482,9 +576,14 @@ export function useRateMediaMutation() {
     mutationFn: async (vars: RateMediaVars): Promise<string> => {
       if (!user) throw new Error("Not signed in.");
       assertValidRating(vars.rating);
-      return patchOrLazyCreate(user.id, vars.mediaId, vars.userMediaId, {
-        rating: vars.rating,
-      });
+      const mediaId = await patchOrLazyCreate(
+        user.id,
+        vars.mediaId,
+        vars.userMediaId,
+        { rating: vars.rating },
+      );
+      await logActivity(user.id, mediaId, rateActivity(vars.rating));
+      return mediaId;
     },
     onMutate: async (vars) => {
       if (!user) return undefined;
@@ -497,6 +596,11 @@ export function useRateMediaMutation() {
       const next: UserMediaRow = {
         ...base,
         rating: vars.rating,
+        // Rating an UNTRACKED item lazy-creates it as completed (see
+        // patchOrLazyCreate) — reflect that now so the detail page highlights
+        // watched/played/read, not the Watchlist bookmark. An already-tracked
+        // row keeps its status.
+        ...(previous ? {} : { status: "completed", completed_at: now }),
         updated_at: now,
       };
       queryClient.setQueryData<UserMediaRow | null>(key, next);
@@ -544,9 +648,19 @@ export function useReviewMediaMutation() {
   return useMutation({
     mutationFn: async (vars: ReviewMediaVars): Promise<string> => {
       if (!user) throw new Error("Not signed in.");
-      return patchOrLazyCreate(user.id, vars.mediaId, vars.userMediaId, {
-        review: vars.review,
-      });
+      const mediaId = await patchOrLazyCreate(
+        user.id,
+        vars.mediaId,
+        vars.userMediaId,
+        { review: vars.review },
+      );
+      // Skip logging an empty review (nothing to show in the feed).
+      await logActivity(
+        user.id,
+        mediaId,
+        vars.review.trim() ? reviewActivity(vars.review) : null,
+      );
+      return mediaId;
     },
     onSuccess: (_mediaIdFromDb, vars) => {
       if (!user) return;
@@ -619,7 +733,10 @@ export function useToggleFavoriteMutation() {
           is_favorite: true,
         };
         const { error } = await supabase.from("user_media").insert(payload);
-        if (!error) return true;
+        if (!error) {
+          await logActivity(user.id, vars.mediaId, favoriteActivity(true));
+          return true;
+        }
         // 23505: a concurrent lazy-create won the (user_id, media_id)
         // unique race — e.g. rate an untracked item, then favorite it
         // before the rate settles: both read "no row", both insert,
@@ -640,6 +757,7 @@ export function useToggleFavoriteMutation() {
         .eq("id", current.id)
         .eq("user_id", user.id);
       if (error) throw error;
+      await logActivity(user.id, vars.mediaId, favoriteActivity(newValue));
       return newValue;
     },
     onMutate: async (vars) => {
@@ -702,13 +820,19 @@ export function useRemoveTrackingMutation() {
         .delete()
         .eq("id", vars.userMediaId)
         .eq("user_id", user.id)
-        .select("id");
+        .select("id, status");
       if (error) throw error;
       if (!deleted || deleted.length === 0) {
         throw new Error(
           "Failed to remove tracking: nothing was deleted (likely an RLS policy issue)."
         );
       }
+      // Log `removed`, carrying the just-deleted row's status for the sentence.
+      await logActivity(
+        user.id,
+        vars.mediaId,
+        removeActivity(deleted[0].status),
+      );
     },
     onSuccess: (_data, vars) => {
       if (!user) return;

@@ -1,3 +1,4 @@
+export * from "./activity.ts";
 export * from "./format-activity.ts";
 export * from "./progress.ts";
 export * from "./rating.ts";
