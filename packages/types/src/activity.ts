@@ -183,6 +183,36 @@ export function addedToShelfActivity(status: TrackingStatus): ActivityDraft {
 }
 
 /**
+ * Liking a list → `liked_list` (mirrors web `toggleListLike`). Logged only on
+ * the positive transition (a like, not an un-like). The caller sets the row's
+ * `media_id` to the list's `source_media_id` (or null). `title` lets
+ * `formatActivity` render "Liked the list {title}" without a join.
+ */
+export function likedListActivity(args: {
+  listId: string;
+  title: string;
+}): ActivityDraft {
+  return {
+    activity_type: "liked_list",
+    metadata: { list_id: args.listId, title: args.title },
+  };
+}
+
+/**
+ * Saving (bookmarking) a list → `saved_list` (mirrors web `toggleListSave`).
+ * Positive-transition only; same metadata shape as {@link likedListActivity}.
+ */
+export function savedListActivity(args: {
+  listId: string;
+  title: string;
+}): ActivityDraft {
+  return {
+    activity_type: "saved_list",
+    metadata: { list_id: args.listId, title: args.title },
+  };
+}
+
+/**
  * Authoring an "Intertain" pairing → `recommended`. The row's media is the
  * TARGET (what to try); the source goes in metadata (the activity row can only
  * embed the target via `media_id`). We store the source's cover + type too, so

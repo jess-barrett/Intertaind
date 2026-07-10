@@ -213,5 +213,10 @@ export const queryKeys = {
     // (RLS-scoped to public visibility), shared across viewers, works
     // pre-auth. Includes the batched cover previews (see usePopularLists).
     popular: () => [...queryKeys.lists.all, "popular"] as const,
+    // A single list + its items + author + the viewer's like/save state — the
+    // list-detail route. RLS scopes reads (public / owner / shared-visibility);
+    // the viewer's like/save is folded into the same query, keyed by list id.
+    detail: (listId: string) =>
+      [...queryKeys.lists.all, "detail", listId] as const,
   },
 } as const;

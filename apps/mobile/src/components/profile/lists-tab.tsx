@@ -10,9 +10,8 @@
  * web's `ListCoverStack`), then the list title, a meta row (author · item count
  * · like count with a Heart glyph), and the optional description (2 lines).
  *
- * ── NON-NAVIGABLE in v1 ─────────────────────────────────────────────────────
- * There is no mobile list-detail route yet, so a card has NOWHERE to go — it
- * renders as a plain `View`, NOT a `Pressable`/link. See the TODO on the card.
+ * ── Navigable ───────────────────────────────────────────────────────────────
+ * Each card is a `Pressable` → `/list/<id>` (the shared list-detail route).
  *
  * ── Renders inside ProfileView's ScrollView ─────────────────────────────────
  * ProfileView owns the outer vertical `ScrollView`, so this tab is a plain
@@ -31,7 +30,8 @@
  * Mobile primitives only; `Image` from `@/components/image`; icons color via the
  * `color` PROP; design tokens only.
  */
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { Heart, ListMusic, User } from "lucide-react-native";
 import { colors } from "@intertaind/design-system";
 
@@ -94,18 +94,21 @@ export function ListsTab({
 /**
  * One created-list card: an overlapping cover collage, the title, a meta row
  * (author · item count · like count), and the optional description. Mirrors
- * web's `BrowseListRow`.
- *
- * TODO(list-detail route): non-navigable in v1 — there is no mobile list-detail
- * route yet, so this is a plain `View`, not a `Pressable`/link. Wrap it in a
- * tap target routing to the list once that route exists.
+ * web's `BrowseListRow`. The whole card is a `Pressable` → the shared
+ * `/list/<id>` detail route.
  */
 function ListCard({ card }: { card: ProfileListCard }) {
+  const router = useRouter();
   const { list, author, covers } = card;
   const authorName = author.display_name || author.username;
 
   return (
-    <View className="gap-2.5">
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open list ${list.title}`}
+      className="gap-2.5 active:opacity-70"
+      onPress={() => router.push(`/list/${list.id}`)}
+    >
       {/* Cover collage — overlapping poster thumbnails (web's ListCoverStack). */}
       {covers.length > 0 ? (
         <View
@@ -196,6 +199,6 @@ function ListCard({ card }: { card: ProfileListCard }) {
           {list.description}
         </Text>
       ) : null}
-    </View>
+    </Pressable>
   );
 }

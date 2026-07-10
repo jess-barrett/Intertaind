@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   addedToShelfActivity,
   favoriteActivity,
+  likedListActivity,
   rateActivity,
   recommendActivity,
   removeActivity,
   resolveTrackActivity,
   reviewActivity,
+  savedListActivity,
   type TrackSnapshot,
 } from "./activity.ts";
 
@@ -153,6 +155,17 @@ describe("by-id activity builders", () => {
     expect(addedToShelfActivity("want")).toEqual({
       activity_type: "added_to_shelf",
       metadata: { status: "want" },
+    });
+  });
+
+  it("likedListActivity / savedListActivity → list_id + title metadata", () => {
+    expect(likedListActivity({ listId: "l1", title: "Best Heists" })).toEqual({
+      activity_type: "liked_list",
+      metadata: { list_id: "l1", title: "Best Heists" },
+    });
+    expect(savedListActivity({ listId: "l1", title: "Best Heists" })).toEqual({
+      activity_type: "saved_list",
+      metadata: { list_id: "l1", title: "Best Heists" },
     });
   });
 
