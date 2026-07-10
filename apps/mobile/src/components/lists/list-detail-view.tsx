@@ -31,6 +31,7 @@
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  type LayoutChangeEvent,
   Pressable,
   ScrollView,
   Text,
@@ -87,6 +88,11 @@ const HERO_HEIGHT = 260;
 const CONTENT_PADDING = 16;
 const GRID_GAP = 12;
 const NUM_COLUMNS = 3;
+/** A dropdown panel is its chip's width + 1/3 (extends past the opposite edge). */
+const PANEL_WIDTH_FACTOR = 4 / 3;
+
+type ControlKey = "decade" | "genre" | "sort";
+type ChipGeom = { x: number; y: number; width: number; height: number };
 
 export function ListDetailView({ listId }: { listId: string }) {
   const insets = useSafeAreaInsets();
@@ -254,17 +260,22 @@ function Body({
         </Pressable>
       ) : null}
 
-      {/* Tags. */}
+      {/* Tags — a "Tags" label to the left of the chip row. */}
       {list.tags && list.tags.length > 0 ? (
-        <View className="flex-row flex-wrap gap-1.5">
-          {list.tags.map((tag) => (
-            <View
-              key={tag}
-              className="rounded-sm border border-surface-border bg-surface-overlay px-2 py-0.5"
-            >
-              <Text className="text-xs text-text-secondary">{tag}</Text>
-            </View>
-          ))}
+        <View className="flex-row items-center gap-2">
+          <Text className="text-xs font-medium uppercase tracking-wider text-text-muted">
+            Tags
+          </Text>
+          <View className="min-w-0 flex-1 flex-row flex-wrap gap-1.5">
+            {list.tags.map((tag) => (
+              <View
+                key={tag}
+                className="rounded-sm border border-surface-border bg-surface-overlay px-2 py-0.5"
+              >
+                <Text className="text-xs text-text-secondary">{tag}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       ) : null}
 
@@ -320,11 +331,17 @@ function ItemsSection({
     [filtered, sort, trackingMap, shuffleSeed],
   );
 
+  // Per-chip layout (x/y/width/height within the controls row) so the open
+  // dropdown can float over the content at a fixed width tied to its chip.
+  const [geom, setGeom] = useState<Partial<Record<ControlKey, ChipGeom>>>({});
+  const measure = (key: ControlKey) => (e: LayoutChangeEvent) =>
+    setGeom((g) => ({ ...g, [key]: e.nativeEvent.layout }));
+
   const sortMenu = SORT_OPTIONS.filter((o) => !o.requiresUser || isLoggedIn);
   const sortLabel =
     SORT_OPTIONS.find((o) => o.key === sort)?.label ?? "Sort by";
 
-  function toggle(control: "decade" | "genre" | "sort") {
+  function toggle(control: ControlKey) {
     setOpen((cur) => (cur === control ? null : control));
   }
   function pickSort(key: string) {
@@ -334,66 +351,109 @@ function ItemsSection({
     setOpen(null);
   }
 
-  return (
-    <View className="gap-3">
-      {/* Control chips. */}
-      <View className="flex-row flex-wrap items-center gap-2">
-        {decadeOptions.length > 0 ? (
-          <ControlChip
-            label={decade || "Any decade"}
-            open={open === "decade"}
-            onPress={() => toggle("decade")}
-          />
-        ) : null}
-        {genreOptions.length > 0 ? (
-          <ControlChip
-            label={genre || "Any genre"}
-            open={open === "genre"}
-            onPress={() => toggle("genre")}
-          />
-        ) : null}
-        {!ranked ? (
-          <ControlChip
-            label={sortLabel}
-            open={open === "sort"}
-            onPress={() => toggle("sort")}
-            alignRight
-          />
-        ) : null}
-      </View>
-
-      {/* Inline options panel for the open control (pushes the grid down). */}
-      {open === "decade" ? (
-        <OptionsPanel
-          selected={decade}
-          options={[
+  // The open dropdown's options + selection + geometry-derived float position.
+  const openMenu =
+    open === "decade"
+      ? {
+          selected: decade,
+          options: [
             { value: "", label: "Any decade" },
             ...decadeOptions.map((d) => ({ value: d, label: d })),
-          ]}
-          onSelect={(v) => {
+          ],
+          onSelect: (v: string) => {
             setDecade(v);
             setOpen(null);
-          }}
-        />
-      ) : open === "genre" ? (
-        <OptionsPanel
-          selected={genre}
-          options={[
-            { value: "", label: "Any genre" },
-            ...genreOptions.map((g) => ({ value: g, label: g })),
-          ]}
-          onSelect={(v) => {
-            setGenre(v);
-            setOpen(null);
-          }}
-        />
-      ) : open === "sort" ? (
-        <OptionsPanel
-          selected={sort}
-          options={sortMenu.map((o) => ({ value: o.key, label: o.label }))}
-          onSelect={pickSort}
-        />
-      ) : null}
+          },
+          align: "left" as const,
+        }
+      : open === "genre"
+        ? {
+            selected: genre,
+            options: [
+              { value: "", label: "Any genre" },
+              ...genreOptions.map((g) => ({ value: g, label: g })),
+            ],
+            onSelect: (v: string) => {
+              setGenre(v);
+              setOpen(null);
+            },
+            align: "left" as const,
+          }
+        : open === "sort"
+          ? {
+              selected: sort,
+              options: sortMenu.map((o) => ({ value: o.key, label: o.label })),
+              onSelect: pickSort,
+              align: "right" as const,
+            }
+          : null;
+
+  const openGeom = open ? geom[open] : undefined;
+  // Panel width = the chip's width + 1/3 (extends past the chip on the opposite
+  // edge). Left controls align left-edge→left-edge; the sort control aligns
+  // right-edge→right-edge (so it extends leftward instead of off-screen).
+  const panelStyle =
+    openMenu && openGeom
+      ? {
+          position: "absolute" as const,
+          top: openGeom.y + openGeom.height + 4,
+          width: openGeom.width * PANEL_WIDTH_FACTOR,
+          left:
+            openMenu.align === "right"
+              ? openGeom.x + openGeom.width - openGeom.width * PANEL_WIDTH_FACTOR
+              : openGeom.x,
+          zIndex: 20,
+          // Float above the grid: elevation (Android) + a soft shadow (iOS).
+          elevation: 8,
+          shadowColor: "#000",
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 4 },
+        }
+      : null;
+
+  return (
+    <View className="gap-3">
+      {/* Control chips + the floating dropdown panel (raised above the grid). */}
+      <View style={{ zIndex: 10 }}>
+        <View className="flex-row flex-wrap items-center gap-2">
+          {decadeOptions.length > 0 ? (
+            <ControlChip
+              label={decade || "Any decade"}
+              open={open === "decade"}
+              onPress={() => toggle("decade")}
+              onLayout={measure("decade")}
+            />
+          ) : null}
+          {genreOptions.length > 0 ? (
+            <ControlChip
+              label={genre || "Any genre"}
+              open={open === "genre"}
+              onPress={() => toggle("genre")}
+              onLayout={measure("genre")}
+            />
+          ) : null}
+          {!ranked ? (
+            <ControlChip
+              label={sortLabel}
+              open={open === "sort"}
+              onPress={() => toggle("sort")}
+              onLayout={measure("sort")}
+              alignRight
+            />
+          ) : null}
+        </View>
+
+        {panelStyle && openMenu ? (
+          <View style={panelStyle}>
+            <OptionsPanel
+              selected={openMenu.selected}
+              options={openMenu.options}
+              onSelect={openMenu.onSelect}
+            />
+          </View>
+        ) : null}
+      </View>
 
       {sorted.length === 0 ? (
         <Text className="py-8 text-center text-sm text-text-muted">
@@ -416,11 +476,13 @@ function ControlChip({
   label,
   open,
   onPress,
+  onLayout,
   alignRight,
 }: {
   label: string;
   open: boolean;
   onPress: () => void;
+  onLayout?: (e: LayoutChangeEvent) => void;
   alignRight?: boolean;
 }) {
   return (
@@ -428,6 +490,7 @@ function ControlChip({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ expanded: open }}
+      onLayout={onLayout}
       className={`flex-row items-center gap-1 rounded-sm border px-2.5 py-1.5 active:opacity-70 ${
         open ? "border-brand" : "border-surface-border"
       } ${alignRight ? "ml-auto" : ""} bg-surface-overlay`}
