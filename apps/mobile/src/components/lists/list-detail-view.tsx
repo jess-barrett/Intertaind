@@ -334,8 +334,12 @@ function ItemsSection({
   // Per-chip layout (x/y/width/height within the controls row) so the open
   // dropdown can float over the content at a fixed width tied to its chip.
   const [geom, setGeom] = useState<Partial<Record<ControlKey, ChipGeom>>>({});
-  const measure = (key: ControlKey) => (e: LayoutChangeEvent) =>
-    setGeom((g) => ({ ...g, [key]: e.nativeEvent.layout }));
+  const measure = (key: ControlKey) => (e: LayoutChangeEvent) => {
+    // Read the layout SYNCHRONOUSLY — the synthetic event is recycled before the
+    // (deferred) state updater runs, so `e.nativeEvent` would be null inside it.
+    const { x, y, width, height } = e.nativeEvent.layout;
+    setGeom((g) => ({ ...g, [key]: { x, y, width, height } }));
+  };
 
   const sortMenu = SORT_OPTIONS.filter((o) => !o.requiresUser || isLoggedIn);
   const sortLabel =
