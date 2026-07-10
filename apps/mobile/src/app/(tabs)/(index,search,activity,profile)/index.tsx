@@ -33,14 +33,17 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/components/auth-provider";
 import { MediaRail } from "@/components/media/media-rail";
+import { ListRail } from "@/components/lists/list-rail";
 import { useBottomInset } from "@/lib/use-bottom-inset";
 import { queryKeys } from "@/queries/keys";
 import {
   useContinueTracking,
+  usePopularLists,
   usePopularMedia,
   useRecommendedForYou,
   useViewerTrackingMap,
   type HomeMediaItem,
+  type PopularListCard,
   type ViewerTrackingState,
 } from "@/queries/home";
 
@@ -51,6 +54,10 @@ const EMPTY_ITEMS: HomeMediaItem[] = [];
 /** Stable empty tracking map for the pre-fetch render (same rationale as
  *  EMPTY_ITEMS — avoid a fresh `new Map()` every render before data lands). */
 const EMPTY_TRACKING_MAP = new Map<string, ViewerTrackingState>();
+
+/** Stable empty fallback for the Popular Lists rail (same rationale as
+ *  EMPTY_ITEMS). */
+const EMPTY_LISTS: PopularListCard[] = [];
 
 export default function HomeScreen() {
   const { user } = useAuth();
@@ -70,6 +77,9 @@ export default function HomeScreen() {
   const popularShowsQuery = usePopularMedia("tv_show");
   const popularBooksQuery = usePopularMedia("book");
   const popularGamesQuery = usePopularMedia("video_game");
+  // Public lists rail — secondary (self-hides when empty), like Continue.
+  const popularListsQuery = usePopularLists();
+  const popularLists = popularListsQuery.data ?? EMPTY_LISTS;
 
   // Reference the query `.data` directly (a STABLE reference across renders
   // while unchanged) and fall back to a shared EMPTY_ITEMS constant rather
@@ -159,7 +169,8 @@ export default function HomeScreen() {
     popularMovies.length === 0 &&
     popularShows.length === 0 &&
     popularBooks.length === 0 &&
-    popularGames.length === 0;
+    popularGames.length === 0 &&
+    popularLists.length === 0;
 
   return (
     // The outer View reserves the top safe-area as a solid strip so content
@@ -221,13 +232,12 @@ export default function HomeScreen() {
         onMutated={onMutated}
       />
 
+      {/* Public curated lists, tapping through to the shared /list/[id] route. */}
+      <ListRail title="Popular Lists" lists={popularLists} />
+
       {allEmpty ? (
         <Text className="px-4 text-sm text-text-muted">Nothing here yet.</Text>
       ) : null}
-
-      {/* Popular Lists rail deferred: no list-detail route on mobile yet, so
-          list cards would dead-end. usePopularLists stays unused until a
-          later milestone mounts a list-detail route. */}
       </ScrollView>
     </View>
   );
