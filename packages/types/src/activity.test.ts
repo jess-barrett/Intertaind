@@ -164,6 +164,8 @@ describe("by-id activity builders", () => {
         sourceTitle: "Heat",
         recommendedTitle: "Collateral",
         hasNote: true,
+        sourceCoverUrl: "http://x/heat.jpg",
+        sourceMediaType: "movie",
       }),
     ).toEqual({
       activity_type: "recommended",
@@ -173,6 +175,8 @@ describe("by-id activity builders", () => {
         source_title: "Heat",
         recommended_title: "Collateral",
         has_note: true,
+        source_cover_url: "http://x/heat.jpg",
+        source_media_type: "movie",
       },
     });
   });

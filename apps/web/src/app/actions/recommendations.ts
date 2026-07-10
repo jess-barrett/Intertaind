@@ -61,23 +61,28 @@ export async function createRecommendation(
     throw new Error(`Failed to post pairing: ${error?.message ?? "unknown"}`);
   }
 
-  // Hydrate titles into metadata so the activity feed renderer can show
-  // "Intertaind [target] for fans of [source]" without an extra join.
-  const { data: titles } = await supabase
+  // Hydrate the paired media into metadata so the activity feed can render the
+  // SOURCE → TARGET pairing (source cover + type; the target's poster comes
+  // from the row's media embed) without an extra join.
+  const { data: metas } = await supabase
     .from("media_items")
-    .select("id, title")
+    .select("id, title, cover_image_url, media_type")
     .in("id", [sourceMediaId, recommendedMediaId]);
-  const titleMap = new Map((titles ?? []).map((m) => [m.id, m.title as string]));
+  const metaMap = new Map((metas ?? []).map((m) => [m.id, m]));
+  const sourceMeta = metaMap.get(sourceMediaId);
+  const targetMeta = metaMap.get(recommendedMediaId);
 
   // Activity via the shared @intertaind/types decision (same builder mobile
   // uses). `media_id` is the *target* — what people click through to in the
-  // feed ("X recommends [target] for fans of [source]"); the source is metadata.
+  // feed; the source is metadata.
   const draft = recommendActivity({
     sourceMediaId,
     recommendedMediaId,
-    sourceTitle: titleMap.get(sourceMediaId) ?? null,
-    recommendedTitle: titleMap.get(recommendedMediaId) ?? null,
+    sourceTitle: sourceMeta?.title ?? null,
+    recommendedTitle: targetMeta?.title ?? null,
     hasNote: trimmedNote.length > 0,
+    sourceCoverUrl: sourceMeta?.cover_image_url ?? null,
+    sourceMediaType: sourceMeta?.media_type ?? null,
   });
   await supabase.from("activity_log").insert({
     user_id: user.id,

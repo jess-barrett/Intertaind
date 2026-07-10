@@ -184,9 +184,13 @@ export function addedToShelfActivity(status: TrackingStatus): ActivityDraft {
 
 /**
  * Authoring an "Intertain" pairing → `recommended`. The row's media is the
- * TARGET (what to try); the source + titles go in metadata so formatActivity
- * can render "Intertaind {target} for fans of {source}" without a join. The
- * caller sets `media_id` = the recommended (target) media id.
+ * TARGET (what to try); the source goes in metadata (the activity row can only
+ * embed the target via `media_id`). We store the source's cover + type too, so
+ * the feed can render the full SOURCE → TARGET pairing (matching the profile
+ * Recs tab) without a join — the target's poster comes from the row's media
+ * embed. `source_title` also lets formatActivity render the text fallback
+ * ("Intertaind {target} for fans of {source}") for old rows lacking the cover.
+ * The caller sets `media_id` = the recommended (target) media id.
  */
 export function recommendActivity(args: {
   sourceMediaId: string;
@@ -194,6 +198,8 @@ export function recommendActivity(args: {
   sourceTitle: string | null;
   recommendedTitle: string | null;
   hasNote: boolean;
+  sourceCoverUrl?: string | null;
+  sourceMediaType?: string | null;
 }): ActivityDraft {
   return {
     activity_type: "recommended",
@@ -203,6 +209,8 @@ export function recommendActivity(args: {
       source_title: args.sourceTitle,
       recommended_title: args.recommendedTitle,
       has_note: args.hasNote,
+      source_cover_url: args.sourceCoverUrl ?? null,
+      source_media_type: args.sourceMediaType ?? null,
     },
   };
 }

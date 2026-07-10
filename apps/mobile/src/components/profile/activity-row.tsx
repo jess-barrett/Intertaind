@@ -23,6 +23,10 @@ import { colors } from "@intertaind/design-system";
 
 import { Image } from "@/components/image";
 import StarRating from "@/components/star-rating";
+import {
+  RecommendationPairing,
+  type PairMedia,
+} from "@/components/activity/recommendation-pairing";
 import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
 import { timeAgo } from "@/lib/time";
 import type { ProfileActivityRow } from "@/queries/profile";
@@ -82,6 +86,47 @@ export function ActivityRow({ row }: { row: ProfileActivityRow }) {
     row.activity_type === "logged_season" ||
     row.activity_type === "logged_episode";
   const isReview = !isSeasonEpisode && reviewText != null;
+
+  // Recommended → the SOURCE → TARGET pairing (matches the Recs tab). Needs the
+  // source in metadata (cover added at write time); older recs lacking it fall
+  // through to the sentence below.
+  const sourceMediaId =
+    row.activity_type === "recommended" &&
+    typeof meta.source_media_id === "string"
+      ? meta.source_media_id
+      : null;
+  if (sourceMediaId) {
+    const source: PairMedia = {
+      id: sourceMediaId,
+      title:
+        typeof meta.source_title === "string" ? meta.source_title : "Untitled",
+      cover:
+        typeof meta.source_cover_url === "string"
+          ? meta.source_cover_url
+          : null,
+      mediaType: (typeof meta.source_media_type === "string"
+        ? meta.source_media_type
+        : null) as MediaType | null,
+    };
+    const target: PairMedia = {
+      id: row.media_id,
+      title: row.media?.title ?? "Untitled",
+      cover: row.media?.cover_image_url ?? null,
+      mediaType: (row.media?.media_type ?? null) as MediaType | null,
+    };
+    return (
+      <View className="flex-row items-start gap-3 border-b border-surface-border py-3">
+        <View className="min-w-0 flex-1">
+          <RecommendationPairing source={source} target={target} />
+        </View>
+        {row.created_at ? (
+          <Text className="shrink-0 text-xs text-text-muted">
+            {timeAgo(row.created_at)}
+          </Text>
+        ) : null}
+      </View>
+    );
+  }
 
   // ── Review → the stacked layout (separated by the row's border, no box). ──
   if (isReview) {

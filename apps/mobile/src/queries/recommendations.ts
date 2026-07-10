@@ -155,10 +155,13 @@ export type CreateRecommendationVars = {
   sourceMediaId: string;
   recommendedMediaId: string;
   note?: string;
-  /** Titles for the activity metadata (so the feed reads "Intertaind X for
-   *  fans of Y" without a join). The recommend sheet has both on hand. */
+  /** Source title + cover + type for the activity metadata, so the feed can
+   *  render the SOURCE → TARGET pairing (the target comes from the row's media
+   *  embed). The recommend sheet has all of these on hand. */
   sourceTitle?: string | null;
   recommendedTitle?: string | null;
+  sourceCoverUrl?: string | null;
+  sourceMediaType?: string | null;
 };
 
 /**
@@ -221,6 +224,8 @@ export function useCreateRecommendationMutation() {
           sourceTitle: vars.sourceTitle ?? null,
           recommendedTitle: vars.recommendedTitle ?? null,
           hasNote: !!vars.note?.trim(),
+          sourceCoverUrl: vars.sourceCoverUrl ?? null,
+          sourceMediaType: vars.sourceMediaType ?? null,
         }),
       );
     },

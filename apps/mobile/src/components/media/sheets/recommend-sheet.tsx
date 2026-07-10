@@ -218,6 +218,8 @@ function RecommendForm({
         note: note.trim() || undefined,
         sourceTitle: media.title,
         recommendedTitle: target.title,
+        sourceCoverUrl: media.cover_image_url,
+        sourceMediaType: media.media_type,
       });
       // Dismiss via the OUTER handle (stable across the create hook's detail
       // invalidation → potential remount).

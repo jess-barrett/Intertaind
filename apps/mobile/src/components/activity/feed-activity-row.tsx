@@ -1,13 +1,13 @@
 /**
  * FeedActivityRow — one row of the Activity tab's FRIENDS feed. Like the
  * profile `ActivityRow`, but a feed row must show WHO acted: an actor avatar +
- * name lead the row. The attribution comes from the shared `formatActivity`
+ * name lead the row. Attribution comes from the shared `formatActivity`
  * sentence ("Jess rated Inception"), and — matching the You feed — the rich
- * bits render beneath it: a stars row + Loved heart, and the review text.
+ * bits render beneath it: stars + Loved heart, review text, or (for
+ * `recommended`) the SOURCE → TARGET pairing.
  *
- * Rows are separated by a hairline (`border-b`); all text is grayish
- * (`text-text-secondary`). Tap targets: the avatar/name → the actor's profile;
- * the content + cover → the media (`/media/<id>`).
+ * Rows are separated by a hairline (`border-b`); text is grayish. Tap targets:
+ * the avatar → the actor's profile; content/cover/pairing posters → the media.
  */
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -17,6 +17,10 @@ import { colors } from "@intertaind/design-system";
 
 import { Image } from "@/components/image";
 import StarRating from "@/components/star-rating";
+import {
+  RecommendationPairing,
+  type PairMedia,
+} from "@/components/activity/recommendation-pairing";
 import { MEDIA_TYPE_ICONS } from "@/lib/media-type-icons";
 import { timeAgo } from "@/lib/time";
 import type { ActivityFeedRow } from "@/queries/activity";
@@ -35,17 +39,55 @@ function LovedHeart() {
   );
 }
 
+/** The actor's avatar → their profile (letter fallback). */
+function ActorAvatar({
+  actor,
+  name,
+}: {
+  actor: ActivityFeedRow["actor"];
+  name: string;
+}) {
+  const router = useRouter();
+  const avatarLetter = (actor?.username ?? "?").charAt(0).toUpperCase();
+  return (
+    <Pressable
+      accessibilityRole={actor ? "button" : undefined}
+      accessibilityLabel={actor ? `View ${name}'s profile` : undefined}
+      disabled={!actor}
+      className="active:opacity-70"
+      onPress={actor ? () => router.push(`/u/${actor.username}`) : undefined}
+    >
+      {actor?.avatar_url ? (
+        <Image
+          source={{ uri: actor.avatar_url }}
+          className="h-10 w-10 rounded-full border border-surface-border bg-surface-overlay"
+          contentFit="cover"
+          accessible={false}
+        />
+      ) : (
+        <View className="h-10 w-10 items-center justify-center rounded-full border border-surface-border bg-surface-overlay">
+          <Text className="text-sm font-semibold text-text-secondary">
+            {avatarLetter}
+          </Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
 export function FeedActivityRow({ row }: { row: ActivityFeedRow }) {
   const router = useRouter();
   const actor = row.actor;
   const name = actor?.display_name ?? actor?.username ?? "Someone";
-  const avatarLetter = (actor?.username ?? "?").charAt(0).toUpperCase();
 
   const meta = readMeta(row.metadata);
   const cover = row.media?.cover_image_url ?? null;
   const mediaType = (row.media?.media_type ?? null) as MediaType | null;
   const MediaGlyph = mediaType ? MEDIA_TYPE_ICONS[mediaType] : null;
   const canOpenMedia = !!row.media_id;
+  const openMedia = canOpenMedia
+    ? () => router.push(`/media/${row.media_id}`)
+    : undefined;
 
   // Sentence, first letter lowercased so it follows the actor's name.
   const sentence = formatActivity(row);
@@ -66,35 +108,59 @@ export function FeedActivityRow({ row }: { row: ActivityFeedRow }) {
   const showReview = !isSeasonEpisode && reviewText != null;
   const isFavoritedOnly = row.activity_type === "favorited";
 
-  const openMedia = canOpenMedia
-    ? () => router.push(`/media/${row.media_id}`)
-    : undefined;
+  // ── Recommended → actor + the SOURCE → TARGET pairing. Older recs lacking
+  // the source metadata fall through to the sentence render below. ──
+  const sourceMediaId =
+    row.activity_type === "recommended" &&
+    typeof meta.source_media_id === "string"
+      ? meta.source_media_id
+      : null;
+  if (sourceMediaId) {
+    const source: PairMedia = {
+      id: sourceMediaId,
+      title:
+        typeof meta.source_title === "string" ? meta.source_title : "Untitled",
+      cover:
+        typeof meta.source_cover_url === "string"
+          ? meta.source_cover_url
+          : null,
+      mediaType: (typeof meta.source_media_type === "string"
+        ? meta.source_media_type
+        : null) as MediaType | null,
+    };
+    const target: PairMedia = {
+      id: row.media_id,
+      title: row.media?.title ?? "Untitled",
+      cover: row.media?.cover_image_url ?? null,
+      mediaType,
+    };
+    return (
+      <View className="flex-row gap-3 border-b border-surface-border py-3">
+        <ActorAvatar actor={actor} name={name} />
+        <View className="min-w-0 flex-1 gap-1">
+          <View className="flex-row items-start justify-between gap-2">
+            <Text
+              className="min-w-0 flex-1 text-sm text-text-secondary"
+              numberOfLines={1}
+            >
+              <Text className="font-semibold text-text-secondary">{name}</Text>{" "}
+              intertaind
+            </Text>
+            {row.created_at ? (
+              <Text className="shrink-0 text-xs text-text-muted">
+                {timeAgo(row.created_at)}
+              </Text>
+            ) : null}
+          </View>
+          <RecommendationPairing source={source} target={target} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-row gap-3 border-b border-surface-border py-3">
-      {/* Actor avatar → profile. */}
-      <Pressable
-        accessibilityRole={actor ? "button" : undefined}
-        accessibilityLabel={actor ? `View ${name}'s profile` : undefined}
-        disabled={!actor}
-        className="active:opacity-70"
-        onPress={actor ? () => router.push(`/u/${actor.username}`) : undefined}
-      >
-        {actor?.avatar_url ? (
-          <Image
-            source={{ uri: actor.avatar_url }}
-            className="h-10 w-10 rounded-full border border-surface-border bg-surface-overlay"
-            contentFit="cover"
-            accessible={false}
-          />
-        ) : (
-          <View className="h-10 w-10 items-center justify-center rounded-full border border-surface-border bg-surface-overlay">
-            <Text className="text-sm font-semibold text-text-secondary">
-              {avatarLetter}
-            </Text>
-          </View>
-        )}
-      </Pressable>
+      <ActorAvatar actor={actor} name={name} />
 
       {/* Content → media. */}
       <Pressable
