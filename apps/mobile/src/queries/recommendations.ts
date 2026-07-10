@@ -241,10 +241,18 @@ export function useCreateRecommendationMutation() {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.media.detail(vars.sourceMediaId),
       });
-      // The pairing was logged as activity — refresh the feeds.
+      // The pairing was logged as activity → refresh the Friends feed
+      // (activity.*) AND the viewer's own user-scoped feeds — the "You" tab
+      // reads `user.activityPage`, and the profile Recs tab `user.recommendations`,
+      // neither of which is under `activity.*`.
       void queryClient.invalidateQueries({
         queryKey: queryKeys.activity.all,
       });
+      if (user) {
+        void queryClient.invalidateQueries({
+          queryKey: [...queryKeys.user.all, user.id],
+        });
+      }
     },
   });
 }
