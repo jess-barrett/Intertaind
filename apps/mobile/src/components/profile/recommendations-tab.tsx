@@ -79,8 +79,10 @@ export function RecommendationsTab({
     );
   }
 
+  // Each card carries its own bottom hairline (like the activity feeds), so the
+  // list reads as separated rows rather than free-floating cards.
   return (
-    <View className="gap-5">
+    <View>
       {recs.map((rec) => (
         <PairingCard key={rec.id} rec={rec} ownerId={userId} canDelete={isOwner} />
       ))}
@@ -145,7 +147,9 @@ function PairingCard({
   };
 
   return (
-    <View className={deleteRec.isPending ? "opacity-50" : ""}>
+    <View
+      className={`border-b border-surface-border py-3 ${deleteRec.isPending ? "opacity-50" : ""}`}
+    >
       <RecommendationPairing
         source={sourceMedia}
         target={targetMedia}
