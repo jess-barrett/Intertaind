@@ -1,7 +1,21 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import type { SearchResult, TrackingStatus } from "@intertaind/types";
+import type {
+  ActivityDraft,
+  ActivityType,
+  SearchResult,
+  TrackingStatus,
+} from "@intertaind/types";
+import {
+  addedToShelfActivity,
+  favoriteActivity,
+  rateActivity,
+  removeActivity,
+  resolveTrackActivity,
+  reviewActivity,
+  statusChangedActivity,
+} from "@intertaind/types";
 import {
   getMovieDetails,
   getTVDetails,
@@ -42,6 +56,30 @@ async function getAuthUser() {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
   return { supabase, user };
+}
+
+type ServerSupabase = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * Insert an `activity_log` row from a shared `ActivityDraft` (or no-op when
+ * null). The single web write path for TRACKING activity — the "what to log"
+ * decision lives in `@intertaind/types` (shared with mobile), so the two
+ * platforms can't drift. (List / recommendation activity is logged by their own
+ * actions and isn't covered here.)
+ */
+async function logActivity(
+  supabase: ServerSupabase,
+  userId: string,
+  mediaId: string | null,
+  draft: ActivityDraft | null,
+): Promise<void> {
+  if (!draft) return;
+  await supabase.from("activity_log").insert({
+    user_id: userId,
+    media_id: mediaId,
+    activity_type: draft.activity_type,
+    metadata: draft.metadata,
+  });
 }
 
 // --- Phase 1 enrichment helpers ---
@@ -1355,13 +1393,7 @@ export async function quickAddMedia(
 
   if (error) throw new Error(`Failed to track media: ${error.message}`);
 
-  // Log activity
-  await supabase.from("activity_log").insert({
-    user_id: user.id,
-    media_id: mediaId,
-    activity_type: "added_to_shelf",
-    metadata: { status: "want" },
-  });
+  await logActivity(supabase, user.id, mediaId, addedToShelfActivity("want"));
 
   return { mediaId, userMediaId: userMedia.id };
 }
@@ -1414,93 +1446,32 @@ export async function trackMedia(
 
   if (error) throw new Error(`Failed to track media: ${error.message}`);
 
-  // Pick the activity_type by priority: explicit override > review > pure
-  // status change (when the row already existed and the user isn't logging
-  // a rating/review) > completed > added_to_shelf.
-  const hasReview = !!(options?.review && options.review.trim().length > 0);
-  const hasRatingChange = options?.rating !== undefined;
-  const priorSubStatus = (prior?.progress as Record<string, unknown> | null)
-    ?.sub_status;
-  const newSubStatus = (options?.progress as Record<string, unknown> | undefined)
-    ?.sub_status;
-  const isStatusChange =
-    !!prior &&
-    !hasReview &&
-    !hasRatingChange &&
-    (prior.status !== status || priorSubStatus !== newSubStatus);
-  const activityType =
-    options?.activity_type_override ??
-    (hasReview
-      ? "reviewed"
-      : isStatusChange
-      ? "status_changed"
-      : status === "completed"
-      ? "completed"
-      : "added_to_shelf");
-
-  // Decide whether this trackMedia call deserves an activity row, or if it's
-  // a silent metadata edit (just adjusting hours played, a date, or rewriting
-  // an existing review). We only log on genuine "events":
-  //   - first time tracking
-  //   - status / sub_status changed
-  //   - newly added or cleared rating
-  //   - newly added review (not text edits to an existing review)
-  //   - log-episode / log-season overrides are always discrete events
-  const overrideAlwaysLogs =
-    options?.activity_type_override === "logged_episode" ||
-    options?.activity_type_override === "logged_season";
-  const isFirstTime = !prior;
-  const ratingNewlySet =
-    !!prior && prior.rating == null && options?.rating != null;
-  const ratingCleared =
-    !!prior && prior.rating != null && options?.rating === null;
-  const priorReviewText = typeof prior?.review === "string" ? prior.review.trim() : "";
-  const reviewNewlyAdded = !!prior && priorReviewText.length === 0 && hasReview;
-
-  const shouldLog =
-    overrideAlwaysLogs ||
-    isFirstTime ||
-    isStatusChange ||
-    ratingNewlySet ||
-    ratingCleared ||
-    reviewNewlyAdded;
-
-  const metadata: Record<string, unknown> = {
+  // Decide + log the activity via the shared @intertaind/types decision (the
+  // single source shared with mobile: priority, the silent-edit "should I log?"
+  // guards, and the metadata shape all live there).
+  const draft = resolveTrackActivity({
+    prior: prior
+      ? {
+          status: prior.status,
+          rating: prior.rating,
+          review: prior.review,
+          is_favorite: prior.is_favorite ?? false,
+          progress: (prior.progress as Record<string, unknown> | null) ?? null,
+        }
+      : null,
     status,
-    ...(options?.activity_metadata_extra ?? {}),
-  };
-  if (options?.rating != null) metadata.rating = options.rating;
-  if (hasReview && options?.review) {
-    metadata.review_length = options.review.length;
-    metadata.review_text = options.review;
-  }
-  if (options?.is_favorite) metadata.is_favorite = true;
-  // Game sub-status drives display labels like "as Playing" / "as Shelved".
-  const subStatus = (options?.progress as Record<string, unknown> | undefined)
-    ?.sub_status;
-  if (subStatus) metadata.sub_status = subStatus;
-  // For TV shows, capture the user's current position so activity rows like
-  // "Added X as Currently Watching (S2 E5)" can render the season/episode.
-  const currentSeason = (options?.progress as Record<string, unknown> | undefined)
-    ?.current_season;
-  const currentEpisode = (options?.progress as Record<string, unknown> | undefined)
-    ?.current_episode;
-  if (currentSeason != null) metadata.current_season = currentSeason;
-  if (currentEpisode != null) metadata.current_episode = currentEpisode;
-  // Game hours_played, surfaced on the activity card next to the title.
-  const hoursPlayed = (options?.progress as Record<string, unknown> | undefined)
-    ?.hours_played;
-  if (typeof hoursPlayed === "number" && hoursPlayed > 0)
-    metadata.hours_played = hoursPlayed;
-
-  if (shouldLog) {
-    await supabase.from("activity_log").insert({
-      user_id: user.id,
-      media_id: mediaId,
-      activity_type: activityType,
-      metadata,
-    });
-  }
+    rating: options?.rating,
+    review: options?.review,
+    is_favorite: options?.is_favorite,
+    progress: (options?.progress as Record<string, unknown> | undefined) ?? null,
+    override: options?.activity_type_override
+      ? {
+          activity_type: options.activity_type_override as ActivityType,
+          metadata: options.activity_metadata_extra,
+        }
+      : undefined,
+  });
+  await logActivity(supabase, user.id, mediaId, draft);
 
   return data.id;
 }
@@ -1525,12 +1496,12 @@ export async function updateTrackingStatus(
 
   if (error) throw new Error(`Failed to update status: ${error.message}`);
 
-  await supabase.from("activity_log").insert({
-    user_id: user.id,
-    media_id: data.media_id,
-    activity_type: "status_changed",
-    metadata: { to_status: status },
-  });
+  await logActivity(
+    supabase,
+    user.id,
+    data.media_id,
+    statusChangedActivity(status),
+  );
 }
 
 export async function rateMedia(
@@ -1552,17 +1523,8 @@ export async function rateMedia(
 
   if (error) throw new Error(`Failed to rate: ${error.message}`);
 
-  // Skip the activity log when the user is *clearing* their rating —
-  // there's nothing meaningful to show in the feed for "unrated", and a
-  // null-rating row would otherwise display as a 0-star "Rated X".
-  if (rating !== null) {
-    await supabase.from("activity_log").insert({
-      user_id: user.id,
-      media_id: data.media_id,
-      activity_type: "rated",
-      metadata: { rating },
-    });
-  }
+  // rateActivity returns null for a *cleared* rating — nothing to log.
+  await logActivity(supabase, user.id, data.media_id, rateActivity(rating));
 }
 
 export async function toggleFavorite(userMediaId: string): Promise<boolean> {
@@ -1588,15 +1550,13 @@ export async function toggleFavorite(userMediaId: string): Promise<boolean> {
 
   if (error) throw new Error(`Failed to toggle favorite: ${error.message}`);
 
-  // Only log the positive transition — unfavoriting is silent.
-  if (newValue) {
-    await supabase.from("activity_log").insert({
-      user_id: user.id,
-      media_id: current.media_id,
-      activity_type: "favorited",
-      metadata: {},
-    });
-  }
+  // favoriteActivity logs only the positive transition — unfavoriting is silent.
+  await logActivity(
+    supabase,
+    user.id,
+    current.media_id,
+    favoriteActivity(newValue),
+  );
 
   return newValue;
 }
@@ -1617,12 +1577,7 @@ export async function reviewMedia(
 
   if (error) throw new Error(`Failed to save review: ${error.message}`);
 
-  await supabase.from("activity_log").insert({
-    user_id: user.id,
-    media_id: data.media_id,
-    activity_type: "reviewed",
-    metadata: { review_length: review.length, review_text: review },
-  });
+  await logActivity(supabase, user.id, data.media_id, reviewActivity(review));
 }
 
 export async function removeTracking(userMediaId: string): Promise<void> {
@@ -1654,12 +1609,12 @@ export async function removeTracking(userMediaId: string): Promise<void> {
   }
 
   if (existing) {
-    await supabase.from("activity_log").insert({
-      user_id: user.id,
-      media_id: existing.media_id,
-      activity_type: "removed",
-      metadata: { previous_status: existing.status },
-    });
+    await logActivity(
+      supabase,
+      user.id,
+      existing.media_id,
+      removeActivity(existing.status),
+    );
   }
 }
 
