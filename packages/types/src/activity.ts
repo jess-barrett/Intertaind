@@ -200,6 +200,8 @@ export function recommendActivity(args: {
   hasNote: boolean;
   sourceCoverUrl?: string | null;
   sourceMediaType?: string | null;
+  /** The author's note text, so the feed can show the reasoning inline. */
+  note?: string | null;
 }): ActivityDraft {
   return {
     activity_type: "recommended",
@@ -209,6 +211,7 @@ export function recommendActivity(args: {
       source_title: args.sourceTitle,
       recommended_title: args.recommendedTitle,
       has_note: args.hasNote,
+      note: args.note ?? null,
       source_cover_url: args.sourceCoverUrl ?? null,
       source_media_type: args.sourceMediaType ?? null,
     },

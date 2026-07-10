@@ -134,6 +134,10 @@ export function FeedActivityRow({ row }: { row: ActivityFeedRow }) {
       cover: row.media?.cover_image_url ?? null,
       mediaType,
     };
+    const note =
+      typeof meta.note === "string" && meta.note.trim().length > 0
+        ? meta.note
+        : null;
     return (
       <View className="flex-row gap-3 border-b border-surface-border py-3">
         <ActorAvatar actor={actor} name={name} />
@@ -152,7 +156,8 @@ export function FeedActivityRow({ row }: { row: ActivityFeedRow }) {
               </Text>
             ) : null}
           </View>
-          <RecommendationPairing source={source} target={target} />
+          {/* Time lives in the actor header above, so no timeLabel here. */}
+          <RecommendationPairing source={source} target={target} note={note} />
         </View>
       </View>
     );

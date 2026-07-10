@@ -224,6 +224,7 @@ export function useCreateRecommendationMutation() {
           sourceTitle: vars.sourceTitle ?? null,
           recommendedTitle: vars.recommendedTitle ?? null,
           hasNote: !!vars.note?.trim(),
+          note: vars.note?.trim() || null,
           sourceCoverUrl: vars.sourceCoverUrl ?? null,
           sourceMediaType: vars.sourceMediaType ?? null,
         }),

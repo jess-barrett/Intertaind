@@ -81,6 +81,7 @@ export async function createRecommendation(
     sourceTitle: sourceMeta?.title ?? null,
     recommendedTitle: targetMeta?.title ?? null,
     hasNote: trimmedNote.length > 0,
+    note: trimmedNote.length > 0 ? trimmedNote : null,
     sourceCoverUrl: sourceMeta?.cover_image_url ?? null,
     sourceMediaType: sourceMeta?.media_type ?? null,
   });

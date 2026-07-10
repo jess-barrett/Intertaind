@@ -29,20 +29,20 @@
  * tokens only.
  */
 import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
-import { Share2, Trash2 } from "lucide-react-native";
+import { Trash2 } from "lucide-react-native";
+import type { MediaType } from "@intertaind/types";
 import { colors } from "@intertaind/design-system";
 
-import { MediaCard } from "@/components/media/media-card";
-import { cardMediaFromHomeItem } from "@/components/media/card-media";
+import {
+  RecommendationPairing,
+  type PairMedia,
+} from "@/components/activity/recommendation-pairing";
 import { timeAgo } from "@/lib/time";
 import {
   useProfileRecommendations,
   type ProfileRecommendation,
 } from "@/queries/profile";
 import { useDeleteRecommendationMutation } from "@/queries/recommendations";
-
-/** Fixed poster width for the paired covers (small — the pair reads as a unit). */
-const POSTER_WIDTH = 72;
 
 export function RecommendationsTab({
   userId,
@@ -89,10 +89,12 @@ export function RecommendationsTab({
 }
 
 /**
- * One authored pairing: SOURCE poster → `Share2` connector → RECOMMENDED poster,
- * then the "If you liked {source}, try {recommended}" caption, the relative
- * time, and the optional note. Both posters tap to their media detail. Mirrors
- * web's `ProfileRecommendationCard` (`[source] → [target]` two-cover layout).
+ * One authored pairing, rendered with the shared `RecommendationPairing` (the
+ * same layout the You + Friends feeds use): SOURCE → intertain glyph → TARGET
+ * posters, the "If you liked {source}, try {recommended}" caption to their
+ * right, the relative time, and the optional note beneath. Both posters + titles
+ * tap to their media detail. Owner-only delete rides in the pairing's top-right
+ * `trailing` slot.
  *
  * The hook drops any row missing either media side, so both are present here.
  */
@@ -129,75 +131,41 @@ function PairingCard({
     ]);
   }
 
+  const sourceMedia: PairMedia = {
+    id: source.id,
+    title: source.title,
+    cover: source.cover_image_url,
+    mediaType: source.media_type as MediaType | null,
+  };
+  const targetMedia: PairMedia = {
+    id: recommended.id,
+    title: recommended.title,
+    cover: recommended.cover_image_url,
+    mediaType: recommended.media_type as MediaType | null,
+  };
+
   return (
-    <View className={`gap-3 ${deleteRec.isPending ? "opacity-50" : ""}`}>
-      {/* Two-cover pairing with the intertain glyph between (web parity). */}
-      <View className="flex-row items-center gap-3">
-        <View style={{ width: POSTER_WIDTH }}>
-          <MediaCard
-            media={cardMediaFromHomeItem(source)}
-            showMeta={false}
-            showActions={false}
-          />
-        </View>
-
-        <Share2
-          size={18}
-          color={colors["text-muted"]}
-          accessibilityLabel="recommends"
-        />
-
-        <View style={{ width: POSTER_WIDTH }}>
-          <MediaCard
-            media={cardMediaFromHomeItem(recommended)}
-            showMeta={false}
-            showActions={false}
-          />
-        </View>
-
-        {/* Owner-only delete. */}
-        {canDelete ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Delete pairing"
-            disabled={deleteRec.isPending}
-            hitSlop={8}
-            className="ml-auto rounded-sm p-2 active:opacity-60"
-            onPress={confirmDelete}
-          >
-            <Trash2 size={18} color={colors["text-muted"]} />
-          </Pressable>
-        ) : null}
-      </View>
-
-      {/* Caption — mirrors web's "If you liked {source}, try {target}". */}
-      <View className="gap-0.5">
-        <Text className="text-xs text-text-muted">
-          If you liked{" "}
-          <Text className="font-medium text-text-secondary">
-            {source.title}
-          </Text>
-          , try
-        </Text>
-        <Text
-          className="text-base font-semibold text-text-primary"
-          numberOfLines={2}
-        >
-          {recommended.title}
-        </Text>
-        {rec.created_at ? (
-          <Text className="text-xs text-text-muted">
-            {timeAgo(rec.created_at)}
-          </Text>
-        ) : null}
-      </View>
-
-      {/* Optional note — the author's "why". */}
-      {rec.note ? (
-        <Text className="text-sm leading-relaxed text-text-secondary">
-          “{rec.note}”
-        </Text>
-      ) : null}
+    <View className={deleteRec.isPending ? "opacity-50" : ""}>
+      <RecommendationPairing
+        source={sourceMedia}
+        target={targetMedia}
+        note={rec.note}
+        timeLabel={rec.created_at ? timeAgo(rec.created_at) : null}
+        trailing={
+          canDelete ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Delete pairing"
+              disabled={deleteRec.isPending}
+              hitSlop={8}
+              className="rounded-sm p-2 active:opacity-60"
+              onPress={confirmDelete}
+            >
+              <Trash2 size={18} color={colors["text-muted"]} />
+            </Pressable>
+          ) : null
+        }
+      />
     </View>
   );
 }

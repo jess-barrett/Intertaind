@@ -114,16 +114,18 @@ export function ActivityRow({ row }: { row: ProfileActivityRow }) {
       cover: row.media?.cover_image_url ?? null,
       mediaType: (row.media?.media_type ?? null) as MediaType | null,
     };
+    const note =
+      typeof meta.note === "string" && meta.note.trim().length > 0
+        ? meta.note
+        : null;
     return (
-      <View className="flex-row items-start gap-3 border-b border-surface-border py-3">
-        <View className="min-w-0 flex-1">
-          <RecommendationPairing source={source} target={target} />
-        </View>
-        {row.created_at ? (
-          <Text className="shrink-0 text-xs text-text-muted">
-            {timeAgo(row.created_at)}
-          </Text>
-        ) : null}
+      <View className="border-b border-surface-border py-3">
+        <RecommendationPairing
+          source={source}
+          target={target}
+          note={note}
+          timeLabel={row.created_at ? timeAgo(row.created_at) : null}
+        />
       </View>
     );
   }
