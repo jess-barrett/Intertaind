@@ -420,7 +420,29 @@ function ItemsSection({
     <View className="gap-3">
       {/* Control chips + the floating dropdown panel (raised above the grid). */}
       <View style={{ zIndex: 10 }}>
-        <View className="flex-row flex-wrap items-center gap-2">
+        {/* Tap-anywhere-to-close: a transparent blanket behind the panel but
+            ABOVE the surrounding content. zIndex keeps the chips (5) tappable to
+            switch menus and the panel (20) tappable to pick — everything else
+            (the blanket, 1) dismisses. Big negative insets cover the screen. */}
+        {open ? (
+          <Pressable
+            accessibilityLabel="Close menu"
+            onPress={() => setOpen(null)}
+            style={{
+              position: "absolute",
+              top: -1000,
+              bottom: -1000,
+              left: -1000,
+              right: -1000,
+              zIndex: 1,
+            }}
+          />
+        ) : null}
+
+        <View
+          className="flex-row flex-wrap items-center gap-2"
+          style={{ zIndex: 5 }}
+        >
           {decadeOptions.length > 0 ? (
             <ControlChip
               label={decade || "Any decade"}
